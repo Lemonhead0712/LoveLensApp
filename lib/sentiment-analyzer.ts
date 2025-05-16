@@ -935,8 +935,7 @@ async function generateEmotionalBreakdown(
     }
 
     // Use linguistic analysis to enhance emotional breakdown
-    const firstPersonLinguistics = analyzeLinguisticMarkers(messages)
-    const secondPersonLinguistics = analyzeLinguisticMarkers(messages)
+    const linguistics = analyzeLinguisticMarkers(messages)
 
     // Calculate average sentiment
     let sum = 0
@@ -987,50 +986,32 @@ async function generateEmotionalBreakdown(
       empathy: Math.round(
         Math.min(
           100,
-          (avgSentiment +
-            firstPersonLinguistics.emotionalExpressiveness +
-            secondPersonLinguistics.emotionalExpressiveness) /
-            3 +
-            5,
+          (avgSentiment + linguistics.emotionalExpressiveness) / 2 + 5,
         ),
       ),
       selfAwareness: Math.round(
         Math.min(
           100,
-          (75 +
-            sentimentVariance / 5 +
-            firstPersonLinguistics.cognitiveComplexity +
-            secondPersonLinguistics.cognitiveComplexity) /
-            3,
+          (75 + sentimentVariance / 5 + linguistics.cognitiveComplexity) / 2,
         ),
       ),
       socialSkills: Math.round(
         Math.min(
           100,
-          (normalizedExchanges + firstPersonLinguistics.socialEngagement + secondPersonLinguistics.socialEngagement) /
-            3 +
-            3,
+          (normalizedExchanges + linguistics.socialEngagement) / 2 + 3,
         ),
       ),
       emotionalRegulation: Math.round(
         Math.min(
           100,
-          (100 -
-            sentimentVariance / 4 +
-            (100 - firstPersonLinguistics.psychologicalDistancing) +
-            (100 - secondPersonLinguistics.psychologicalDistancing)) /
-            3,
+          (100 - sentimentVariance / 4 + (100 - linguistics.psychologicalDistancing)) / 2,
         ),
       ),
       motivation: Math.round(Math.min(100, avgSentiment + 20)),
       adaptability: Math.round(
         Math.min(
           100,
-          (normalizedResponseTime +
-            (100 - firstPersonLinguistics.certaintyLevel) +
-            (100 - secondPersonLinguistics.certaintyLevel)) /
-            3 +
-            5,
+          (normalizedResponseTime + (100 - linguistics.certaintyLevel)) / 2 + 5,
         ),
       ),
     }
@@ -1553,10 +1534,85 @@ interface LinguisticAnalysis {
 }
 
 function analyzeLinguisticMarkers(messages: Message[]): LinguisticAnalysis {
-  const baseAnalysis = analyzeLinguisticMarkersBase(messages)
+  // Filter messages to only include those from the current person
+  const personMessages = messages.filter(msg => msg.sender === messages[0]?.sender)
+  
+  const baseAnalysis = analyzeLinguisticMarkersBase(personMessages)
   return {
     ...baseAnalysis,
-    psychologicalDistancing: 50,
-    certaintyLevel: 50,
+    psychologicalDistancing: calculatePsychologicalDistancing(personMessages),
+    certaintyLevel: calculateCertaintyLevel(personMessages),
   }
+}
+
+// Helper function to calculate psychological distancing
+function calculatePsychologicalDistancing(messages: Message[]): number {
+  if (!messages || messages.length === 0) return 50
+
+  let distancingScore = 0
+  let totalWords = 0
+
+  const distancingPatterns = [
+    { pattern: "it seems", weight: 2 },
+    { pattern: "i think", weight: 1 },
+    { pattern: "maybe", weight: 2 },
+    { pattern: "perhaps", weight: 2 },
+    { pattern: "possibly", weight: 2 },
+    { pattern: "i feel", weight: 1 },
+    { pattern: "i believe", weight: 1 },
+    { pattern: "in my opinion", weight: 1 },
+    { pattern: "from my perspective", weight: 2 },
+    { pattern: "as far as i can tell", weight: 2 },
+  ]
+
+  messages.forEach(message => {
+    const words = message.text.toLowerCase().split(/\s+/)
+    totalWords += words.length
+
+    distancingPatterns.forEach(({ pattern, weight }) => {
+      if (message.text.toLowerCase().includes(pattern)) {
+        distancingScore += weight
+      }
+    })
+  })
+
+  // Normalize score to 0-100 range
+  const normalizedScore = totalWords > 0 ? (distancingScore / totalWords) * 100 : 50
+  return Math.min(100, Math.max(0, normalizedScore))
+}
+
+// Helper function to calculate certainty level
+function calculateCertaintyLevel(messages: Message[]): number {
+  if (!messages || messages.length === 0) return 50
+
+  let certaintyScore = 0
+  let totalWords = 0
+
+  const certaintyPatterns = [
+    { pattern: "definitely", weight: 3 },
+    { pattern: "absolutely", weight: 3 },
+    { pattern: "certainly", weight: 3 },
+    { pattern: "always", weight: 2 },
+    { pattern: "never", weight: 2 },
+    { pattern: "must", weight: 2 },
+    { pattern: "should", weight: 1 },
+    { pattern: "will", weight: 1 },
+    { pattern: "can't", weight: 2 },
+    { pattern: "won't", weight: 2 },
+  ]
+
+  messages.forEach(message => {
+    const words = message.text.toLowerCase().split(/\s+/)
+    totalWords += words.length
+
+    certaintyPatterns.forEach(({ pattern, weight }) => {
+      if (message.text.toLowerCase().includes(pattern)) {
+        certaintyScore += weight
+      }
+    })
+  })
+
+  // Normalize score to 0-100 range
+  const normalizedScore = totalWords > 0 ? (certaintyScore / totalWords) * 100 : 50
+  return Math.min(100, Math.max(0, normalizedScore))
 }
