@@ -35,6 +35,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="overflow-x-hidden">
+      <head>
+        {/* Preload critical assets */}
+        <link rel="preload" href="/LoveLensLogo.png" as="image" />
+      </head>
       <body className={`${inter.className} overflow-x-hidden`}>
         <ThemeProvider attribute="class" defaultTheme="light">
           <GradientBackground>

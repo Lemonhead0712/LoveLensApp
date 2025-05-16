@@ -8,7 +8,22 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
   },
-}
+  webpack(config) {
+    // Handle SVG files
+    config.module.rules.push({
+      test: /\.svg$/,
+      use: ['@svgr/webpack'],
+    });
 
-export default nextConfig
+    return config;
+  },
+};
+
+export default nextConfig;

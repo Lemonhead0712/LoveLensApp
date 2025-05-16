@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import Image from "next/image"
 
 interface LogoSVGProps {
   className?: string
@@ -6,10 +7,17 @@ interface LogoSVGProps {
   color?: string
 }
 
-export function LogoSVG({ className, size = 40, color = "currentColor" }: LogoSVGProps) {
+export function LogoSVG({ className, size = 40 }: LogoSVGProps) {
   return (
     <div className={cn("relative", className)} style={{ width: size, height: size }}>
-      <img src="/LoveLensLogo3D.png" alt="LoveLens Logo" className="w-full h-full object-contain" />
+      <Image
+        src="/LoveLensLogo.png"
+        alt="LoveLens Logo - Purple camera with pink heart lens"
+        width={size}
+        height={size}
+        className="object-contain"
+        priority={true}
+      />
     </div>
   )
 }
