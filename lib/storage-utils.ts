@@ -31,6 +31,16 @@ export async function saveAnalysisResults(results: AnalysisResult, resultId?: st
     // Save to localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existingResults))
 
+    // Also save in the old format for backward compatibility
+    localStorage.setItem(`analysisResults_${id}`, JSON.stringify(results))
+
+    // Update the IDs list for backward compatibility
+    const existingIds = getAnalysisIds()
+    if (!existingIds.includes(id)) {
+      existingIds.push(id)
+      localStorage.setItem("analysisResultIds", JSON.stringify(existingIds))
+    }
+
     return true
   } catch (error) {
     console.error("Error saving analysis results:", error)
@@ -87,7 +97,13 @@ export function getAnalysisResults(id?: string | null): any | null {
       id = ids[ids.length - 1]
     }
 
-    // Get the results with the ID
+    // First try the new storage format
+    const allResults = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
+    if (allResults[id]) {
+      return allResults[id]
+    }
+
+    // If not found, try the old format
     const serializedResults = localStorage.getItem(`analysisResults_${id}`)
     if (!serializedResults) {
       console.log(`No analysis results found for ID: ${id}`)
@@ -114,8 +130,18 @@ export function getAnalysisResults(id?: string | null): any | null {
  */
 export function getAnalysisIds(): string[] {
   try {
+    // First try to get IDs from the new storage format
+    const allResults = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
+    const newFormatIds = Object.keys(allResults)
+
+    // Then get IDs from the old format
     const idsJson = localStorage.getItem("analysisResultIds")
-    return idsJson ? JSON.parse(idsJson) : []
+    const oldFormatIds = idsJson ? JSON.parse(idsJson) : []
+
+    // Combine and deduplicate IDs
+    const allIds = [...new Set([...newFormatIds, ...oldFormatIds])]
+
+    return allIds
   } catch (error) {
     console.error("Failed to get analysis IDs:", error)
     return []
@@ -125,15 +151,20 @@ export function getAnalysisIds(): string[] {
 // Delete a specific analysis result by ID
 export async function deleteAnalysisResult(id: string): Promise<boolean> {
   try {
+    // Delete from new format
     const allResults = await getStoredAnalysisResults()
-
-    if (!allResults[id]) {
-      return false
+    if (allResults[id]) {
+      delete allResults[id]
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(allResults))
     }
 
-    delete allResults[id]
+    // Delete from old format
+    localStorage.removeItem(`analysisResults_${id}`)
+    localStorage.removeItem(`analysisResultsTimestamp_${id}`)
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(allResults))
+    // Update the IDs list for old format
+    const ids = getAnalysisIds().filter((existingId) => existingId !== id)
+    localStorage.setItem("analysisResultIds", JSON.stringify(ids))
 
     return true
   } catch (error) {
@@ -145,7 +176,17 @@ export async function deleteAnalysisResult(id: string): Promise<boolean> {
 // Clear all stored analysis results
 export async function clearAllAnalysisResults(): Promise<boolean> {
   try {
+    // Clear new format
     localStorage.removeItem(STORAGE_KEY)
+
+    // Clear old format
+    const ids = getAnalysisIds()
+    ids.forEach((id) => {
+      localStorage.removeItem(`analysisResults_${id}`)
+      localStorage.removeItem(`analysisResultsTimestamp_${id}`)
+    })
+    localStorage.removeItem("analysisResultIds")
+
     return true
   } catch (error) {
     console.error("Error clearing all analysis results:", error)

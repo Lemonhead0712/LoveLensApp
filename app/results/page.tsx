@@ -93,7 +93,9 @@ export default function ResultsPage() {
           setAnalysisMethod(storedResults.analysisMethod || "rule-based")
         } else {
           console.error("No analysis results found for ID:", id)
-          setError("No analysis results found. Please upload conversation screenshots to get started.")
+
+          // If no results found, redirect to upload page with an error message
+          router.push("/upload?error=no_results_found")
         }
       } catch (error) {
         console.error("Error loading analysis results:", error)
@@ -104,7 +106,7 @@ export default function ResultsPage() {
         setLoading(false)
       }
     }
-  }, [id])
+  }, [id, router])
 
   if (loading) {
     return <LoadingScreen message={loadingStage} fullScreen={true} />

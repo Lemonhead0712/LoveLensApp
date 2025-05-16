@@ -1,417 +1,452 @@
-import { extractTextFromImages } from "./ocr-service"
-import { analyzeAttachmentStyle, analyzeCommunicationStyle } from "./psychological-frameworks"
-import { analyzeSentiment } from "./sentiment-analyzer"
-import { v4 as uuidv4 } from "uuid"
 import type { AnalysisResults, Message } from "./types"
+import { extractTextFromScreenshots } from "./ocr-service"
+import { analyzeSentiment } from "./sentiment-analyzer"
+import { getCommunicationStyleLabel } from "./communication-styles"
 
-// Main function to analyze screenshots
+// Process screenshots and generate analysis results
 export async function analyzeScreenshots(
   files: File[],
-  firstPersonName: string,
-  secondPersonName: string,
-): Promise<AnalysisResults> {
+  firstPersonName = "Person A",
+  secondPersonName = "Person B",
+): Promise<AnalysisResults | null> {
   try {
-    console.log("Starting OCR text extraction...")
-    // Extract text from images using OCR
-    const extractedText = await extractTextFromImages(files)
+    console.log(`Starting analysis for ${firstPersonName} and ${secondPersonName} with ${files.length} files`)
 
-    if (!extractedText || extractedText.length === 0) {
-      throw new Error("No text could be extracted from the provided screenshots")
+    // Step 1: Extract text from screenshots using OCR
+    console.log("Extracting text from screenshots...")
+    const extractedMessages = await extractTextFromScreenshots(files, firstPersonName, secondPersonName)
+    console.log(`Extracted ${extractedMessages.length} messages from screenshots`)
+
+    if (extractedMessages.length === 0) {
+      console.error("No messages could be extracted from the provided screenshots")
+      throw new Error("No messages could be extracted from the provided screenshots")
     }
 
-    console.log(`Extracted ${extractedText.length} text segments from images`)
+    // Step 2: Analyze sentiment and generate insights
+    console.log("Analyzing sentiment and generating insights...")
+    const analysisResults = await analyzeSentiment(extractedMessages, firstPersonName, secondPersonName)
 
-    // Process extracted text into messages
-    const messages = processExtractedText(extractedText, firstPersonName, secondPersonName)
-
-    if (!messages || messages.length === 0) {
-      throw new Error("Could not process messages from the extracted text")
+    if (!analysisResults) {
+      console.error("Sentiment analysis failed to produce results")
+      throw new Error("Sentiment analysis failed to produce results")
     }
 
-    console.log(`Processed ${messages.length} messages from extracted text`)
+    // Step 3: Calculate emotional intelligence scores based on the sentiment analysis
+    const firstPersonMessages = extractedMessages.filter((msg) => msg.sender === firstPersonName)
+    const secondPersonMessages = extractedMessages.filter((msg) => msg.sender === secondPersonName)
 
-    // Analyze sentiment
-    const sentimentResults = analyzeSentiment(messages)
-    console.log("Sentiment analysis completed")
+    // Calculate weighted sentiment for each person - FIX: Use message count, not length
+    const firstPersonSentiment = calculateNormalizedSentiment(firstPersonMessages)
+    const secondPersonSentiment = calculateNormalizedSentiment(secondPersonMessages)
 
-    // Analyze attachment styles
-    const firstPersonAttachmentStyle = analyzeAttachmentStyle(messages.filter((msg) => msg.sender === "person1"))
-
-    const secondPersonAttachmentStyle = analyzeAttachmentStyle(messages.filter((msg) => msg.sender === "person2"))
-
-    console.log("Attachment style analysis completed")
-
-    // Analyze communication styles
-    const firstPersonCommunicationStyle = analyzeCommunicationStyle(messages.filter((msg) => msg.sender === "person1"))
-
-    const secondPersonCommunicationStyle = analyzeCommunicationStyle(messages.filter((msg) => msg.sender === "person2"))
-
-    console.log("Communication style analysis completed")
-
-    // Generate timeline data
-    const timelineData = generateTimelineData(messages)
-    console.log("Timeline data generated")
-
-    // Generate key moments
-    const keyMoments = identifyKeyMoments(messages)
-    console.log("Key moments identified")
-
-    // Generate Gottman scores
-    const gottmanScores = calculateGottmanScores(messages, sentimentResults)
-    console.log("Gottman scores calculated")
-
-    // Generate emotional intelligence breakdown
-    const emotionalBreakdown = calculateEmotionalIntelligence(messages, sentimentResults, "person1")
-    const secondPersonEmotionalBreakdown = calculateEmotionalIntelligence(messages, sentimentResults, "person2")
-    console.log("Emotional intelligence breakdown calculated")
-
-    // Generate insights and recommendations
-    const insights = generateInsights(messages, sentimentResults, gottmanScores)
-    const recommendations = generateRecommendations(
-      gottmanScores,
-      firstPersonAttachmentStyle,
-      secondPersonAttachmentStyle,
+    console.log(
+      `Normalized sentiment - ${firstPersonName}: ${firstPersonSentiment}, ${secondPersonName}: ${secondPersonSentiment}`,
     )
-    console.log("Insights and recommendations generated")
 
-    // Calculate overall score
-    const overallScore = calculateOverallScore(gottmanScores, emotionalBreakdown, secondPersonEmotionalBreakdown)
-    console.log("Overall score calculated")
+    // Get linguistic patterns for normalization
+    const firstPersonLinguistics = analysisResults.firstPersonProfile?.linguisticPatterns
+    const secondPersonLinguistics = analysisResults.secondPersonProfile?.linguisticPatterns
 
-    // Prepare final results
+    if (!firstPersonLinguistics || !secondPersonLinguistics) {
+      console.warn("Linguistic patterns missing, using default values")
+    }
+
+    // Normalize linguistic patterns - safely handle missing data
+    const normalizedLinguistics = normalizeLinguisticPatterns(
+      firstPersonLinguistics || getDefaultLinguisticPatterns(),
+      secondPersonLinguistics || getDefaultLinguisticPatterns(),
+    )
+
+    // Calculate emotional breakdowns using the helper function
+    const firstPersonEmo = profileToBreakdown(
+      analysisResults.firstPersonProfile || getDefaultProfile(),
+      firstPersonSentiment,
+    )
+    const secondPersonEmo = profileToBreakdown(
+      analysisResults.secondPersonProfile || getDefaultProfile(),
+      secondPersonSentiment,
+    )
+
+    // Calculate emotional intelligence based on normalized breakdowns
+    const firstPersonEI = calculateEmotionalIntelligence(
+      firstPersonEmo,
+      analysisResults.firstPersonProfile || getDefaultProfile(),
+      normalizedLinguistics.first,
+    )
+
+    const secondPersonEI = calculateEmotionalIntelligence(
+      secondPersonEmo,
+      analysisResults.secondPersonProfile || getDefaultProfile(),
+      normalizedLinguistics.second,
+    )
+
+    console.log(`Emotional intelligence - ${firstPersonName}: ${firstPersonEI}, ${secondPersonName}: ${secondPersonEI}`)
+
+    // Step 4: Determine communication styles based on normalized linguistic patterns
+    const firstPersonStyle = determineCommStyle(normalizedLinguistics.first)
+    const secondPersonStyle = determineCommStyle(normalizedLinguistics.second)
+
+    // Step 5: Generate timeline data from messages with sentiment
+    const timelineData = generateTimelineData(analysisResults.messagesWithSentiment || [])
+
+    // Step 6: Calculate category scores for final compatibility score
+    const categoryScores = calculateCategoryScores(
+      firstPersonEI,
+      secondPersonEI,
+      analysisResults.gottmanScores || getDefaultGottmanScores(),
+      firstPersonEmo,
+      secondPersonEmo,
+      analysisResults.relationshipDynamics || getDefaultRelationshipDynamics(),
+    )
+
+    // Step 7: Calculate final compatibility score (average of category averages)
+    const finalCompatibilityScore = calculateFinalCompatibilityScore(categoryScores)
+
+    // Step 8: Compile the final analysis results
     const results: AnalysisResults = {
       participants: [
         {
           name: firstPersonName,
-          emotionalIntelligence: calculateAverageScore(emotionalBreakdown),
-          communicationStyle: firstPersonCommunicationStyle.dominantStyle,
+          emotionalIntelligence: firstPersonEI,
+          communicationStyle: firstPersonStyle,
           isFirstPerson: true,
         },
         {
           name: secondPersonName,
-          emotionalIntelligence: calculateAverageScore(secondPersonEmotionalBreakdown),
-          communicationStyle: secondPersonCommunicationStyle.dominantStyle,
+          emotionalIntelligence: secondPersonEI,
+          communicationStyle: secondPersonStyle,
           isFirstPerson: false,
         },
       ],
-      messageCount: messages.length,
-      overallScore,
-      emotionalBreakdown,
-      secondPersonEmotionalBreakdown,
-      gottmanScores,
-      insights,
-      recommendations,
-      gottmanSummary: generateGottmanSummary(gottmanScores),
-      gottmanRecommendations: generateGottmanRecommendations(gottmanScores),
+      messageCount: analysisResults.messagesWithSentiment?.length || extractedMessages.length,
+      overallScore: analysisResults.overallScore || 0,
+      finalCompatibilityScore, // Add the new properly calculated score
+      emotionalBreakdown: firstPersonEmo,
+      secondPersonEmotionalBreakdown: secondPersonEmo,
+      gottmanScores: analysisResults.gottmanScores || getDefaultGottmanScores(),
+      insights: analysisResults.insights || [],
+      recommendations: analysisResults.recommendations || [],
+      gottmanSummary: analysisResults.gottmanSummary || "",
+      gottmanRecommendations: analysisResults.gottmanRecommendations || [],
       conversationTimeline: timelineData,
-      keyMoments,
-      messages: messages.map((msg) => ({
-        id: msg.id,
-        text: msg.text,
-        timestamp: msg.timestamp,
-        sender: msg.sender === "person1" ? firstPersonName : secondPersonName,
-        sentiment: msg.sentiment,
-        status: "sent" as const,
-      })),
-      firstPersonProfile: {
-        attachmentStyle: firstPersonAttachmentStyle.primaryStyle,
-        communicationStyle: firstPersonCommunicationStyle.dominantStyle,
-      },
-      secondPersonProfile: {
-        attachmentStyle: secondPersonAttachmentStyle.primaryStyle,
-        communicationStyle: secondPersonCommunicationStyle.dominantStyle,
-      },
-      relationshipDynamics: {
-        positiveToNegativeRatio: calculatePositiveToNegativeRatio(gottmanScores),
-        biddingPatterns: {
-          emotionalBids: gottmanScores.emotionalBids,
-          turningToward: gottmanScores.turnTowards,
-          turningAway: 100 - gottmanScores.turnTowards - Math.min(30, gottmanScores.contempt / 2),
-          turningAgainst: Math.min(30, gottmanScores.contempt / 2),
-        },
-        conflictStyle: determineConflictStyle(gottmanScores),
-        sharedMeaning: gottmanScores.sharedMeaning,
-        attachmentCompatibility: determineAttachmentCompatibility(
-          firstPersonAttachmentStyle.primaryStyle,
-          secondPersonAttachmentStyle.primaryStyle,
-        ),
-        communicationCompatibility: determineCommunicationCompatibility(
-          firstPersonCommunicationStyle.dominantStyle,
-          secondPersonCommunicationStyle.dominantStyle,
-        ),
-        keyStrengths: determineRelationshipStrengths(gottmanScores),
-        keyGrowthAreas: determineRelationshipGrowthAreas(gottmanScores),
-      },
-      analysisMethod: "hybrid",
+      keyMoments: analysisResults.keyMoments || [],
+      messages: analysisResults.messagesWithSentiment || extractedMessages,
+      firstPersonProfile: analysisResults.firstPersonProfile || getDefaultProfile(),
+      secondPersonProfile: analysisResults.secondPersonProfile || getDefaultProfile(),
+      relationshipDynamics: analysisResults.relationshipDynamics || getDefaultRelationshipDynamics(),
+      analysisMethod: analysisResults.analysisMethod || "standard",
+      categoryScores, // Add category scores for transparency
     }
 
     console.log("Analysis completed successfully")
     return results
   } catch (error) {
     console.error("Error in analyzeScreenshots:", error)
-    throw error
+    throw new Error(`Failed to analyze screenshots: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
-// Helper function to process extracted text into messages
-function processExtractedText(extractedText: string[], firstPersonName: string, secondPersonName: string): Message[] {
-  const messages: Message[] = []
-
-  // Simple processing logic - in a real app, this would be more sophisticated
-  extractedText.forEach((text, index) => {
-    // Skip empty text
-    if (!text.trim()) return
-
-    // Determine sender based on position or content
-    // This is a simplified approach - real implementation would be more complex
-    const sender = index % 2 === 0 ? "person1" : "person2"
-
-    // Create message object
-    messages.push({
-      id: uuidv4(),
-      text: text.trim(),
-      timestamp: new Date(Date.now() - (extractedText.length - index) * 60000).toISOString(),
-      sender,
-      status: "sent",
-    })
-  })
-
-  return messages
+// New function to calculate category scores
+interface CategoryScores {
+  emotionalIntelligence: number
+  communicationStyles: number
+  compatibility: number
+  psychology: number
+  relationshipDynamics: number
 }
 
-// Helper function to generate timeline data
-function generateTimelineData(messages: Message[]) {
-  return messages.map((msg) => ({
-    participant: msg.sender,
-    timestamp: msg.timestamp,
-    sentiment: msg.sentiment || 50,
-  }))
-}
-
-// Helper function to identify key moments
-function identifyKeyMoments(messages: Message[]) {
-  const keyMoments = []
-
-  // Find messages with extreme sentiment
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]
-    if (msg.sentiment && (msg.sentiment > 80 || msg.sentiment < 20)) {
-      keyMoments.push({
-        title: msg.sentiment > 80 ? "Positive Moment" : "Negative Moment",
-        description: msg.sentiment > 80 ? "A particularly positive exchange" : "A potentially concerning exchange",
-        timestamp: msg.timestamp,
-        messageText: msg.text,
-        sender: msg.sender,
-        sentiment: msg.sentiment,
-      })
-    }
-  }
-
-  return keyMoments.slice(0, 5) // Return top 5 key moments
-}
-
-// Helper function to calculate Gottman scores
-function calculateGottmanScores(messages: Message[], sentimentResults: any) {
-  // This is a simplified implementation
-  return {
-    criticism: Math.random() * 40 + 20, // Random value between 20-60
-    contempt: Math.random() * 30 + 10, // Random value between 10-40
-    defensiveness: Math.random() * 50 + 20, // Random value between 20-70
-    stonewalling: Math.random() * 40 + 10, // Random value between 10-50
-    emotionalBids: Math.random() * 30 + 50, // Random value between 50-80
-    turnTowards: Math.random() * 30 + 50, // Random value between 50-80
-    repairAttempts: Math.random() * 40 + 40, // Random value between 40-80
-    sharedMeaning: Math.random() * 30 + 50, // Random value between 50-80
-  }
-}
-
-// Helper function to calculate emotional intelligence
-function calculateEmotionalIntelligence(messages: Message[], sentimentResults: any, person: string) {
-  // This is a simplified implementation
-  return {
-    empathy: Math.random() * 40 + 40, // Random value between 40-80
-    selfAwareness: Math.random() * 30 + 50, // Random value between 50-80
-    socialSkills: Math.random() * 30 + 50, // Random value between 50-80
-    emotionalRegulation: Math.random() * 40 + 40, // Random value between 40-80
-    motivation: Math.random() * 30 + 50, // Random value between 50-80
-    adaptability: Math.random() * 30 + 50, // Random value between 50-80
-  }
-}
-
-// Helper function to generate insights
-function generateInsights(messages: Message[], sentimentResults: any, gottmanScores: any) {
-  return [
-    "You both show a good balance of emotional expression in your communication.",
-    "There are some patterns of criticism that could be addressed to improve communication.",
-    "You demonstrate strong repair attempts after conflicts, which is a positive sign.",
-    "Your conversation shows a healthy ratio of positive to negative interactions.",
-  ]
-}
-
-// Helper function to generate recommendations
-function generateRecommendations(
+function calculateCategoryScores(
+  firstPersonEI: number,
+  secondPersonEI: number,
   gottmanScores: any,
-  firstPersonAttachmentStyle: any,
-  secondPersonAttachmentStyle: any,
-) {
-  return [
-    "Practice using 'I' statements instead of 'you' statements when discussing concerns.",
-    "Take short breaks during heated discussions to prevent stonewalling.",
-    "Acknowledge each other's emotional bids more consistently.",
-    "Work on expressing appreciation and admiration more frequently.",
-  ]
-}
+  firstPersonEmo: any,
+  secondPersonEmo: any,
+  relationshipDynamics: any,
+): CategoryScores {
+  // 1. Emotional Intelligence - average of both participants
+  const emotionalIntelligence = (firstPersonEI + secondPersonEI) / 2
 
-// Helper function to generate Gottman summary
-function generateGottmanSummary(gottmanScores: any) {
-  return "Your relationship shows a generally healthy pattern of communication with some areas for improvement. The Four Horsemen (criticism, contempt, defensiveness, and stonewalling) are present at moderate levels, which is common in most relationships. Your repair attempts and turning towards behaviors are positive indicators of relationship health."
-}
-
-// Helper function to generate Gottman recommendations
-function generateGottmanRecommendations(gottmanScores: any) {
-  return [
-    "Replace criticism with gentle startups by using 'I' statements",
-    "Combat contempt by building a culture of appreciation and respect",
-    "Take responsibility instead of being defensive",
-    "Practice self-soothing techniques to avoid stonewalling",
-  ]
-}
-
-// Helper function to calculate overall score
-function calculateOverallScore(gottmanScores: any, emotionalBreakdown: any, secondPersonEmotionalBreakdown: any) {
-  const gottmanAverage =
+  // 2. Communication Styles - based on complementary styles and clarity
+  const communicationStyles =
     (100 -
-      gottmanScores.criticism +
-      (100 - gottmanScores.contempt) +
-      (100 - gottmanScores.defensiveness) +
-      (100 - gottmanScores.stonewalling) +
-      gottmanScores.emotionalBids +
-      gottmanScores.turnTowards +
-      gottmanScores.repairAttempts +
+      Math.abs(firstPersonEmo.selfAwareness - secondPersonEmo.selfAwareness) +
+      (100 - Math.abs(firstPersonEmo.socialSkills - secondPersonEmo.socialSkills)) +
       gottmanScores.sharedMeaning) /
-    8
+    3
 
-  const emotionalAverage = calculateAverageScore(emotionalBreakdown)
-  const secondPersonEmotionalAverage = calculateAverageScore(secondPersonEmotionalBreakdown)
-
-  return Math.round((gottmanAverage + emotionalAverage + secondPersonEmotionalAverage) / 3)
-}
-
-// Helper function to calculate average score
-function calculateAverageScore(scores: any) {
-  const values = Object.values(scores) as number[]
-  return values.reduce((sum, value) => sum + value, 0) / values.length
-}
-
-// Helper function to calculate positive to negative ratio
-function calculatePositiveToNegativeRatio(gottmanScores: any) {
-  const positiveFactors =
+  // 3. Compatibility - based on Gottman positive metrics
+  const compatibility =
     (gottmanScores.emotionalBids +
       gottmanScores.turnTowards +
       gottmanScores.repairAttempts +
       gottmanScores.sharedMeaning) /
     4
 
-  const negativeFactors =
-    (gottmanScores.criticism + gottmanScores.contempt + gottmanScores.defensiveness + gottmanScores.stonewalling) / 4
+  // 4. Psychology - based on attachment and cognitive patterns
+  const psychology =
+    ((relationshipDynamics.attachmentCompatibility === "Highly Compatible"
+      ? 90
+      : relationshipDynamics.attachmentCompatibility === "Compatible with Growth Potential"
+        ? 75
+        : relationshipDynamics.attachmentCompatibility === "Moderately Compatible"
+          ? 60
+          : relationshipDynamics.attachmentCompatibility === "Potentially Challenging"
+            ? 40
+            : 50) +
+      (firstPersonEmo.adaptability + secondPersonEmo.adaptability) / 2) /
+    2
 
-  return +(positiveFactors / Math.max(1, negativeFactors)).toFixed(2)
-}
+  // 5. Relationship Dynamics - based on Gottman negative metrics (inverted) and ratio
+  const relationshipDynamics_score =
+    (100 -
+      gottmanScores.criticism +
+      (100 - gottmanScores.contempt) +
+      (100 - gottmanScores.defensiveness) +
+      (100 - gottmanScores.stonewalling) +
+      Math.min(100, relationshipDynamics.positiveToNegativeRatio * 20)) /
+    5
 
-// Helper function to determine conflict style
-function determineConflictStyle(gottmanScores: any) {
-  if (gottmanScores.criticism > 60 && gottmanScores.defensiveness > 60) {
-    return "Volatile"
-  } else if (gottmanScores.stonewalling > 60) {
-    return "Avoidant"
-  } else if (gottmanScores.contempt > 50) {
-    return "Hostile"
-  } else if (gottmanScores.repairAttempts > 70 && gottmanScores.turnTowards > 70) {
-    return "Validating"
-  } else {
-    return "Mixed"
+  // Ensure all scores are within 0-100 range
+  return {
+    emotionalIntelligence: normalizeScore(emotionalIntelligence),
+    communicationStyles: normalizeScore(communicationStyles),
+    compatibility: normalizeScore(compatibility),
+    psychology: normalizeScore(psychology),
+    relationshipDynamics: normalizeScore(relationshipDynamics_score),
   }
 }
 
-// Helper function to determine attachment compatibility
-function determineAttachmentCompatibility(style1: string, style2: string) {
-  if (style1 === "secure" && style2 === "secure") {
-    return "Highly Compatible"
-  } else if ((style1 === "anxious" && style2 === "avoidant") || (style1 === "avoidant" && style2 === "anxious")) {
-    return "Potentially Challenging"
-  } else {
-    return "Moderately Compatible"
+// New function to calculate final compatibility score
+function calculateFinalCompatibilityScore(categoryScores: CategoryScores): number {
+  const average =
+    (categoryScores.emotionalIntelligence +
+      categoryScores.communicationStyles +
+      categoryScores.compatibility +
+      categoryScores.psychology +
+      categoryScores.relationshipDynamics) /
+    5
+
+  // Round to 1 decimal place
+  return Math.round(average * 10) / 10
+}
+
+// FIX: Calculate sentiment based on message count, not length
+function calculateNormalizedSentiment(messages: Message[]): number {
+  if (messages.length === 0) return 50 // Default neutral sentiment
+
+  // Simple average of sentiment scores
+  const sum = messages.reduce((total, msg) => total + (msg.sentiment ?? 50), 0)
+  return Math.round(sum / messages.length)
+}
+
+// Improved normalization function
+function normalizeScore(value: number, min = 0, max = 100): number {
+  // Ensure value is within bounds
+  return Math.min(100, Math.max(0, value))
+}
+
+// Helper function to normalize linguistic patterns between two participants
+function normalizeLinguisticPatterns(firstPatterns: any, secondPatterns: any) {
+  // Normalize emotional expressiveness
+  const minExp = Math.min(firstPatterns.emotionalExpressiveness || 0, secondPatterns.emotionalExpressiveness || 0)
+  const maxExp = Math.max(firstPatterns.emotionalExpressiveness || 100, secondPatterns.emotionalExpressiveness || 100)
+  const normExpFirst = normalizeScore(firstPatterns.emotionalExpressiveness || 50, minExp, maxExp)
+  const normExpSecond = normalizeScore(secondPatterns.emotionalExpressiveness || 50, minExp, maxExp)
+
+  // Normalize cognitive complexity
+  const minCog = Math.min(firstPatterns.cognitiveComplexity || 0, secondPatterns.cognitiveComplexity || 0)
+  const maxCog = Math.max(firstPatterns.cognitiveComplexity || 100, secondPatterns.cognitiveComplexity || 100)
+  const normCogFirst = normalizeScore(firstPatterns.cognitiveComplexity || 50, minCog, maxCog)
+  const normCogSecond = normalizeScore(secondPatterns.cognitiveComplexity || 50, minCog, maxCog)
+
+  // Normalize social engagement
+  const minSoc = Math.min(firstPatterns.socialEngagement || 0, secondPatterns.socialEngagement || 0)
+  const maxSoc = Math.max(firstPatterns.socialEngagement || 100, secondPatterns.socialEngagement || 100)
+  const normSocFirst = normalizeScore(firstPatterns.socialEngagement || 50, minSoc, maxSoc)
+  const normSocSecond = normalizeScore(secondPatterns.socialEngagement || 50, minSoc, maxSoc)
+
+  // Normalize psychological distancing
+  const minDist = Math.min(firstPatterns.psychologicalDistancing || 0, secondPatterns.psychologicalDistancing || 0)
+  const maxDist = Math.max(firstPatterns.psychologicalDistancing || 100, secondPatterns.psychologicalDistancing || 100)
+  const normDistFirst = normalizeScore(firstPatterns.psychologicalDistancing || 50, minDist, maxDist)
+  const normDistSecond = normalizeScore(secondPatterns.psychologicalDistancing || 50, minDist, maxDist)
+
+  // Normalize certainty level
+  const minCert = Math.min(firstPatterns.certaintyLevel || 0, secondPatterns.certaintyLevel || 0)
+  const maxCert = Math.max(firstPatterns.certaintyLevel || 100, secondPatterns.certaintyLevel || 100)
+  const normCertFirst = normalizeScore(firstPatterns.certaintyLevel || 50, minCert, maxCert)
+  const normCertSecond = normalizeScore(secondPatterns.certaintyLevel || 50, minCert, maxCert)
+
+  return {
+    first: {
+      emotionalExpressiveness: normExpFirst,
+      cognitiveComplexity: normCogFirst,
+      socialEngagement: normSocFirst,
+      psychologicalDistancing: normDistFirst,
+      certaintyLevel: normCertFirst,
+      // Keep the original dominant emotions with null safety
+      dominantEmotions: firstPatterns.dominantEmotions || [],
+    },
+    second: {
+      emotionalExpressiveness: normExpSecond,
+      cognitiveComplexity: normCogSecond,
+      socialEngagement: normSocSecond,
+      psychologicalDistancing: normDistSecond,
+      certaintyLevel: normCertSecond,
+      // Keep the original dominant emotions with null safety
+      dominantEmotions: secondPatterns.dominantEmotions || [],
+    },
   }
 }
 
-// Helper function to determine communication compatibility
-function determineCommunicationCompatibility(style1: string, style2: string) {
-  if (style1 === style2) {
-    return "Highly Similar"
-  } else if (
-    (style1 === "assertive" && style2 === "passive") ||
-    (style1 === "passive" && style2 === "assertive") ||
-    (style1 === "analytical" && style2 === "emotional") ||
-    (style1 === "emotional" && style2 === "analytical")
-  ) {
-    return "Complementary"
-  } else {
-    return "Divergent"
+// Helper function to calculate emotional intelligence score with normalized values
+function calculateEmotionalIntelligence(emotionalBreakdown: any, profile: any, normalizedLinguistics: any): number {
+  // Calculate attachment score based on attachment style
+  const attachmentScore =
+    profile.attachmentStyle?.primaryStyle === "Secure"
+      ? 85
+      : profile.attachmentStyle?.primaryStyle === "Anxious"
+        ? 65
+        : profile.attachmentStyle?.primaryStyle === "Avoidant"
+          ? 60
+          : 55
+
+  // Calculate normalized linguistic score
+  const normalizedLinguisticScore =
+    (normalizedLinguistics.emotionalExpressiveness +
+      normalizedLinguistics.cognitiveComplexity +
+      normalizedLinguistics.socialEngagement +
+      (100 - normalizedLinguistics.psychologicalDistancing)) /
+    4
+
+  // Calculate normalized emotional score
+  const normalizedEmotionalScore =
+    (emotionalBreakdown.empathy +
+      emotionalBreakdown.selfAwareness +
+      emotionalBreakdown.emotionalRegulation +
+      emotionalBreakdown.socialSkills +
+      emotionalBreakdown.motivation +
+      emotionalBreakdown.adaptability) /
+    6
+
+  // Weighted average of different scores
+  return Math.round(attachmentScore * 0.3 + normalizedLinguisticScore * 0.3 + normalizedEmotionalScore * 0.4)
+}
+
+// Helper function to determine communication style using normalized values
+function determineCommStyle(normalizedLinguistics: any): string {
+  // Calculate scores for each style using normalized values
+  const assertiveScore =
+    normalizedLinguistics.certaintyLevel * 0.7 + normalizedLinguistics.psychologicalDistancing * 0.3
+  const analyticalScore = normalizedLinguistics.cognitiveComplexity * 0.6 + normalizedLinguistics.certaintyLevel * 0.4
+  const expressiveScore =
+    normalizedLinguistics.emotionalExpressiveness * 0.8 + normalizedLinguistics.socialEngagement * 0.2
+  const supportiveScore =
+    normalizedLinguistics.emotionalExpressiveness * 0.5 + normalizedLinguistics.socialEngagement * 0.5
+
+  // Find the two highest scores
+  const scores = [
+    { style: "Assertive", score: assertiveScore },
+    { style: "Analytical", score: analyticalScore },
+    { style: "Expressive", score: expressiveScore },
+    { style: "Supportive", score: supportiveScore },
+  ].sort((a, b) => b.score - a.score)
+
+  // Return the communication style label for the two highest scoring styles
+  return getCommunicationStyleLabel(scores[0].style, scores[1].style)
+}
+
+// Helper function to generate timeline data from messages
+function generateTimelineData(messages: Message[]) {
+  return messages
+    .map((message) => ({
+      participant: message.sender,
+      timestamp: message.timestamp || new Date().toISOString(),
+      sentiment: message.sentiment || 50,
+    }))
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+}
+
+// Helper function to convert a profile to an emotional breakdown
+function profileToBreakdown(profile: any, sentiment: number): any {
+  if (!profile || !profile.linguisticPatterns) {
+    return getDefaultEmotionalBreakdown()
+  }
+
+  const lp = profile.linguisticPatterns
+
+  return {
+    empathy: normalizeScore(lp.emotionalExpressiveness || 50),
+    selfAwareness: normalizeScore(lp.cognitiveComplexity || 50),
+    socialSkills: normalizeScore(lp.socialEngagement || 50),
+    emotionalRegulation: normalizeScore(100 - (lp.psychologicalDistancing || 50)),
+    motivation: normalizeScore(sentiment + 15),
+    adaptability: normalizeScore(100 - (lp.certaintyLevel || 50)),
   }
 }
 
-// Helper function to determine relationship strengths
-function determineRelationshipStrengths(gottmanScores: any) {
-  const strengths = []
-
-  if (calculatePositiveToNegativeRatio(gottmanScores) >= 5) {
-    strengths.push("Excellent positive-to-negative interaction ratio")
-  } else if (calculatePositiveToNegativeRatio(gottmanScores) >= 3) {
-    strengths.push("Healthy positive-to-negative interaction ratio")
+// Default values for null safety
+function getDefaultLinguisticPatterns() {
+  return {
+    emotionalExpressiveness: 50,
+    cognitiveComplexity: 50,
+    socialEngagement: 50,
+    psychologicalDistancing: 50,
+    certaintyLevel: 50,
+    dominantEmotions: [],
   }
-
-  if (gottmanScores.repairAttempts > 70) {
-    strengths.push("Strong repair attempts during conflict")
-  }
-
-  if (gottmanScores.sharedMeaning > 70) {
-    strengths.push("Strong sense of shared meaning and values")
-  }
-
-  if (gottmanScores.turnTowards > 70) {
-    strengths.push("Consistent turning toward each other's emotional bids")
-  }
-
-  if (gottmanScores.contempt < 30) {
-    strengths.push("Low levels of contempt in communication")
-  }
-
-  return strengths
 }
 
-// Helper function to determine relationship growth areas
-function determineRelationshipGrowthAreas(gottmanScores: any) {
-  const growthAreas = []
-
-  if (calculatePositiveToNegativeRatio(gottmanScores) < 3) {
-    growthAreas.push("Improving positive-to-negative interaction ratio")
+function getDefaultProfile() {
+  return {
+    attachmentStyle: {
+      primaryStyle: "Secure",
+      secondaryStyle: null,
+      confidence: 50,
+    },
+    linguisticPatterns: getDefaultLinguisticPatterns(),
+    transactionalAnalysis: {
+      dominantEgoState: "Adult",
+      egoStateDistribution: {
+        parent: 33,
+        adult: 34,
+        child: 33,
+      },
+    },
+    growthAreas: ["improving communication clarity"],
   }
+}
 
-  if (gottmanScores.criticism > 50) {
-    growthAreas.push("Reducing criticism in communication")
+function getDefaultEmotionalBreakdown() {
+  return {
+    empathy: 50,
+    selfAwareness: 50,
+    socialSkills: 50,
+    emotionalRegulation: 50,
+    motivation: 50,
+    adaptability: 50,
   }
+}
 
-  if (gottmanScores.defensiveness > 50) {
-    growthAreas.push("Working on reducing defensive responses")
+function getDefaultGottmanScores() {
+  return {
+    criticism: 50,
+    contempt: 50,
+    defensiveness: 50,
+    stonewalling: 50,
+    emotionalBids: 50,
+    turnTowards: 50,
+    repairAttempts: 50,
+    sharedMeaning: 50,
   }
+}
 
-  if (gottmanScores.stonewalling > 50) {
-    growthAreas.push("Addressing stonewalling behaviors")
+function getDefaultRelationshipDynamics() {
+  return {
+    positiveToNegativeRatio: 1,
+    conflictStyle: "Balanced",
+    attachmentCompatibility: "Moderately Compatible",
+    keyGrowthAreas: ["Improving communication"],
+    relationshipStrengths: ["Potential for growth"],
   }
-
-  if (gottmanScores.turnTowards < 50) {
-    growthAreas.push("Increasing responses to emotional bids")
-  }
-
-  return growthAreas
 }

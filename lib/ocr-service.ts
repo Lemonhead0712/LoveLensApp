@@ -22,37 +22,20 @@ interface PositionedMessage {
   confidence: number
 }
 
-// Progress callback type
-type ProgressCallback = (progress: number) => void
-
 /**
  * Extracts text from an image using Tesseract.js OCR
  * @param imageData Base64 encoded image data
- * @param onProgress Optional callback for progress updates
  * @returns Array of extracted messages
  */
-export async function extractTextFromImage(imageData: string, onProgress?: ProgressCallback): Promise<Message[]> {
+export async function extractTextFromImage(imageData: string): Promise<Message[]> {
   try {
     // Initialize Tesseract worker
     const worker = await createWorker("eng")
 
-    // Report initial progress
-    if (onProgress) onProgress(10)
-
-    // Process image with Tesseract
-    const { data } = await worker.recognize(
-      imageData,
-      {
-        rectangle: true, // Enable rectangle detection for better message boundary detection
-      },
-      (progress) => {
-        // Report progress (scale from 0-1 to 10-80)
-        if (onProgress) onProgress(10 + Math.round(progress.progress * 70))
-      },
-    )
-
-    // Report post-processing start
-    if (onProgress) onProgress(80)
+    // Process image with Tesseract - without passing the progress callback
+    const { data } = await worker.recognize(imageData, {
+      rectangle: true, // Enable rectangle detection for better message boundary detection
+    })
 
     // Extract words with bounding boxes
     const ocrResults: OCRResult[] = data.words.map((word) => ({
@@ -81,9 +64,6 @@ export async function extractTextFromImage(imageData: string, onProgress?: Progr
     // Terminate worker
     await worker.terminate()
 
-    // Report completion
-    if (onProgress) onProgress(100)
-
     return uniqueMessages
   } catch (error) {
     console.error("Error extracting text from image:", error)
@@ -93,55 +73,69 @@ export async function extractTextFromImage(imageData: string, onProgress?: Progr
 
 /**
  * Extracts text from multiple images using Tesseract.js OCR
- * @param images Array of base64 encoded image data
- * @param onProgress Optional callback for progress updates
+ * @param files Array of image files
  * @returns Array of extracted messages from all images
  */
-export async function extractTextFromImages(images: string[], onProgress?: ProgressCallback): Promise<Message[]> {
+export async function extractTextFromImages(files: File[]): Promise<string[]> {
   try {
-    // Report initial progress
-    if (onProgress) onProgress(0)
+    const results: string[] = []
 
-    let allMessages: Message[] = []
+    // Process each file sequentially to avoid memory issues
+    for (const file of files) {
+      try {
+        // Convert file to base64
+        const base64Data = await fileToBase64(file)
 
-    // Process each image
-    for (let i = 0; i < images.length; i++) {
-      // Calculate progress range for this image
-      const startProgress = Math.floor((i / images.length) * 100)
-      const endProgress = Math.floor(((i + 1) / images.length) * 100)
-      const range = endProgress - startProgress
+        // Use a simpler approach for text extraction
+        const text = await extractTextSimple(base64Data)
 
-      // Create a progress callback for this image
-      const imageProgressCallback = onProgress
-        ? (progress: number) => onProgress(startProgress + Math.floor((progress / 100) * range))
-        : undefined
-
-      // Extract messages from this image
-      const messages = await extractTextFromImage(images[i], imageProgressCallback)
-
-      // Add to all messages
-      allMessages = [...allMessages, ...messages]
+        if (text && text.trim()) {
+          results.push(text)
+        }
+      } catch (fileError) {
+        console.warn(`Error processing file ${file.name}:`, fileError)
+        // Continue with other files
+      }
     }
 
-    // Deduplicate all messages
-    const uniqueMessages = deduplicateMessages(allMessages)
-
-    // Sort messages by timestamp if available
-    uniqueMessages.sort((a, b) => {
-      if (a.timestamp && b.timestamp) {
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      }
-      return 0
-    })
-
-    // Report completion
-    if (onProgress) onProgress(100)
-
-    return uniqueMessages
+    return results
   } catch (error) {
     console.error("Error extracting text from images:", error)
     throw new Error(`Failed to extract text from images: ${(error as Error).message}`)
   }
+}
+
+/**
+ * Simplified text extraction that doesn't use progress callbacks
+ */
+async function extractTextSimple(imageData: string): Promise<string> {
+  try {
+    // Create a new worker for each image to avoid memory issues
+    const worker = await createWorker("eng")
+
+    // Recognize text without progress callback
+    const { data } = await worker.recognize(imageData)
+
+    // Terminate worker
+    await worker.terminate()
+
+    return data.text
+  } catch (error) {
+    console.error("Error in simplified text extraction:", error)
+    return ""
+  }
+}
+
+/**
+ * Convert File to base64
+ */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 /**
@@ -300,6 +294,7 @@ export function validateExtractedMessages(messages: Message[]): boolean {
 
   return true
 }
+
 // Extract text from screenshots using OCR as an assistant to the AI analysis
 export async function extractTextFromScreenshots(
   files: File[],
@@ -640,86 +635,3 @@ function parseTextIntoMessagesImproved(
 
   return messages
 }
-
-// Original parse function kept for reference
-function parseTextIntoMessages(
-  text: string,
-  firstPersonName: string,
-  secondPersonName: string,
-  startId: number,
-  baseDate: Date,
-): Message[] {
-  // In a real implementation, this would parse the OCR text into structured messages
-  // For now, we'll create multiple messages from the extracted text
-
-  const messages: Message[] = []
-
-  // Split the text by newlines to simulate different messages
-  const lines = text.split("\n").filter((line) => line.trim().length > 0)
-
-  lines.forEach((line, index) => {
-    // Determine sender based on line content and pattern
-    const isFirstPerson = line.includes("Person A:") || (index % 2 === 0 && !line.includes("Person B:"))
-
-    const sender = isFirstPerson ? firstPersonName : secondPersonName
-
-    // Create a timestamp with increasing time
-    const timestamp = new Date(baseDate)
-    timestamp.setMinutes(timestamp.getMinutes() - (lines.length - index) * 5)
-
-    // Clean up the text
-    let messageText = line
-    if (line.includes("Person A:")) {
-      messageText = line.replace("Person A:", "").trim()
-    } else if (line.includes("Person B:")) {
-      messageText = line.replace("Person B:", "").trim()
-    }
-
-    // Only add if we have actual message content
-    if (messageText.length > 0) {
-      messages.push({
-        id: (startId + index).toString(),
-        text: messageText,
-        timestamp: timestamp.toISOString(),
-        sender: sender,
-        status: "read",
-      })
-    }
-  })
-
-  return messages
-}
-
-// In a real implementation, we would integrate with a real OCR service like this:
-/*
-async function performOCR(file: File): Promise<string> {
-  // For a real implementation, you could use Tesseract.js
-  const { createWorker } = await import('tesseract.js');
-  const worker = await createWorker();
-  await worker.loadLanguage('eng');
-  await worker.initialize('eng');
-  
-  // Convert file to image data
-  const imageData = await fileToImageData(file);
-  
-  // Perform OCR
-  const { data: { text } } = await worker.recognize(imageData);
-  await worker.terminate();
-  
-  return text;
-}
-
-async function fileToImageData(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-*/
