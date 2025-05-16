@@ -1,92 +1,274 @@
 import type { Message, SentimentAnalysis, CategoryScores, NegativeInsights } from "./types"
-import { useOpenAI } from "./openai-service"
-import { analyzeKeywords, calculateSentimentScore } from "./rule-based-analysis"
+import { analyzeWithOpenAI } from "./openai-service"
+import { isOpenAIEnabled } from "./api-config"
 
 // Add a new interface to track analysis method
 export interface AnalysisMetadata {
-  method: "ai" | "rule-based"
+  method: "ai" | "rule-based" | "hybrid"
   fallbackReason?: string
   confidenceLevel: number // 0-1 scale
 }
 
-// Enhanced sentiment analysis function with fallback notification
+// Enhanced sentiment analysis function with OpenAI integration
 export async function analyzeSentiment(
   messages: Message[],
 ): Promise<{ analysis: SentimentAnalysis; metadata: AnalysisMetadata }> {
-  // Try OpenAI first
-  const openai = useOpenAI()
   try {
-    if (!openai) {
-      throw new Error("OpenAI API not available")
-    }
+    console.log("Starting sentiment analysis...")
 
-    const aiAnalysis = await performAIAnalysis(messages, openai)
+    // Check if OpenAI is available
+    if (isOpenAIEnabled()) {
+      try {
+        console.log("Using OpenAI for sentiment analysis")
+        const aiAnalysis = await performAIAnalysis(messages)
 
-    return {
-      analysis: aiAnalysis,
-      metadata: {
-        method: "ai",
-        confidenceLevel: 0.9, // AI analysis is generally more confident
-      },
+        return {
+          analysis: aiAnalysis,
+          metadata: {
+            method: "ai",
+            confidenceLevel: 0.9, // AI analysis is generally more confident
+          },
+        }
+      } catch (error) {
+        console.warn("AI sentiment analysis failed, falling back to hybrid analysis:", error)
+
+        // Fall back to hybrid analysis
+        const hybridAnalysis = await performHybridAnalysis(messages)
+
+        return {
+          analysis: hybridAnalysis,
+          metadata: {
+            method: "hybrid",
+            fallbackReason: error instanceof Error ? error.message : "Unknown error",
+            confidenceLevel: 0.75, // Hybrid analysis is still quite confident
+          },
+        }
+      }
+    } else {
+      console.log("OpenAI not available, using rule-based analysis")
+
+      // Fall back to rule-based analysis
+      const ruleBasedAnalysis = performRuleBasedAnalysis(messages)
+
+      return {
+        analysis: ruleBasedAnalysis,
+        metadata: {
+          method: "rule-based",
+          fallbackReason: "OpenAI not enabled",
+          confidenceLevel: 0.6, // Rule-based analysis is less confident
+        },
+      }
     }
   } catch (error) {
-    console.warn("AI sentiment analysis failed, falling back to rule-based analysis:", error)
+    console.error("Error in sentiment analysis:", error)
 
-    // Fallback to rule-based analysis
-    const fallbackAnalysis = performRuleBasedAnalysis(messages)
+    // Ultimate fallback to basic rule-based analysis
+    const basicAnalysis = performBasicAnalysis(messages)
 
     return {
-      analysis: fallbackAnalysis,
+      analysis: basicAnalysis,
       metadata: {
         method: "rule-based",
-        fallbackReason: error instanceof Error ? error.message : "Unknown error",
-        confidenceLevel: 0.6, // Rule-based analysis is less confident
+        fallbackReason: "Error in analysis pipeline",
+        confidenceLevel: 0.4, // Low confidence due to errors
       },
     }
   }
 }
 
-// Improved rule-based analysis with context awareness
+// Perform AI-based sentiment analysis using OpenAI
+async function performAIAnalysis(messages: Message[]): Promise<SentimentAnalysis> {
+  // Prepare messages for analysis
+  const messagesSample = messages
+    .slice(0, 30)
+    .map((msg) => `${msg.sender}: "${msg.content}"`)
+    .join("\n")
+
+  // Create the prompt for OpenAI
+  const systemPrompt = `
+    You are an expert in analyzing conversation sentiment based on the Gottman Method.
+    Analyze the following conversation and provide scores for these categories:
+    
+    1. Criticism: Attacking someone's character rather than their behavior
+    2. Defensiveness: Victimizing oneself to ward off perceived attack
+    3. Contempt: Attacking from a position of superiority
+    4. Stonewalling: Withdrawing from conversation as a way to avoid conflict
+    5. Emotional Awareness: Recognizing and acknowledging emotions
+    6. Repair Attempts: Efforts to de-escalate tension
+    7. Positive Communication: Expressing appreciation, respect, and love
+    
+    Return your analysis as a JSON object with the following structure:
+    {
+      "scores": {
+        "criticism": 0-1 score,
+        "defensiveness": 0-1 score,
+        "contempt": 0-1 score,
+        "stonewalling": 0-1 score,
+        "emotional_awareness": 0-1 score,
+        "repair_attempts": 0-1 score,
+        "positive_communication": 0-1 score
+      },
+      "negative_insights": {
+        "criticism_examples": ["Example 1", "Example 2"],
+        "defensiveness_examples": ["Example 1", "Example 2"],
+        "contempt_examples": ["Example 1", "Example 2"],
+        "stonewalling_examples": ["Example 1", "Example 2"]
+      },
+      "summary": "Brief summary of the sentiment analysis"
+    }
+  `
+
+  // Call OpenAI for analysis
+  const analysisText = await analyzeWithOpenAI(messagesSample, systemPrompt)
+
+  if (!analysisText) {
+    throw new Error("Empty response from OpenAI")
+  }
+
+  // Extract JSON from the response
+  const jsonMatch = analysisText.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error("Could not extract JSON from OpenAI response")
+  }
+
+  try {
+    return JSON.parse(jsonMatch[0])
+  } catch (error) {
+    throw new Error("Failed to parse sentiment analysis from OpenAI")
+  }
+}
+
+// Perform hybrid analysis using rule-based approach with AI enhancement
+async function performHybridAnalysis(messages: Message[]): Promise<SentimentAnalysis> {
+  // Start with rule-based analysis
+  const ruleBasedAnalysis = performRuleBasedAnalysis(messages)
+
+  try {
+    // Enhance with OpenAI if possible
+    const enhancedSummary = await enhanceSummaryWithAI(messages, ruleBasedAnalysis)
+
+    return {
+      ...ruleBasedAnalysis,
+      summary: enhancedSummary || ruleBasedAnalysis.summary,
+    }
+  } catch (error) {
+    console.warn("Failed to enhance summary with AI:", error)
+    return ruleBasedAnalysis
+  }
+}
+
+// Enhance summary with OpenAI
+async function enhanceSummaryWithAI(messages: Message[], analysis: SentimentAnalysis): Promise<string | null> {
+  try {
+    // Prepare messages for analysis
+    const messagesSample = messages
+      .slice(0, 15)
+      .map((msg) => `${msg.sender}: "${msg.content}"`)
+      .join("\n")
+
+    // Create the prompt for OpenAI
+    const systemPrompt = `
+      You are an expert in relationship dynamics and communication patterns.
+      Based on the following conversation and preliminary analysis scores, provide a concise summary
+      of the communication patterns and emotional dynamics.
+      
+      Preliminary Analysis Scores:
+      Criticism: ${analysis.scores.criticism}
+      Defensiveness: ${analysis.scores.defensiveness}
+      Contempt: ${analysis.scores.contempt}
+      Stonewalling: ${analysis.scores.stonewalling}
+      Emotional Awareness: ${analysis.scores.emotional_awareness}
+      Repair Attempts: ${analysis.scores.repair_attempts}
+      Positive Communication: ${analysis.scores.positive_communication}
+      
+      Return ONLY a concise summary paragraph (3-5 sentences) with no additional text or formatting.
+    `
+
+    // Call OpenAI for enhanced summary
+    const enhancedSummary = await analyzeWithOpenAI(messagesSample, systemPrompt)
+
+    return enhancedSummary
+  } catch (error) {
+    console.error("Error enhancing summary with AI:", error)
+    return null
+  }
+}
+
+// Perform rule-based sentiment analysis
 function performRuleBasedAnalysis(messages: Message[]): SentimentAnalysis {
   // Extract message content
   const messageContents = messages.map((m) => m.content)
-  const combinedText = messageContents.join(" ")
 
-  // Analyze keywords with improved context awareness
-  const keywordResults = analyzeKeywords(messageContents)
-
-  // Consider message sequence for context
-  const contextAwareScores = analyzeMessageSequence(messages)
-
-  // Detect potential sarcasm
-  const sarcasmAdjustment = detectSarcasm(messages) ? -0.2 : 0
-
-  // Calculate base sentiment scores
-  const baseScores = calculateSentimentScore(keywordResults)
-
-  // Apply context and sarcasm adjustments
-  const adjustedScores: CategoryScores = {
-    criticism: normalizeScore(baseScores.criticism + contextAwareScores.criticism + sarcasmAdjustment),
-    defensiveness: normalizeScore(baseScores.defensiveness + contextAwareScores.defensiveness),
-    contempt: normalizeScore(baseScores.contempt + contextAwareScores.contempt + sarcasmAdjustment),
-    stonewalling: normalizeScore(baseScores.stonewalling + contextAwareScores.stonewalling),
-    emotional_awareness: normalizeScore(baseScores.emotional_awareness - sarcasmAdjustment),
-    repair_attempts: normalizeScore(baseScores.repair_attempts),
-    positive_communication: normalizeScore(baseScores.positive_communication - sarcasmAdjustment),
+  // Define keyword patterns for each category
+  const patterns = {
+    criticism: [
+      /you always/i,
+      /you never/i,
+      /why do you/i,
+      /what's wrong with you/i,
+      /you're so/i,
+      /you should/i,
+      /you shouldn't/i,
+    ],
+    defensiveness: [
+      /not my fault/i,
+      /that's not true/i,
+      /i didn't/i,
+      /you were the one/i,
+      /you started/i,
+      /don't blame me/i,
+      /it wasn't me/i,
+    ],
+    contempt: [
+      /whatever/i,
+      /pathetic/i,
+      /ridiculous/i,
+      /stupid/i,
+      /idiot/i,
+      /eye roll/i,
+      /rolling my eyes/i,
+      /you're crazy/i,
+    ],
+    stonewalling: [
+      /^k$/i,
+      /^fine$/i,
+      /^whatever$/i,
+      /^ok$/i,
+      /^sure$/i,
+      /not talking about this/i,
+      /don't want to discuss/i,
+    ],
+    emotional_awareness: [
+      /i feel/i,
+      /i'm feeling/i,
+      /i am feeling/i,
+      /makes me feel/i,
+      /i'm sad/i,
+      /i'm happy/i,
+      /i'm angry/i,
+      /i'm upset/i,
+    ],
+    repair_attempts: [
+      /i'm sorry/i,
+      /sorry about/i,
+      /let's try/i,
+      /can we/i,
+      /i understand/i,
+      /i see your point/i,
+      /you're right/i,
+    ],
+    positive_communication: [
+      /thank you/i,
+      /appreciate/i,
+      /love you/i,
+      /care about/i,
+      /you're amazing/i,
+      /you're great/i,
+      /miss you/i,
+    ],
   }
 
-  // Generate negative insights
-  const negativeInsights = analyzeNegativeCommunicationPatterns(messages, adjustedScores)
-
-  return {
-    scores: adjustedScores,
-    negative_insights: negativeInsights,
-    summary: generateSummary(adjustedScores, negativeInsights),
-  }
-}
-
-// Helper function to analyze message sequence for context
-function analyzeMessageSequence(messages: Message[]): CategoryScores {
+  // Initialize scores
   const scores: CategoryScores = {
     criticism: 0,
     defensiveness: 0,
@@ -97,126 +279,86 @@ function analyzeMessageSequence(messages: Message[]): CategoryScores {
     positive_communication: 0,
   }
 
-  // Look for patterns like criticism followed by defensiveness
-  for (let i = 1; i < messages.length; i++) {
-    const prevMsg = messages[i - 1].content.toLowerCase()
-    const currMsg = messages[i].content.toLowerCase()
-
-    // If previous message contains criticism and current contains defensive words
-    if (
-      (prevMsg.includes("you always") || prevMsg.includes("you never")) &&
-      (currMsg.includes("not my fault") || currMsg.includes("that's not true"))
-    ) {
-      scores.criticism += 0.1
-      scores.defensiveness += 0.2
-    }
-
-    // Detect stonewalling patterns (short responses after emotional messages)
-    if (
-      prevMsg.length > 100 &&
-      prevMsg.includes("feel") &&
-      (currMsg.length < 20 || currMsg.includes("whatever") || currMsg.includes("fine"))
-    ) {
-      scores.stonewalling += 0.2
-    }
-
-    // Detect repair attempts
-    if (
-      (prevMsg.includes("sorry") || currMsg.includes("understand")) &&
-      (currMsg.includes("appreciate") || currMsg.includes("thank"))
-    ) {
-      scores.repair_attempts += 0.2
-      scores.positive_communication += 0.1
-    }
-  }
-
-  return scores
-}
-
-// Helper function to detect potential sarcasm
-function detectSarcasm(messages: Message[]): boolean {
-  const sarcasmIndicators = [
-    { pattern: /sure\s+thing/i, weight: 0.3 },
-    { pattern: /yeah\s+right/i, weight: 0.4 },
-    { pattern: /whatever\s+you\s+say/i, weight: 0.3 },
-    { pattern: /of\s+course\s+you\s+do/i, weight: 0.3 },
-    { pattern: /thanks\s+a\s+lot/i, weight: 0.2 },
-    { pattern: /how\s+nice\s+of\s+you/i, weight: 0.3 },
-    { pattern: /exactly\s+what\s+I\s+needed/i, weight: 0.3 },
-  ]
-
-  let sarcasmScore = 0
-
-  for (const message of messages) {
-    for (const indicator of sarcasmIndicators) {
-      if (indicator.pattern.test(message.content)) {
-        sarcasmScore += indicator.weight
-      }
-    }
-  }
-
-  return sarcasmScore > 0.5 // Threshold for considering sarcasm present
-}
-
-// Helper function to normalize scores between 0 and 1
-function normalizeScore(score: number): number {
-  return Math.max(0, Math.min(1, score))
-}
-
-// Helper function to analyze negative communication patterns
-function analyzeNegativeCommunicationPatterns(messages: Message[], scores: CategoryScores): NegativeInsights {
-  // Implement personalized negative communication insights
-  const insights: NegativeInsights = {
+  // Initialize examples
+  const negativeInsights: NegativeInsights = {
     criticism_examples: [],
     defensiveness_examples: [],
     contempt_examples: [],
     stonewalling_examples: [],
   }
 
-  // Extract examples of each negative pattern
-  for (const message of messages) {
-    const content = message.content.toLowerCase()
+  // Analyze each message
+  messages.forEach((message) => {
+    const content = message.content
 
-    // Check for criticism patterns
-    if (
-      content.includes("you always") ||
-      content.includes("you never") ||
-      content.includes("why do you") ||
-      content.includes("you should")
-    ) {
-      insights.criticism_examples.push(message.content)
-    }
+    // Check for patterns in each category
+    Object.entries(patterns).forEach(([category, categoryPatterns]) => {
+      categoryPatterns.forEach((pattern) => {
+        if (pattern.test(content)) {
+          // Increment score for this category
+          scores[category as keyof CategoryScores] += 0.2
 
-    // Check for defensiveness patterns
-    if (
-      content.includes("not my fault") ||
-      content.includes("that's not true") ||
-      content.includes("i didn't") ||
-      content.includes("you were the one")
-    ) {
-      insights.defensiveness_examples.push(message.content)
-    }
+          // Add example if it's a negative category
+          if (
+            category === "criticism" ||
+            category === "defensiveness" ||
+            category === "contempt" ||
+            category === "stonewalling"
+          ) {
+            const examplesKey = `${category}_examples` as keyof NegativeInsights
+            if (negativeInsights[examplesKey].length < 3) {
+              negativeInsights[examplesKey].push(content)
+            }
+          }
+        }
+      })
+    })
+  })
 
-    // Check for contempt patterns
-    if (
-      content.includes("whatever") ||
-      content.includes("pathetic") ||
-      content.includes("ridiculous") ||
-      content.includes("stupid")
-    ) {
-      insights.contempt_examples.push(message.content)
-    }
+  // Normalize scores to be between 0 and 1
+  Object.keys(scores).forEach((key) => {
+    scores[key as keyof CategoryScores] = Math.min(1, scores[key as keyof CategoryScores])
+  })
 
-    // Check for stonewalling patterns
-    if (content === "k" || content === "fine" || content === "whatever" || content.length < 5) {
-      insights.stonewalling_examples.push(message.content)
-    }
+  // Generate summary
+  const summary = generateSummary(scores, negativeInsights)
+
+  return {
+    scores,
+    negative_insights: negativeInsights,
+    summary,
   }
-
-  return insights
 }
 
-// Helper function to generate a summary based on scores and insights
+// Perform basic analysis as ultimate fallback
+function performBasicAnalysis(messages: Message[]): SentimentAnalysis {
+  // Default scores
+  const scores: CategoryScores = {
+    criticism: 0.5,
+    defensiveness: 0.5,
+    contempt: 0.5,
+    stonewalling: 0.5,
+    emotional_awareness: 0.5,
+    repair_attempts: 0.5,
+    positive_communication: 0.5,
+  }
+
+  // Default insights
+  const negativeInsights: NegativeInsights = {
+    criticism_examples: [],
+    defensiveness_examples: [],
+    contempt_examples: [],
+    stonewalling_examples: [],
+  }
+
+  return {
+    scores,
+    negative_insights: negativeInsights,
+    summary: "Basic analysis performed due to errors in the analysis pipeline. Results may not be accurate.",
+  }
+}
+
+// Generate summary based on scores and insights
 function generateSummary(scores: CategoryScores, insights: NegativeInsights): string {
   const highScoreThreshold = 0.7
   const moderateScoreThreshold = 0.4
@@ -288,33 +430,9 @@ function generateSummary(scores: CategoryScores, insights: NegativeInsights): st
     summary += `Examples of criticism include: "${insights.criticism_examples[0]}". `
   }
 
-  if (insights.repair_attempts > 0.5 && insights.criticism > 0.5) {
+  if (scores.repair_attempts > 0.5 && scores.criticism > 0.5) {
     summary += "Despite criticism, there are attempts to repair the relationship. "
   }
 
   return summary
-}
-
-// AI-based analysis function (placeholder for the actual implementation)
-async function performAIAnalysis(messages: Message[], openai: any): Promise<SentimentAnalysis> {
-  // This would be the actual OpenAI implementation
-  // For now, we'll just return a placeholder
-  return {
-    scores: {
-      criticism: 0.5,
-      defensiveness: 0.5,
-      contempt: 0.5,
-      stonewalling: 0.5,
-      emotional_awareness: 0.5,
-      repair_attempts: 0.5,
-      positive_communication: 0.5,
-    },
-    negative_insights: {
-      criticism_examples: [],
-      defensiveness_examples: [],
-      contempt_examples: [],
-      stonewalling_examples: [],
-    },
-    summary: "This is a placeholder summary from AI analysis.",
-  }
 }

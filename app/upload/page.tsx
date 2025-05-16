@@ -72,7 +72,7 @@ export default function UploadPage() {
       setProcessingStage("Extracting text from screenshots...")
       console.log("Starting analysis...")
 
-      // In a real app, this would upload the files to a server and process them
+      // Process the screenshots through the enhanced pipeline
       const results = await analyzeScreenshots(files, firstPersonName, secondPersonName)
 
       // Check if results are valid

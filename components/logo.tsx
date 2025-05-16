@@ -1,81 +1,54 @@
-"use client"
-
 import Link from "next/link"
 import Image from "next/image"
 
 interface LogoProps {
-  size?: "small" | "medium" | "large" | "xlarge" | number
+  size?: "small" | "medium" | "large"
   withText?: boolean
   asLink?: boolean
-  className?: string
   showText?: boolean
 }
 
-export function Logo({ size = "medium", withText = true, asLink = true, className = "", showText = true }: LogoProps) {
-  // Adjust size based on screen size
-  const sizeMap = {
-    small: { default: 32, sm: 40 },
-    medium: { default: 48, sm: 56 },
-    large: { default: 56, sm: 72 },
-    xlarge: { default: 64, sm: 80 }, // Added xlarge size
+export function Logo({
+  size = "medium",
+  withText = false,
+  asLink = true,
+  showText = withText, // For backward compatibility
+}: LogoProps) {
+  const dimensions = {
+    small: { width: 40, height: 40 },
+    medium: { width: 60, height: 60 },
+    large: { width: 100, height: 100 },
   }
 
-  // Default to medium if size is not in sizeMap
-  let logoSize = 56 // Default medium size
+  const { width, height } = dimensions[size]
 
-  // Handle string sizes
-  if (typeof size === "string") {
-    // Check if the size exists in sizeMap before accessing properties
-    if (sizeMap[size as keyof typeof sizeMap]) {
-      logoSize = sizeMap[size as keyof typeof sizeMap].sm
-    } else {
-      // Default to medium if size string is not recognized
-      logoSize = sizeMap.medium.sm
-    }
-  } else if (typeof size === "number") {
-    // Handle numeric sizes directly
-    logoSize = size
-  }
+  const logoContent = (
+    <div className="flex items-center gap-3">
+      <div className="relative" style={{ width, height }}>
+        <Image
+          src="/LoveLensLogo3D.png"
+          alt="LoveLens Logo"
+          width={width}
+          height={height}
+          className="object-contain"
+          priority
+        />
+      </div>
+      {showText && (
+        <span className="font-bold text-xl md:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-purple-600">
+          LoveLens
+        </span>
+      )}
+    </div>
+  )
 
   if (asLink) {
     return (
-      <div className={className}>
-        <Link href="/" className="flex items-center space-x-2">
-          <Image
-            src="/LoveLensLogo.png"
-            alt="LoveLens Logo - Purple camera with pink heart lens"
-            width={logoSize}
-            height={logoSize}
-            className="object-contain"
-            priority={size === "large" || size === "xlarge"}
-          />
-          {showText && (
-            <span className="font-bold text-xl md:text-2xl bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-              LoveLens
-            </span>
-          )}
-        </Link>
-      </div>
+      <Link href="/" className="inline-flex">
+        {logoContent}
+      </Link>
     )
   }
 
-  return (
-    <div className={className}>
-      <div className="flex items-center space-x-2">
-        <Image
-          src="/LoveLensLogo.png"
-          alt="LoveLens Logo - Purple camera with pink heart lens"
-          width={logoSize}
-          height={logoSize}
-          className="object-contain"
-          priority={size === "large" || size === "xlarge"}
-        />
-        {showText && (
-          <span className="font-bold text-xl md:text-2xl bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-            LoveLens
-          </span>
-        )}
-      </div>
-    </div>
-  )
+  return logoContent
 }

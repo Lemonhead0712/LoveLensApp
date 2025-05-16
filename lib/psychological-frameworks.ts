@@ -1,7 +1,7 @@
 // This file contains implementations of established psychological theories and frameworks
 // for analyzing communication patterns, emotional intelligence, and relationship dynamics
 
-import type { Message, EmotionalBreakdown, CommunicationStyle, PersonalizedInsights } from "./types"
+import type { Message } from "./types"
 
 // ===== ATTACHMENT THEORY =====
 // Based on work by Bowlby, Ainsworth, and modern attachment researchers
@@ -10,7 +10,7 @@ export enum AttachmentStyle {
   Secure = "secure",
   Anxious = "anxious",
   Avoidant = "avoidant",
-  Disorganized = "disorganized"
+  Disorganized = "disorganized",
 }
 
 interface AttachmentIndicators {
@@ -35,7 +35,7 @@ export function analyzeAttachmentStyle(messages: Message[]): AttachmentStyleAnal
       primaryStyle: AttachmentStyle.Secure,
       confidence: 0.3,
       explanation: "Based on the limited conversation data available.",
-      limitedDataWarning: "This analysis is based on very limited data and should be considered preliminary."
+      limitedDataWarning: "This analysis is based on very limited data and should be considered preliminary.",
     }
   }
 
@@ -98,7 +98,8 @@ export function analyzeAttachmentStyle(messages: Message[]): AttachmentStyleAnal
   // Add limited data warning if appropriate
   let limitedDataWarning = undefined
   if (messages.length < 10) {
-    limitedDataWarning = "This analysis is based on limited data and should be considered preliminary. More conversation data would provide a more accurate assessment."
+    limitedDataWarning =
+      "This analysis is based on limited data and should be considered preliminary. More conversation data would provide a more accurate assessment."
   }
 
   return {
@@ -106,7 +107,7 @@ export function analyzeAttachmentStyle(messages: Message[]): AttachmentStyleAnal
     confidence,
     secondaryStyle,
     explanation,
-    limitedDataWarning
+    limitedDataWarning,
   }
 }
 
@@ -426,7 +427,7 @@ export function analyzeLinguisticMarkers(messages: Message[]): {
     cognitiveComplexity: calculateCognitiveComplexity(messages),
     emotionalExpressiveness: calculateEmotionalExpressiveness(messages),
     socialEngagement: calculateSocialEngagement(messages),
-    dominantEmotions: identifyDominantEmotions(messages)
+    dominantEmotions: identifyDominantEmotions(messages),
   }
 }
 
@@ -497,7 +498,7 @@ export function analyzeCognitivePatterns(messages: Message[]): {
   return {
     distortions: identifyCognitiveDistortions(messages),
     healthyPatterns: identifyHealthyPatterns(messages),
-    overallBalance: calculateCognitiveBalance(messages)
+    overallBalance: calculateCognitiveBalance(messages),
   }
 }
 
@@ -511,7 +512,7 @@ function identifyHealthyPatterns(messages: Message[]): any[] {
   // Implement healthy patterns identification
   return [
     { type: "Balanced Perspective", frequency: 0.8 },
-    { type: "Evidence-Based Thinking", frequency: 0.7 }
+    { type: "Evidence-Based Thinking", frequency: 0.7 },
   ] // Placeholder
 }
 
@@ -556,17 +557,17 @@ export interface PsychologicalProfile {
 
 export function generatePsychologicalProfile(messages: Message[], personName: string) {
   // Filter messages to only include those from the specified person
-  const personMessages = messages.filter(msg => msg.sender === personName)
-  
+  const personMessages = messages.filter((msg) => msg.sender === personName)
+
   // Analyze attachment style based on person's messages only
   const attachmentStyle = analyzeAttachmentStyle(personMessages)
-  
+
   // Analyze linguistic markers based on person's messages only
   const linguisticMarkers = analyzeLinguisticMarkers(personMessages)
-  
+
   // Analyze cognitive patterns based on person's messages only
   const cognitivePatterns = analyzeCognitivePatterns(personMessages)
-  
+
   // Generate profile based on individual analysis
   return {
     attachmentStyle: {
@@ -574,16 +575,16 @@ export function generatePsychologicalProfile(messages: Message[], personName: st
       secondaryStyle: attachmentStyle.secondaryStyle,
       confidence: attachmentStyle.confidence,
       explanation: attachmentStyle.explanation,
-      limitedDataWarning: attachmentStyle.limitedDataWarning
+      limitedDataWarning: attachmentStyle.limitedDataWarning,
     },
     linguisticPatterns: linguisticMarkers,
     cognitivePatterns,
     transactionalAnalysis: {
       dominantEgoState: determineDominantEgoState(personMessages),
-      egoStateDistribution: calculateEgoStateDistribution(personMessages)
+      egoStateDistribution: calculateEgoStateDistribution(personMessages),
     },
     communicationStrengths: identifyCommunicationStrengths(personMessages),
-    growthAreas: identifyGrowthAreas(personMessages)
+    growthAreas: identifyGrowthAreas(personMessages),
   }
 }
 
@@ -592,16 +593,15 @@ function determineDominantEgoState(messages: Message[]): string {
   const egoStateCounts: Record<string, number> = {
     parent: 0,
     adult: 0,
-    child: 0
+    child: 0,
   }
-  
-  messages.forEach(msg => {
+
+  messages.forEach((msg) => {
     const egoState = analyzeEgoState(msg.text)
     egoStateCounts[egoState]++
   })
-  
-  return Object.entries(egoStateCounts)
-    .sort(([, a], [, b]) => b - a)[0][0]
+
+  return Object.entries(egoStateCounts).sort(([, a], [, b]) => b - a)[0][0]
 }
 
 // Helper function to calculate ego state distribution
@@ -610,50 +610,50 @@ function calculateEgoStateDistribution(messages: Message[]): Record<string, numb
   const distribution: Record<string, number> = {
     parent: 0,
     adult: 0,
-    child: 0
+    child: 0,
   }
-  
-  messages.forEach(msg => {
+
+  messages.forEach((msg) => {
     const egoState = analyzeEgoState(msg.text)
     distribution[egoState]++
   })
-  
+
   return {
     parent: Math.round((distribution.parent / total) * 100),
     adult: Math.round((distribution.adult / total) * 100),
-    child: Math.round((distribution.child / total) * 100)
+    child: Math.round((distribution.child / total) * 100),
   }
 }
 
 // Helper function to identify communication strengths
 function identifyCommunicationStrengths(messages: Message[]): string[] {
   const strengths: string[] = []
-  
+
   // Analyze message patterns for strengths
-  const clarityCount = messages.filter(msg => hasClearCommunication(msg.text)).length
-  const empathyCount = messages.filter(msg => showsEmpathy(msg.text)).length
-  const assertivenessCount = messages.filter(msg => showsAssertiveness(msg.text)).length
-  
+  const clarityCount = messages.filter((msg) => hasClearCommunication(msg.text)).length
+  const empathyCount = messages.filter((msg) => showsEmpathy(msg.text)).length
+  const assertivenessCount = messages.filter((msg) => showsAssertiveness(msg.text)).length
+
   if (clarityCount > messages.length * 0.7) strengths.push("Clear communication")
   if (empathyCount > messages.length * 0.6) strengths.push("Empathetic responses")
   if (assertivenessCount > messages.length * 0.5) strengths.push("Assertive expression")
-  
+
   return strengths
 }
 
 // Helper function to identify growth areas
 function identifyGrowthAreas(messages: Message[]): string[] {
   const areas: string[] = []
-  
+
   // Analyze message patterns for growth areas
-  const defensiveCount = messages.filter(msg => showsDefensiveness(msg.text)).length
-  const passiveCount = messages.filter(msg => showsPassivity(msg.text)).length
-  const unclearCount = messages.filter(msg => hasUnclearCommunication(msg.text)).length
-  
+  const defensiveCount = messages.filter((msg) => showsDefensiveness(msg.text)).length
+  const passiveCount = messages.filter((msg) => showsPassivity(msg.text)).length
+  const unclearCount = messages.filter((msg) => hasUnclearCommunication(msg.text)).length
+
   if (defensiveCount > messages.length * 0.3) areas.push("Reducing defensive responses")
   if (passiveCount > messages.length * 0.4) areas.push("Increasing assertiveness")
   if (unclearCount > messages.length * 0.3) areas.push("Improving communication clarity")
-  
+
   return areas
 }
 
@@ -665,37 +665,43 @@ function hasClearCommunication(text: string): boolean {
 
 function showsEmpathy(text: string): boolean {
   // Implement empathy detection logic
-  return text.toLowerCase().includes("understand") || 
-         text.toLowerCase().includes("feel") || 
-         text.toLowerCase().includes("sorry")
+  return (
+    text.toLowerCase().includes("understand") ||
+    text.toLowerCase().includes("feel") ||
+    text.toLowerCase().includes("sorry")
+  )
 }
 
 function showsAssertiveness(text: string): boolean {
   // Implement assertiveness detection logic
-  return text.toLowerCase().includes("i think") || 
-         text.toLowerCase().includes("i feel") || 
-         text.toLowerCase().includes("i need")
+  return (
+    text.toLowerCase().includes("i think") ||
+    text.toLowerCase().includes("i feel") ||
+    text.toLowerCase().includes("i need")
+  )
 }
 
 function showsDefensiveness(text: string): boolean {
   // Implement defensiveness detection logic
-  return text.toLowerCase().includes("but") || 
-         text.toLowerCase().includes("however") || 
-         text.toLowerCase().includes("actually")
+  return (
+    text.toLowerCase().includes("but") ||
+    text.toLowerCase().includes("however") ||
+    text.toLowerCase().includes("actually")
+  )
 }
 
 function showsPassivity(text: string): boolean {
   // Implement passivity detection logic
-  return text.toLowerCase().includes("maybe") || 
-         text.toLowerCase().includes("perhaps") || 
-         text.toLowerCase().includes("i guess")
+  return (
+    text.toLowerCase().includes("maybe") ||
+    text.toLowerCase().includes("perhaps") ||
+    text.toLowerCase().includes("i guess")
+  )
 }
 
 function hasUnclearCommunication(text: string): boolean {
   // Implement unclear communication detection logic
-  return text.includes("...") || 
-         text.includes("??") || 
-         text.length < 5
+  return text.includes("...") || text.includes("??") || text.length < 5
 }
 
 function analyzeEgoState(text: string): string {
@@ -862,5 +868,151 @@ export function analyzeRelationshipDynamics(
     communicationCompatibility,
     keyStrengths,
     keyGrowthAreas,
+  }
+}
+
+// ===== COMMUNICATION STYLE ANALYSIS =====
+// Add the missing analyzeCommunicationStyle function
+
+// Interface for communication style analysis result
+interface CommunicationStyleAnalysis {
+  dominantStyle: string
+  confidence: number
+  secondaryStyle?: string
+  explanation: string
+  limitedDataWarning?: string
+}
+
+// Communication style analysis function
+export function analyzeCommunicationStyle(messages: Message[]): CommunicationStyleAnalysis {
+  // Handle edge case: very short conversations
+  if (!messages || messages.length < 5) {
+    return {
+      dominantStyle: "balanced",
+      confidence: 0.3,
+      explanation: "Based on the limited conversation data available.",
+      limitedDataWarning:
+        "This analysis is based on very limited data and should be considered preliminary. More conversation data would provide a more accurate assessment.",
+    }
+  }
+
+  // Define communication style indicators
+  const styles = {
+    assertive: 0,
+    passive: 0,
+    aggressive: 0,
+    analytical: 0,
+    emotional: 0,
+    balanced: 0,
+  }
+
+  // Analyze each message for communication style indicators
+  messages.forEach((message) => {
+    const text = message.text.toLowerCase()
+    const sentiment = message.sentiment || 50
+
+    // Assertive indicators
+    if (
+      text.includes("i think") ||
+      text.includes("i believe") ||
+      text.includes("i feel") ||
+      text.includes("i would like") ||
+      text.includes("i need")
+    ) {
+      styles.assertive += 1
+    }
+
+    // Passive indicators
+    if (
+      text.includes("maybe") ||
+      text.includes("perhaps") ||
+      text.includes("i guess") ||
+      text.includes("if that's okay") ||
+      text.includes("sorry")
+    ) {
+      styles.passive += 1
+    }
+
+    // Aggressive indicators
+    if (
+      text.includes("you should") ||
+      text.includes("you need to") ||
+      text.includes("always") ||
+      text.includes("never") ||
+      text.includes("!!")
+    ) {
+      styles.aggressive += 1
+    }
+
+    // Analytical indicators
+    if (
+      text.includes("analyze") ||
+      text.includes("consider") ||
+      text.includes("think") ||
+      text.includes("logic") ||
+      text.includes("reason")
+    ) {
+      styles.analytical += 1
+    }
+
+    // Emotional indicators
+    if (
+      text.includes("feel") ||
+      text.includes("love") ||
+      text.includes("hate") ||
+      text.includes("upset") ||
+      text.includes("happy") ||
+      text.includes("sad")
+    ) {
+      styles.emotional += 1
+    }
+
+    // Balanced indicators (mix of styles or neutral tone)
+    if (
+      (text.includes("think") && text.includes("feel")) ||
+      (sentiment > 40 && sentiment < 60) ||
+      text.includes("understand") ||
+      text.includes("perspective")
+    ) {
+      styles.balanced += 1
+    }
+  })
+
+  // Normalize scores based on message count
+  const messageCount = messages.length
+  Object.keys(styles).forEach((style) => {
+    styles[style as keyof typeof styles] = (styles[style as keyof typeof styles] / messageCount) * 100
+  })
+
+  // Find dominant and secondary styles
+  const sortedStyles = Object.entries(styles).sort(([, a], [, b]) => b - a)
+  const dominantStyle = sortedStyles[0][0]
+  const secondaryStyle = sortedStyles[1][0]
+
+  // Calculate confidence based on the difference between top scores
+  const topScoreDifference = sortedStyles[0][1] - sortedStyles[1][1]
+  const confidence = Math.min(0.9, Math.max(0.4, 0.6 + topScoreDifference / 100))
+
+  // Generate explanation
+  let explanation = `Based on the conversation analysis, the dominant communication style is ${dominantStyle}`
+
+  // Add secondary style if the scores are close
+  if (topScoreDifference < 20) {
+    explanation += ` with elements of ${secondaryStyle}`
+  }
+
+  // Add limited data warning if appropriate
+  let limitedDataWarning = undefined
+  if (messages.length < 10) {
+    limitedDataWarning =
+      "This analysis is based on limited data and should be considered preliminary. More conversation data would provide a more accurate assessment."
+  }
+
+  return {
+    dominantStyle,
+    confidence,
+    secondaryStyle: topScoreDifference < 20 ? secondaryStyle : undefined,
+    explanation,
+    limitedDataWarning,
   }
 }

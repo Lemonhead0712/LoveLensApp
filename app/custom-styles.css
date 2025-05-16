@@ -1,16 +1,15 @@
 /* Gradient backgrounds */
 .bg-love-gradient {
-  background: linear-gradient(135deg, #fdf2f8 0%, #f5f3ff 50%, #ede9fe 100%);
+  background: linear-gradient(135deg, #fff5f7 0%, #f5f3ff 100%);
 }
 
 .bg-love-gradient-darker {
-  background: linear-gradient(135deg, #fbcfe8 0%, #e9d5ff 50%, #ddd6fe 100%);
+  background: linear-gradient(135deg, #fff1f5 0%, #f0ebff 100%);
 }
 
 .bg-love-card {
-  background: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 /* Sparkle animation */
@@ -49,6 +48,7 @@
 /* Floating animation for cards */
 .float-animation {
   animation: float 6s ease-in-out infinite;
+  transform-origin: center;
 }
 
 @keyframes float {
@@ -61,6 +61,11 @@
   100% {
     transform: translateY(0px);
   }
+}
+
+/* Ensure the animation delay works properly */
+.float-animation[style*="animation-delay"] {
+  animation: float 6s ease-in-out infinite;
 }
 
 /* Pulse animation for logo */
@@ -82,11 +87,10 @@
 
 /* Gradient text */
 .text-gradient {
-  background: linear-gradient(90deg, #ec4899 0%, #8b5cf6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-background-clip: text;
   color: transparent;
+  background-image: linear-gradient(to right, #ec4899, #8b5cf6);
 }
 
 /* Tab hover effects */

@@ -131,7 +131,7 @@ export async function batchAnalyzeSentiment(texts: string[]): Promise<number[]> 
 }
 
 // Enhanced function to generate a psychological profile with personalized communication style analysis
-export async function generateProfileForSubject(messages: Message[], name: string, otherProfileValues?: any) {
+export async function generateProfileForSubject(messages: Message[], name: string) {
   try {
     if (!isOpenAIEnabled()) {
       throw new Error("OpenAI is not enabled")
@@ -168,10 +168,6 @@ export async function generateProfileForSubject(messages: Message[], name: strin
       You are a relationship psychologist specializing in communication patterns, linguistic analysis, and psychological profiling.
       Analyze messages from ${name} to create a detailed psychological profile with personalized communication style insights.
       
-      IMPORTANT: This analysis must be unique to ${name}'s communication style and patterns. Do NOT mirror or copy patterns, strengths, or insights from other participants. If the communication style or strengths are the same as the other participant, explain why with specific evidence from ${name}'s own messages. Otherwise, ensure all values and insights are unique to this person's language and behavior.
-      
-      Use the following parameters for your analysis: communication style, linguistic patterns, attachment style, ego state distribution, cognitive patterns, unique strengths, and growth areas. Each parameter must be evaluated for ${name} based only on their own messages.
-      
       CONVERSATION CONTEXT:
       ${name} is communicating with: ${otherParticipants.join(", ")}
       Total messages from ${name}: ${subjectMessages.length}
@@ -179,35 +175,34 @@ export async function generateProfileForSubject(messages: Message[], name: strin
       Conversation topics: ${conversationContext.topics.join(", ")}
       Emotional tone: ${conversationContext.emotionalTone}
       
-      Focus on ${name}'s unique characteristics:
+      Focus on:
       1. COMMUNICATION STYLE:
-         - Identify ${name}'s unique linguistic patterns (word choice, sentence structure, punctuation usage)
-         - Analyze ${name}'s communication preferences (direct vs indirect, detailed vs concise, formal vs casual)
-         - Determine ${name}'s primary and secondary communication styles (assertive, analytical, expressive, supportive)
-         - Note any context-specific adaptations in ${name}'s communication approach
+         - Identify unique linguistic patterns (word choice, sentence structure, punctuation usage)
+         - Analyze communication preferences (direct vs indirect, detailed vs concise, formal vs casual)
+         - Determine primary and secondary communication styles (assertive, analytical, expressive, supportive)
+         - Note any context-specific adaptations in communication approach
       
       2. ATTACHMENT STYLE:
-         - Identify ${name}'s attachment indicators (secure, anxious, avoidant, disorganized/fearful)
-         - Note how ${name}'s attachment style manifests in specific language patterns
+         - Identify attachment indicators (secure, anxious, avoidant, disorganized/fearful)
+         - Note how attachment style manifests in specific language patterns
          - Assess confidence level in attachment classification
-         - Provide specific examples from ${name}'s messages that indicate their attachment style
       
       3. PSYCHOLOGICAL PATTERNS:
-         - Analyze ${name}'s transactional analysis ego states (parent, adult, child) with specific examples
-         - Identify ${name}'s cognitive patterns and potential cognitive distortions
-         - Assess ${name}'s emotional intelligence markers in communication
+         - Analyze transactional analysis ego states (parent, adult, child) with specific examples
+         - Identify cognitive patterns and potential cognitive distortions
+         - Assess emotional intelligence markers in communication
       
       4. LINGUISTIC DETAILS:
-         - Measure ${name}'s cognitive complexity (abstract thinking, nuance, perspective-taking)
-         - Evaluate ${name}'s emotional expressiveness (emotion words, intensity markers)
-         - Analyze ${name}'s social engagement patterns (questions, acknowledgments, turn-taking)
-         - Assess ${name}'s psychological distancing (impersonal language, passive voice)
-         - Measure ${name}'s certainty level (hedging, qualifiers, absolutes)
+         - Measure cognitive complexity (abstract thinking, nuance, perspective-taking)
+         - Evaluate emotional expressiveness (emotion words, intensity markers)
+         - Analyze social engagement patterns (questions, acknowledgments, turn-taking)
+         - Assess psychological distancing (impersonal language, passive voice)
+         - Measure certainty level (hedging, qualifiers, absolutes)
       
       5. PERSONALIZED INSIGHTS:
          - Identify 3-5 unique communication strengths specific to ${name}'s style
-         - Suggest 2-3 personalized growth areas based on ${name}'s communication patterns
-         - Note dominant emotions expressed by ${name} and how they influence communication
+         - Suggest 2-3 personalized growth areas based on communication patterns
+         - Note dominant emotions expressed and how they influence communication
          - Identify any recurring themes or patterns specific to ${name}
       
       Return the analysis as a JSON object with the following structure:
@@ -224,8 +219,7 @@ export async function generateProfileForSubject(messages: Message[], name: strin
           "primaryStyle": "Style", 
           "secondaryStyle": "Style or null", 
           "confidence": 70,
-          "indicators": ["Indicator 1", "Indicator 2"],
-          "examples": ["Example 1", "Example 2"]
+          "indicators": ["Indicator 1", "Indicator 2"]
         },
         "transactionalAnalysis": { 
           "dominantEgoState": "State",
@@ -380,8 +374,6 @@ function convertToCompatibleProfile(enhancedProfile: any) {
       secondaryStyle: enhancedProfile.attachmentStyle?.secondaryStyle || null,
       confidence: enhancedProfile.attachmentStyle?.confidence || 50,
       indicators: enhancedProfile.attachmentStyle?.indicators || [],
-      explanation: enhancedProfile.attachmentStyle?.examples?.join(". ") || "Based on communication patterns and attachment indicators",
-      limitedDataWarning: enhancedProfile.attachmentStyle?.indicators?.length === 0 ? "Limited data available for analysis" : undefined,
     },
     transactionalAnalysis: {
       dominantEgoState: enhancedProfile.transactionalAnalysis?.dominantEgoState || "Adult",
@@ -609,5 +601,35 @@ export async function analyzeRelationshipDynamics(
   } catch (error) {
     console.error("Error analyzing relationship dynamics:", error)
     throw error
+  }
+}
+
+// Add the useOpenAI export at the end of the file
+
+/**
+ * Hook-like function to check if OpenAI is available and get the API key
+ * @returns Object with isEnabled and apiKey properties
+ */
+export function useOpenAI() {
+  const isEnabled = isOpenAIEnabled()
+  let apiKey: string | null = null
+
+  // This is not a real React hook, but mimics the pattern
+  // for consistency with other parts of the codebase
+  const getKey = async () => {
+    if (isEnabled) {
+      try {
+        apiKey = await getOpenAIKey()
+      } catch (error) {
+        console.error("Error getting OpenAI API key:", error)
+      }
+    }
+    return apiKey
+  }
+
+  return {
+    isEnabled,
+    getKey,
+    apiKey,
   }
 }

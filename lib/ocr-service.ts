@@ -92,6 +92,59 @@ export async function extractTextFromImage(imageData: string, onProgress?: Progr
 }
 
 /**
+ * Extracts text from multiple images using Tesseract.js OCR
+ * @param images Array of base64 encoded image data
+ * @param onProgress Optional callback for progress updates
+ * @returns Array of extracted messages from all images
+ */
+export async function extractTextFromImages(images: string[], onProgress?: ProgressCallback): Promise<Message[]> {
+  try {
+    // Report initial progress
+    if (onProgress) onProgress(0)
+
+    let allMessages: Message[] = []
+
+    // Process each image
+    for (let i = 0; i < images.length; i++) {
+      // Calculate progress range for this image
+      const startProgress = Math.floor((i / images.length) * 100)
+      const endProgress = Math.floor(((i + 1) / images.length) * 100)
+      const range = endProgress - startProgress
+
+      // Create a progress callback for this image
+      const imageProgressCallback = onProgress
+        ? (progress: number) => onProgress(startProgress + Math.floor((progress / 100) * range))
+        : undefined
+
+      // Extract messages from this image
+      const messages = await extractTextFromImage(images[i], imageProgressCallback)
+
+      // Add to all messages
+      allMessages = [...allMessages, ...messages]
+    }
+
+    // Deduplicate all messages
+    const uniqueMessages = deduplicateMessages(allMessages)
+
+    // Sort messages by timestamp if available
+    uniqueMessages.sort((a, b) => {
+      if (a.timestamp && b.timestamp) {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      }
+      return 0
+    })
+
+    // Report completion
+    if (onProgress) onProgress(100)
+
+    return uniqueMessages
+  } catch (error) {
+    console.error("Error extracting text from images:", error)
+    throw new Error(`Failed to extract text from images: ${(error as Error).message}`)
+  }
+}
+
+/**
  * Groups individual words into complete messages based on their positions
  * @param words Array of OCR word results
  * @returns Array of OCR results representing complete messages

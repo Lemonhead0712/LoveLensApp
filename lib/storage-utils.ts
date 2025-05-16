@@ -1,67 +1,71 @@
-// Helper functions for data storage and retrieval
+import type { AnalysisResult } from "./types"
 
-/**
- * Generate a unique ID for analysis results
- * @returns A unique ID string
- */
+// Key for storing analysis results in localStorage
+const STORAGE_KEY = "lovelens_analysis_results"
+
+// Generate a unique ID for analysis results
 export function generateResultId(): string {
-  // Generate a random ID with timestamp to ensure uniqueness
-  const timestamp = new Date().getTime()
-  const random = Math.floor(Math.random() * 1000000)
-  return `${timestamp}-${random}`
+  return `analysis_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 }
 
-/**
- * Save analysis results to localStorage with a specific ID
- * @param results The analysis results to save
- * @param id Optional ID to use for storage (will generate one if not provided)
- * @returns Boolean indicating success
- */
-export async function saveAnalysisResults(results: any, id?: string): Promise<boolean> {
+// Save analysis results to localStorage
+export async function saveAnalysisResults(results: AnalysisResult, resultId?: string): Promise<boolean> {
   try {
     // Use provided ID or generate a new one
-    const resultId = id || generateResultId()
+    const id = resultId || generateResultId()
 
-    // Add the ID to the results object if not already present
+    // Add ID to results if not already present
     if (!results.id) {
-      results.id = resultId
+      results.id = id
     }
 
-    // Serialize the results
-    const serializedResults = JSON.stringify(results)
+    // Get existing results
+    const existingResults = await getStoredAnalysisResults()
 
-    // Save to localStorage with the ID as key
-    localStorage.setItem(`analysisResults_${resultId}`, serializedResults)
-
-    // Also save the ID in a list of all analysis IDs for retrieval
-    const existingIds = getAnalysisIds()
-    if (!existingIds.includes(resultId)) {
-      existingIds.push(resultId)
-      localStorage.setItem("analysisResultIds", JSON.stringify(existingIds))
+    // Add new results
+    existingResults[id] = {
+      ...results,
+      timestamp: new Date().toISOString(),
     }
 
-    // Set a timestamp for debugging
-    localStorage.setItem(`analysisResultsTimestamp_${resultId}`, new Date().toISOString())
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existingResults))
 
-    console.log(`Analysis results saved successfully with ID: ${resultId}`)
     return true
   } catch (error) {
-    console.error("Failed to save analysis results:", error)
+    console.error("Error saving analysis results:", error)
     return false
   }
 }
 
-/**
- * Get all analysis result IDs
- * @returns Array of analysis result IDs
- */
-export function getAnalysisIds(): string[] {
+// Alias for saveAnalysisResults to maintain backward compatibility
+export const storeAnalysisResult = saveAnalysisResults
+
+// Get all stored analysis results
+export async function getStoredAnalysisResults(): Promise<Record<string, AnalysisResult>> {
   try {
-    const idsJson = localStorage.getItem("analysisResultIds")
-    return idsJson ? JSON.parse(idsJson) : []
+    const storedData = localStorage.getItem(STORAGE_KEY)
+
+    if (!storedData) {
+      return {}
+    }
+
+    return JSON.parse(storedData)
   } catch (error) {
-    console.error("Failed to get analysis IDs:", error)
-    return []
+    console.error("Error retrieving stored analysis results:", error)
+    return {}
+  }
+}
+
+// Get a specific analysis result by ID
+export async function getAnalysisResultById(id: string): Promise<AnalysisResult | null> {
+  try {
+    const allResults = await getStoredAnalysisResults()
+
+    return allResults[id] || null
+  } catch (error) {
+    console.error(`Error retrieving analysis result with ID ${id}:`, error)
+    return null
   }
 }
 
@@ -105,37 +109,46 @@ export function getAnalysisResults(id?: string | null): any | null {
 }
 
 /**
- * Check if analysis results exist for a specific ID
- * @param id The ID to check
- * @returns True if analysis results exist
+ * Get all analysis result IDs
+ * @returns Array of analysis result IDs
  */
-export function hasAnalysisResults(id?: string): boolean {
-  if (!id) {
-    return getAnalysisIds().length > 0
+export function getAnalysisIds(): string[] {
+  try {
+    const idsJson = localStorage.getItem("analysisResultIds")
+    return idsJson ? JSON.parse(idsJson) : []
+  } catch (error) {
+    console.error("Failed to get analysis IDs:", error)
+    return []
   }
-  return !!localStorage.getItem(`analysisResults_${id}`)
 }
 
-/**
- * Clear analysis results from localStorage
- * @param id Optional ID to clear specific results (clears all if not provided)
- */
-export function clearAnalysisResults(id?: string): void {
-  if (id) {
-    // Clear specific analysis
-    localStorage.removeItem(`analysisResults_${id}`)
-    localStorage.removeItem(`analysisResultsTimestamp_${id}`)
+// Delete a specific analysis result by ID
+export async function deleteAnalysisResult(id: string): Promise<boolean> {
+  try {
+    const allResults = await getStoredAnalysisResults()
 
-    // Update the IDs list
-    const ids = getAnalysisIds().filter((existingId) => existingId !== id)
-    localStorage.setItem("analysisResultIds", JSON.stringify(ids))
-  } else {
-    // Clear all analyses
-    const ids = getAnalysisIds()
-    ids.forEach((existingId) => {
-      localStorage.removeItem(`analysisResults_${existingId}`)
-      localStorage.removeItem(`analysisResultsTimestamp_${existingId}`)
-    })
-    localStorage.removeItem("analysisResultIds")
+    if (!allResults[id]) {
+      return false
+    }
+
+    delete allResults[id]
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allResults))
+
+    return true
+  } catch (error) {
+    console.error(`Error deleting analysis result with ID ${id}:`, error)
+    return false
+  }
+}
+
+// Clear all stored analysis results
+export async function clearAllAnalysisResults(): Promise<boolean> {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+    return true
+  } catch (error) {
+    console.error("Error clearing all analysis results:", error)
+    return false
   }
 }

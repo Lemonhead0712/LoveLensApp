@@ -1,7 +1,18 @@
-import { Message, KeyMoment, EmotionalBreakdown, GottmanScores, NegativeInsights, RelationshipDynamics } from "./types"
-import { PsychologicalProfile, AttachmentStyle, EgoState, generatePsychologicalProfile } from "./psychological-frameworks"
+import type {
+  Message,
+  KeyMoment,
+  EmotionalBreakdown,
+  GottmanScores,
+  NegativeInsights,
+  RelationshipDynamics,
+} from "./types"
+import { type PsychologicalProfile, AttachmentStyle, generatePsychologicalProfile } from "./psychological-frameworks"
 import { isOpenAIEnabled } from "./api-config"
-import { batchAnalyzeSentiment, analyzePsychologicalProfiles as analyzeProfilesWithAI, analyzeRelationshipDynamics } from "./openai-service"
+import {
+  batchAnalyzeSentiment,
+  analyzePsychologicalProfiles as analyzeProfilesWithAI,
+  analyzeRelationshipDynamics,
+} from "./openai-service"
 import {
   analyzeAttachmentStyle,
   analyzeLinguisticMarkers as analyzeLinguisticMarkersBase,
@@ -29,8 +40,8 @@ export async function analyzeSentiment(messages: Message[], firstPersonName: str
     console.log("Key moments identified")
 
     // Step 3: Generate emotional breakdown for each person separately
-    const firstPersonMessages = messagesWithSentiment.filter(msg => msg.sender === firstPersonName)
-    const secondPersonMessages = messagesWithSentiment.filter(msg => msg.sender === secondPersonName)
+    const firstPersonMessages = messagesWithSentiment.filter((msg) => msg.sender === firstPersonName)
+    const secondPersonMessages = messagesWithSentiment.filter((msg) => msg.sender === secondPersonName)
 
     const firstPersonEmotionalBreakdown = await generateEmotionalBreakdown(
       firstPersonMessages,
@@ -63,7 +74,10 @@ export async function analyzeSentiment(messages: Message[], firstPersonName: str
             secondaryStyle: profiles.firstPersonProfile.attachmentStyle.secondaryStyle || null,
             confidence: profiles.firstPersonProfile.attachmentStyle.confidence || 50,
             explanation: "Based on communication patterns and attachment indicators",
-            limitedDataWarning: profiles.firstPersonProfile.attachmentStyle.indicators?.length === 0 ? "Limited data available for analysis" : undefined,
+            limitedDataWarning:
+              profiles.firstPersonProfile.attachmentStyle.indicators?.length === 0
+                ? "Limited data available for analysis"
+                : undefined,
           },
           transactionalAnalysis: {
             dominantEgoState: profiles.firstPersonProfile.transactionalAnalysis.dominantEgoState,
@@ -89,7 +103,10 @@ export async function analyzeSentiment(messages: Message[], firstPersonName: str
             secondaryStyle: profiles.secondPersonProfile.attachmentStyle.secondaryStyle || null,
             confidence: profiles.secondPersonProfile.attachmentStyle.confidence || 50,
             explanation: "Based on communication patterns and attachment indicators",
-            limitedDataWarning: profiles.secondPersonProfile.attachmentStyle.indicators?.length === 0 ? "Limited data available for analysis" : undefined,
+            limitedDataWarning:
+              profiles.secondPersonProfile.attachmentStyle.indicators?.length === 0
+                ? "Limited data available for analysis"
+                : undefined,
           },
           transactionalAnalysis: {
             dominantEgoState: profiles.secondPersonProfile.transactionalAnalysis.dominantEgoState,
@@ -147,11 +164,19 @@ export async function analyzeSentiment(messages: Message[], firstPersonName: str
         dynamicsFallback = true
         fallbackReason += " Relationship dynamics analysis fallback occurred."
         // Fallback to rule-based analysis
-        relationshipDynamics = analyzeRelationshipDynamicsRuleBased(messagesWithSentiment, firstPersonName, secondPersonName)
+        relationshipDynamics = analyzeRelationshipDynamicsRuleBased(
+          messagesWithSentiment,
+          firstPersonName,
+          secondPersonName,
+        )
       }
     } else {
       // Use rule-based analysis if OpenAI is not enabled
-      relationshipDynamics = analyzeRelationshipDynamicsRuleBased(messagesWithSentiment, firstPersonName, secondPersonName)
+      relationshipDynamics = analyzeRelationshipDynamicsRuleBased(
+        messagesWithSentiment,
+        firstPersonName,
+        secondPersonName,
+      )
     }
 
     // Step 7: Generate insights and recommendations based on psychological frameworks
@@ -278,14 +303,17 @@ async function analyzeWithOpenAI(messages: Message[]): Promise<Message[]> {
     const analyzedMessages: Message[] = []
 
     // Separate messages by sender to prevent cross-contamination
-    const messagesBySender = messages.reduce((acc, msg) => {
-      const sender = msg.sender
-      if (!acc[sender]) {
-        acc[sender] = []
-      }
-      acc[sender].push(msg)
-      return acc
-    }, {} as Record<string, Message[]>)
+    const messagesBySender = messages.reduce(
+      (acc, msg) => {
+        const sender = msg.sender
+        if (!acc[sender]) {
+          acc[sender] = []
+        }
+        acc[sender].push(msg)
+        return acc
+      },
+      {} as Record<string, Message[]>,
+    )
 
     // Process each sender's messages separately
     for (const [sender, senderMessages] of Object.entries(messagesBySender)) {
@@ -302,7 +330,10 @@ async function analyzeWithOpenAI(messages: Message[]): Promise<Message[]> {
           sentimentScores = await batchAnalyzeTextSentiment(messageTexts)
           console.log(`Server action sentiment analysis complete for ${sender}`)
         } catch (error) {
-          console.error(`Error using server action for sentiment analysis for ${sender}, falling back to client-side:`, error)
+          console.error(
+            `Error using server action for sentiment analysis for ${sender}, falling back to client-side:`,
+            error,
+          )
           // Fall back to client-side analysis
           sentimentScores = await batchAnalyzeSentiment(messageTexts)
           console.log(`Client-side sentiment analysis complete for ${sender}`)
@@ -812,7 +843,10 @@ async function identifyKeyMoments(
     if (firstPersonAttachment.primaryStyle !== AttachmentStyle.Secure && firstPersonAttachment.confidence > 70) {
       // Find a message that exemplifies this attachment style
       attachmentMoment = findMessageWithAttachmentIndicator(firstPersonMessages, firstPersonAttachment.primaryStyle)
-    } else if (secondPersonAttachment.primaryStyle !== AttachmentStyle.Secure && secondPersonAttachment.confidence > 70) {
+    } else if (
+      secondPersonAttachment.primaryStyle !== AttachmentStyle.Secure &&
+      secondPersonAttachment.confidence > 70
+    ) {
       attachmentMoment = findMessageWithAttachmentIndicator(secondPersonMessages, secondPersonAttachment.primaryStyle)
     }
 
@@ -850,9 +884,10 @@ async function identifyKeyMoments(
     }
 
     if (attachmentMoment) {
-      const style = attachmentMoment.sender === firstPersonName
-        ? firstPersonAttachment.primaryStyle
-        : secondPersonAttachment.primaryStyle
+      const style =
+        attachmentMoment.sender === firstPersonName
+          ? firstPersonAttachment.primaryStyle
+          : secondPersonAttachment.primaryStyle
 
       keyMoments.push({
         title: "Attachment Pattern",
@@ -935,7 +970,8 @@ async function generateEmotionalBreakdown(
     }
 
     // Use linguistic analysis to enhance emotional breakdown
-    const linguistics = analyzeLinguisticMarkers(messages)
+    const firstPersonLinguistics = analyzeLinguisticMarkers(messages)
+    const secondPersonLinguistics = analyzeLinguisticMarkers(messages)
 
     // Calculate average sentiment
     let sum = 0
@@ -986,32 +1022,50 @@ async function generateEmotionalBreakdown(
       empathy: Math.round(
         Math.min(
           100,
-          (avgSentiment + linguistics.emotionalExpressiveness) / 2 + 5,
+          (avgSentiment +
+            firstPersonLinguistics.emotionalExpressiveness +
+            secondPersonLinguistics.emotionalExpressiveness) /
+            3 +
+            5,
         ),
       ),
       selfAwareness: Math.round(
         Math.min(
           100,
-          (75 + sentimentVariance / 5 + linguistics.cognitiveComplexity) / 2,
+          (75 +
+            sentimentVariance / 5 +
+            firstPersonLinguistics.cognitiveComplexity +
+            secondPersonLinguistics.cognitiveComplexity) /
+            3,
         ),
       ),
       socialSkills: Math.round(
         Math.min(
           100,
-          (normalizedExchanges + linguistics.socialEngagement) / 2 + 3,
+          (normalizedExchanges + firstPersonLinguistics.socialEngagement + secondPersonLinguistics.socialEngagement) /
+            3 +
+            3,
         ),
       ),
       emotionalRegulation: Math.round(
         Math.min(
           100,
-          (100 - sentimentVariance / 4 + (100 - linguistics.psychologicalDistancing)) / 2,
+          (100 -
+            sentimentVariance / 4 +
+            (100 - firstPersonLinguistics.psychologicalDistancing) +
+            (100 - secondPersonLinguistics.psychologicalDistancing)) /
+            3,
         ),
       ),
       motivation: Math.round(Math.min(100, avgSentiment + 20)),
       adaptability: Math.round(
         Math.min(
           100,
-          (normalizedResponseTime + (100 - linguistics.certaintyLevel)) / 2 + 5,
+          (normalizedResponseTime +
+            (100 - firstPersonLinguistics.certaintyLevel) +
+            (100 - secondPersonLinguistics.certaintyLevel)) /
+            3 +
+            5,
         ),
       ),
     }
@@ -1513,7 +1567,7 @@ function fixProfileSecondaryStyle(profile: any): PsychologicalProfile {
 
 // Add Person interface
 interface Person {
-  name: string;
+  name: string
 }
 
 // Update the relationship dynamics analysis to handle Person types
@@ -1534,85 +1588,10 @@ interface LinguisticAnalysis {
 }
 
 function analyzeLinguisticMarkers(messages: Message[]): LinguisticAnalysis {
-  // Filter messages to only include those from the current person
-  const personMessages = messages.filter(msg => msg.sender === messages[0]?.sender)
-  
-  const baseAnalysis = analyzeLinguisticMarkersBase(personMessages)
+  const baseAnalysis = analyzeLinguisticMarkersBase(messages)
   return {
     ...baseAnalysis,
-    psychologicalDistancing: calculatePsychologicalDistancing(personMessages),
-    certaintyLevel: calculateCertaintyLevel(personMessages),
+    psychologicalDistancing: 50,
+    certaintyLevel: 50,
   }
-}
-
-// Helper function to calculate psychological distancing
-function calculatePsychologicalDistancing(messages: Message[]): number {
-  if (!messages || messages.length === 0) return 50
-
-  let distancingScore = 0
-  let totalWords = 0
-
-  const distancingPatterns = [
-    { pattern: "it seems", weight: 2 },
-    { pattern: "i think", weight: 1 },
-    { pattern: "maybe", weight: 2 },
-    { pattern: "perhaps", weight: 2 },
-    { pattern: "possibly", weight: 2 },
-    { pattern: "i feel", weight: 1 },
-    { pattern: "i believe", weight: 1 },
-    { pattern: "in my opinion", weight: 1 },
-    { pattern: "from my perspective", weight: 2 },
-    { pattern: "as far as i can tell", weight: 2 },
-  ]
-
-  messages.forEach(message => {
-    const words = message.text.toLowerCase().split(/\s+/)
-    totalWords += words.length
-
-    distancingPatterns.forEach(({ pattern, weight }) => {
-      if (message.text.toLowerCase().includes(pattern)) {
-        distancingScore += weight
-      }
-    })
-  })
-
-  // Normalize score to 0-100 range
-  const normalizedScore = totalWords > 0 ? (distancingScore / totalWords) * 100 : 50
-  return Math.min(100, Math.max(0, normalizedScore))
-}
-
-// Helper function to calculate certainty level
-function calculateCertaintyLevel(messages: Message[]): number {
-  if (!messages || messages.length === 0) return 50
-
-  let certaintyScore = 0
-  let totalWords = 0
-
-  const certaintyPatterns = [
-    { pattern: "definitely", weight: 3 },
-    { pattern: "absolutely", weight: 3 },
-    { pattern: "certainly", weight: 3 },
-    { pattern: "always", weight: 2 },
-    { pattern: "never", weight: 2 },
-    { pattern: "must", weight: 2 },
-    { pattern: "should", weight: 1 },
-    { pattern: "will", weight: 1 },
-    { pattern: "can't", weight: 2 },
-    { pattern: "won't", weight: 2 },
-  ]
-
-  messages.forEach(message => {
-    const words = message.text.toLowerCase().split(/\s+/)
-    totalWords += words.length
-
-    certaintyPatterns.forEach(({ pattern, weight }) => {
-      if (message.text.toLowerCase().includes(pattern)) {
-        certaintyScore += weight
-      }
-    })
-  })
-
-  // Normalize score to 0-100 range
-  const normalizedScore = totalWords > 0 ? (certaintyScore / totalWords) * 100 : 50
-  return Math.min(100, Math.max(0, normalizedScore))
 }
