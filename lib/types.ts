@@ -52,7 +52,7 @@ export interface AnalysisResults {
   messages: Message[]
   firstPersonProfile: any
   secondPersonProfile: any
-  relationshipDynamics: any
+  relationshipDynamics: RelationshipDynamics
   analysisMethod: string
   fallbackOccurred: boolean
   fallbackReason: string
@@ -103,3 +103,22 @@ export interface KeyMoment {
 export interface Person {
   name: string
 }
+
+export interface RelationshipDynamics {
+  positiveToNegativeRatio: number
+  biddingPatterns: {
+    emotionalBids: number
+    turningToward: number
+    turningAway: number
+    turningAgainst: number
+  }
+  conflictStyle: string
+  sharedMeaning: number
+  attachmentCompatibility: string
+  communicationCompatibility: string
+  keyStrengths: string[]
+  keyGrowthAreas: string[]
+}
+
+export type AnalysisResult = AnalysisResults
+export type RelationshipDynamics = RelationshipDynamics

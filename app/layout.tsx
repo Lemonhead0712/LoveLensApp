@@ -22,6 +22,10 @@ export const metadata: Metadata = {
     userScalable: false,
   },
   generator: "v0.dev",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
 }
 
 export default function RootLayout({
