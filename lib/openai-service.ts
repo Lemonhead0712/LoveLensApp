@@ -131,7 +131,7 @@ export async function batchAnalyzeSentiment(texts: string[]): Promise<number[]> 
 }
 
 // Enhanced function to generate a psychological profile with personalized communication style analysis
-export async function generateProfileForSubject(messages: Message[], name: string) {
+export async function generateProfileForSubject(messages: Message[], name: string, otherProfileValues?: any) {
   try {
     if (!isOpenAIEnabled()) {
       throw new Error("OpenAI is not enabled")
@@ -168,7 +168,9 @@ export async function generateProfileForSubject(messages: Message[], name: strin
       You are a relationship psychologist specializing in communication patterns, linguistic analysis, and psychological profiling.
       Analyze messages from ${name} to create a detailed psychological profile with personalized communication style insights.
       
-      IMPORTANT: This analysis must be unique to ${name}'s communication style and patterns. Do not mirror or copy patterns from other participants.
+      IMPORTANT: This analysis must be unique to ${name}'s communication style and patterns. Do NOT mirror or copy patterns, strengths, or insights from other participants. If the communication style or strengths are the same as the other participant, explain why with specific evidence from ${name}'s own messages. Otherwise, ensure all values and insights are unique to this person's language and behavior.
+      
+      Use the following parameters for your analysis: communication style, linguistic patterns, attachment style, ego state distribution, cognitive patterns, unique strengths, and growth areas. Each parameter must be evaluated for ${name} based only on their own messages.
       
       CONVERSATION CONTEXT:
       ${name} is communicating with: ${otherParticipants.join(", ")}
