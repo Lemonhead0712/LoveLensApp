@@ -1,0 +1,96 @@
+/* Gradient backgrounds */
+.bg-love-gradient {
+  background: linear-gradient(135deg, #fdf2f8 0%, #f5f3ff 50%, #ede9fe 100%);
+}
+
+.bg-love-gradient-darker {
+  background: linear-gradient(135deg, #fbcfe8 0%, #e9d5ff 50%, #ddd6fe 100%);
+}
+
+.bg-love-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Sparkle animation */
+.sparkle-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.sparkle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: white;
+  box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.8), 0 0 20px 6px rgba(255, 192, 203, 0.6);
+  opacity: 0;
+  animation: sparkle-animation 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sparkle-animation {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0);
+  }
+}
+
+/* Floating animation for cards */
+.float-animation {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+/* Pulse animation for logo */
+.pulse-animation {
+  animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(90deg, #ec4899 0%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Tab hover effects */
+.tab-hover-effect:hover {
+  background: linear-gradient(135deg, #fbcfe8 0%, #e9d5ff 100%);
+  transition: all 0.3s ease;
+}

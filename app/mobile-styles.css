@@ -1,0 +1,226 @@
+/* Mobile optimizations */
+@media screen and (max-width: 640px) {
+  /* Text size adjustments */
+  .text-gradient {
+    font-size: 90%;
+  }
+
+  /* Card padding adjustments */
+  .card-mobile-compact {
+    padding: 1rem !important;
+  }
+
+  /* Standard mobile padding classes */
+  .mobile-container {
+    padding-left: 1.25rem !important;
+    padding-right: 1.25rem !important;
+  }
+
+  .mobile-section {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+  }
+
+  .mobile-card {
+    padding: 1.25rem !important;
+  }
+
+  .mobile-item {
+    margin-bottom: 1rem !important;
+  }
+
+  /* Improve touch targets */
+  .mobile-touch-target,
+  button,
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Floating animation adjustments */
+  .float-animation {
+    animation-duration: 4s;
+  }
+
+  /* Sparkle adjustments for performance */
+  .sparkle {
+    opacity: 0.7;
+  }
+
+  /* Consistent spacing for form elements */
+  .form-group {
+    margin-bottom: 1.25rem;
+  }
+
+  /* Ensure buttons have proper padding */
+  button,
+  .button {
+    padding: 0.625rem 1.25rem;
+  }
+
+  /* Improved spacing for cards */
+  .card {
+    margin-bottom: 1.25rem;
+  }
+
+  /* Ensure list items have proper spacing */
+  li {
+    margin-bottom: 0.625rem;
+  }
+
+  /* Improved spacing for headings */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin-bottom: 0.75rem;
+  }
+
+  /* Improved spacing for paragraphs */
+  p {
+    margin-bottom: 1rem;
+  }
+
+  /* Improved spacing for sections */
+  section {
+    margin-bottom: 2rem;
+  }
+}
+
+/* Tablet optimizations */
+@media screen and (min-width: 641px) and (max-width: 1023px) {
+  /* Add specific tablet optimizations here */
+  .tablet-container {
+    max-width: 90%;
+    margin: 0 auto;
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+
+  .tablet-section {
+    padding-top: 2.5rem;
+    padding-bottom: 2.5rem;
+  }
+
+  /* Improved spacing for cards */
+  .card {
+    margin-bottom: 1.5rem;
+  }
+
+  /* Improved spacing for headings */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin-bottom: 1rem;
+  }
+
+  /* Improved spacing for paragraphs */
+  p {
+    margin-bottom: 1.25rem;
+  }
+
+  /* Improved spacing for sections */
+  section {
+    margin-bottom: 2.5rem;
+  }
+}
+
+/* Desktop optimizations */
+@media screen and (min-width: 1024px) {
+  /* Improved spacing for cards */
+  .card {
+    margin-bottom: 1.75rem;
+  }
+
+  /* Improved spacing for headings */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin-bottom: 1.25rem;
+  }
+
+  /* Improved spacing for paragraphs */
+  p {
+    margin-bottom: 1.5rem;
+  }
+
+  /* Improved spacing for sections */
+  section {
+    margin-bottom: 3rem;
+  }
+}
+
+/* Fix for canvas rendering on high DPI screens */
+canvas {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/* Improved scrolling performance */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Better form element styling on mobile */
+@media screen and (max-width: 640px) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+    padding: 0.75rem !important;
+  }
+
+  /* Prevent pull-to-refresh behavior interfering with UI */
+  html,
+  body {
+    overscroll-behavior-y: contain;
+  }
+
+  /* Ensure consistent spacing in cards */
+  .card {
+    margin-bottom: 1rem;
+  }
+
+  /* Ensure list items have proper spacing */
+  li {
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Optimized tap highlight */
+* {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+}
+a,
+button {
+  -webkit-tap-highlight-color: rgba(236, 72, 153, 0.1);
+}
+
+/* Consistent spacing for all pages */
+.page-container {
+  padding: 1.5rem;
+}
+
+@media screen and (min-width: 641px) {
+  .page-container {
+    padding: 2rem;
+  }
+}
+
+@media screen and (min-width: 1024px) {
+  .page-container {
+    padding: 2.5rem;
+  }
+}
