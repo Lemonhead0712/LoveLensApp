@@ -15,29 +15,63 @@ interface CommunicationStyle {
 }
 
 interface CommunicationStylesChartProps {
-  participant1: {
+  participant1?: {
     name: string
     styles: CommunicationStyle[]
   }
-  participant2: {
+  participant2?: {
     name: string
     styles: CommunicationStyle[]
   }
+  communicationStyle?: string
 }
 
-export function CommunicationStylesChart({ participant1, participant2 }: CommunicationStylesChartProps) {
+function getCommunicationStyleDescription(style: string): string {
+  const descriptions: Record<string, string> = {
+    Assertive: "Direct and confident in expressing needs and opinions. Values clarity and efficiency in communication.",
+    Analytical: "Logical and detail-oriented. Prefers facts, data, and thorough explanations over emotional appeals.",
+    Expressive: "Animated and enthusiastic. Communicates with energy and emotion, often using stories and metaphors.",
+    Supportive:
+      "Empathetic and encouraging. Focuses on maintaining harmony and making others feel comfortable and understood.",
+    Defensive: "Protective of self-image. May respond to perceived criticism with justification or counter-criticism.",
+    Passive: "Indirect and accommodating. May avoid expressing needs or opinions to maintain peace or avoid conflict.",
+    Unknown: "Communication style could not be determined from the available data.",
+  }
+
+  return (
+    descriptions[style] ||
+    "This communication style reflects how you express yourself and exchange information with others."
+  )
+}
+
+function getCommunicationStyleTraits(style: string): string[] {
+  const traits: Record<string, string[]> = {
+    Assertive: ["Direct", "Confident", "Clear", "Goal-oriented", "Decisive"],
+    Analytical: ["Logical", "Detail-oriented", "Methodical", "Precise", "Questioning"],
+    Expressive: ["Animated", "Enthusiastic", "Creative", "Storytelling", "Emotional"],
+    Supportive: ["Empathetic", "Encouraging", "Harmonious", "Patient", "Validating"],
+    Defensive: ["Protective", "Justifying", "Reactive", "Sensitive to criticism", "Self-preserving"],
+    Passive: ["Accommodating", "Conflict-avoidant", "Indirect", "Agreeable", "Reserved"],
+    Unknown: ["Adaptable", "Situational", "Evolving"],
+  }
+
+  return traits[style] || ["Communication pattern", "Expression style", "Information exchange"]
+}
+
+function CommunicationStylesChart({ participant1, participant2, communicationStyle }: CommunicationStylesChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasRendering = useRef(false)
 
-  // Remove the canvas-based chart at the top of the component since it's redundant
-  // The detailed breakdown below provides better information
-
-  // Find this section in the component:
   useEffect(() => {
-    if (!canvasRef.current) return
+    if (!canvasRef.current || canvasRendering.current) return
 
+    canvasRendering.current = true
     const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")
-    if (!ctx) return
+    if (!ctx) {
+      canvasRendering.current = false
+      return
+    }
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -49,8 +83,10 @@ export function CommunicationStylesChart({ participant1, participant2 }: Communi
     const centerY = height / 2
     const radius = Math.min(centerX, centerY) - 60
 
-    // Draw communication styles
-    drawCommunicationStyles(ctx, width, height, participant1, participant2)
+    if (participant1 && participant2) {
+      drawCommunicationStyles(ctx, width, height, participant1, participant2)
+    }
+    canvasRendering.current = false
   }, [participant1, participant2])
 
   const drawCommunicationStyles = (
@@ -81,7 +117,7 @@ export function CommunicationStylesChart({ participant1, participant2 }: Communi
     ctx.fillText(participant2.name, (width / 4) * 3, 70)
 
     // Draw styles for participant 1
-    participant1.styles.forEach((style, index) => {
+    participant1?.styles.forEach((style, index) => {
       const y = centerY - (participant1.styles.length * barSpacing) / 2 + index * barSpacing
 
       // Draw style name
@@ -114,7 +150,7 @@ export function CommunicationStylesChart({ participant1, participant2 }: Communi
     })
 
     // Draw styles for participant 2
-    participant2.styles.forEach((style, index) => {
+    participant2?.styles.forEach((style, index) => {
       const y = centerY - (participant2.styles.length * barSpacing) / 2 + index * barSpacing
 
       // Draw style name
@@ -157,21 +193,49 @@ export function CommunicationStylesChart({ participant1, participant2 }: Communi
     return sortedStyles[1].score > sortedStyles[0].score * 0.7 ? sortedStyles[1] : null
   }
 
-  const participant1DominantStyle = getDominantStyle(participant1.styles)
-  const participant1SecondaryStyle = getSecondaryStyle(participant1.styles)
-  const participant2DominantStyle = getDominantStyle(participant2.styles)
-  const participant2SecondaryStyle = getSecondaryStyle(participant2.styles)
+  const participant1DominantStyle = participant1 ? getDominantStyle(participant1.styles) : null
+  const participant1SecondaryStyle = participant1 ? getSecondaryStyle(participant1.styles) : null
+  const participant2DominantStyle = participant2 ? getDominantStyle(participant2.styles) : null
+  const participant2SecondaryStyle = participant2 ? getSecondaryStyle(participant2.styles) : null
 
-  const participant1StyleLabel = getCommunicationStyleLabel(
-    participant1DominantStyle.name,
-    participant1SecondaryStyle?.name || null,
-  )
-  const participant2StyleLabel = getCommunicationStyleLabel(
-    participant2DominantStyle.name,
-    participant2SecondaryStyle?.name || null,
-  )
+  const participant1StyleLabel = participant1DominantStyle
+    ? getCommunicationStyleLabel(participant1DominantStyle.name, participant1SecondaryStyle?.name || null)
+    : null
+  const participant2StyleLabel = participant2DominantStyle
+    ? getCommunicationStyleLabel(participant2DominantStyle.name, participant2SecondaryStyle?.name || null)
+    : null
 
-  const compatibilityDescription = getStyleCompatibilityDescription(participant1StyleLabel, participant2StyleLabel)
+  const compatibilityDescription =
+    participant1StyleLabel && participant2StyleLabel
+      ? getStyleCompatibilityDescription(participant1StyleLabel, participant2StyleLabel)
+      : null
+
+  // If we're just displaying a single communication style as a string
+  if (communicationStyle && !participant1 && !participant2) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Communication Style</CardTitle>
+          <CardDescription>How you tend to express yourself and exchange information</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 mb-4">
+            <p className="font-medium text-gray-900">{communicationStyle}</p>
+          </div>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">{getCommunicationStyleDescription(communicationStyle)}</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {getCommunicationStyleTraits(communicationStyle).map((trait, i) => (
+                <span key={i} className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                  {trait}
+                </span>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   // And replace the canvas rendering section with:
   return (
@@ -183,105 +247,118 @@ export function CommunicationStylesChart({ participant1, participant2 }: Communi
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="mt-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-100">
-          <h3 className="text-lg font-medium mb-2">Communication Compatibility</h3>
-          <p className="text-gray-700">{compatibilityDescription}</p>
-        </div>
+        {compatibilityDescription && (
+          <div className="mt-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-100">
+            <h3 className="text-lg font-medium mb-2">Communication Compatibility</h3>
+            <p className="text-gray-700">{compatibilityDescription}</p>
+          </div>
+        )}
 
         <div className="mt-8 grid md:grid-cols-2 gap-8">
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-lg font-medium">{participant1.name}'s Communication Style</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <InfoIcon className="h-4 w-4 text-gray-400" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>
-                      Communication styles are based on patterns in messages, emotional expression, and response
-                      dynamics. Each person typically has a primary style with elements of secondary styles.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 mb-4">
-              <p className="font-medium text-gray-900">{participant1StyleLabel}</p>
-            </div>
-            <div className="space-y-6">
-              {participant1.styles.map((style, index) => (
-                <div key={index}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium">{style.name}</span>
-                    <span>{style.score}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                    <div
-                      className="h-2.5 rounded-full"
-                      style={{ width: `${style.score}%`, backgroundColor: style.color }}
-                    ></div>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">{style.description}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {style.traits.map((trait, i) => (
-                      <span key={i} className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
-                        {trait}
-                      </span>
-                    ))}
-                  </div>
+          {participant1 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-medium">{participant1.name}'s Communication Style</h3>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <InfoIcon className="h-4 w-4 text-gray-400" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>
+                        Communication styles are based on patterns in messages, emotional expression, and response
+                        dynamics. Each person typically has a primary style with elements of secondary styles.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              {participant1StyleLabel && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 mb-4">
+                  <p className="font-medium text-gray-900">{participant1StyleLabel}</p>
                 </div>
-              ))}
+              )}
+              <div className="space-y-6">
+                {participant1.styles.map((style, index) => (
+                  <div key={index}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-medium">{style.name}</span>
+                      <span>{style.score}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                      <div
+                        className="h-2.5 rounded-full"
+                        style={{ width: `${style.score}%`, backgroundColor: style.color }}
+                      ></div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">{style.description}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {style.traits.map((trait, i) => (
+                        <span key={i} className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                          {trait}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <h3 className="text-lg font-medium">{participant2.name}'s Communication Style</h3>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <InfoIcon className="h-4 w-4 text-gray-400" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>
-                      Communication styles are based on patterns in messages, emotional expression, and response
-                      dynamics. Each person typically has a primary style with elements of secondary styles.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 mb-4">
-              <p className="font-medium text-gray-900">{participant2StyleLabel}</p>
-            </div>
-            <div className="space-y-6">
-              {participant2.styles.map((style, index) => (
-                <div key={index}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium">{style.name}</span>
-                    <span>{style.score}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                    <div
-                      className="h-2.5 rounded-full"
-                      style={{ width: `${style.score}%`, backgroundColor: style.color }}
-                    ></div>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-2">{style.description}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {style.traits.map((trait, i) => (
-                      <span key={i} className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
-                        {trait}
-                      </span>
-                    ))}
-                  </div>
+          {participant2 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="text-lg font-medium">{participant2.name}'s Communication Style</h3>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <InfoIcon className="h-4 w-4 text-gray-400" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>
+                        Communication styles are based on patterns in messages, emotional expression, and response
+                        dynamics. Each person typically has a primary style with elements of secondary styles.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              {participant2StyleLabel && (
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 mb-4">
+                  <p className="font-medium text-gray-900">{participant2StyleLabel}</p>
                 </div>
-              ))}
+              )}
+              <div className="space-y-6">
+                {participant2.styles.map((style, index) => (
+                  <div key={index}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-medium">{style.name}</span>
+                      <span>{style.score}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                      <div
+                        className="h-2.5 rounded-full"
+                        style={{ width: `${style.score}%`, backgroundColor: style.color }}
+                      ></div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">{style.description}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {style.traits.map((trait, i) => (
+                        <span key={i} className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                          {trait}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </CardContent>
     </Card>
   )
 }
+
+export { CommunicationStylesChart }
+export default CommunicationStylesChart

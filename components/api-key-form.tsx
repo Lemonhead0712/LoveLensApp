@@ -17,7 +17,7 @@ interface ApiKeyFormProps {
   onSkip?: () => void
 }
 
-export function ApiKeyForm({ onConfigured, onSkip }: ApiKeyFormProps) {
+function ApiKeyForm({ onConfigured, onSkip }: ApiKeyFormProps) {
   const [apiKey, setApiKey] = useState("")
   const [error, setError] = useState("")
   const [isConfiguring, setIsConfiguring] = useState(false)
@@ -139,3 +139,5 @@ export function ApiKeyForm({ onConfigured, onSkip }: ApiKeyFormProps) {
     </Card>
   )
 }
+
+export default ApiKeyForm

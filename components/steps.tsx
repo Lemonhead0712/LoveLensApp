@@ -4,7 +4,7 @@ interface StepsProps {
   className?: string
 }
 
-export function Steps({ steps, currentStep, className = "" }: StepsProps) {
+function Steps({ steps, currentStep, className = "" }: StepsProps) {
   return (
     <div className={`w-full ${className}`}>
       <div className="flex items-center justify-between">
@@ -34,3 +34,5 @@ export function Steps({ steps, currentStep, className = "" }: StepsProps) {
     </div>
   )
 }
+
+export default Steps

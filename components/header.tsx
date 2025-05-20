@@ -1,11 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { MobileMenu } from "./mobile-menu"
+import MobileMenu from "./mobile-menu"
 import { Button } from "@/components/ui/button-override"
-import { Logo } from "./logo"
+import Logo from "./logo"
 
-export function Header() {
+function Header() {
   const navItems = [
     {
       label: "Home",
@@ -50,3 +50,8 @@ export function Header() {
     </header>
   )
 }
+
+// Maintain backward compatibility with named exports
+export { Header }
+
+export default Header

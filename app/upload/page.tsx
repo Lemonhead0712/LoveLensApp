@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ShieldAlert, AlertTriangle, Upload, ImageIcon, Loader2, CheckCircle2 } from "lucide-react"
+import { ShieldAlert, AlertTriangle, Upload, ImageIcon, Loader2, CheckCircle2, Info } from "lucide-react"
 import { SparkleEffect } from "@/components/sparkle-effect"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { saveAnalysisResults, generateResultId } from "@/lib/storage-utils"
@@ -23,12 +23,14 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [processingStage, setProcessingStage] = useState<string | null>(null)
+  const [showGuidelines, setShowGuidelines] = useState(false)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     // Filter out non-image files
     const imageFiles = acceptedFiles.filter((file) => file.type.startsWith("image/"))
     setFiles((prev) => [...prev, ...imageFiles])
     setValidationError(null)
+    setError(null) // Clear any previous errors when new files are added
   }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -112,10 +114,27 @@ export default function UploadPage() {
       router.push(`/results?id=${resultId}`)
     } catch (error) {
       console.error("Error analyzing screenshots:", error)
-      setError(
-        `An error occurred while analyzing the conversation: ${error instanceof Error ? error.message : "Please try again."}`,
-      )
+
+      // Provide more specific error messages based on the error type
+      if (error instanceof Error) {
+        if (error.message.includes("OCR failed") || error.message.includes("No messages")) {
+          setError(
+            "We couldn't extract any messages from your screenshots. Please make sure your screenshots clearly show both sides of the conversation and follow our screenshot guidelines.",
+          )
+        } else if (error.message.includes("message separation failed")) {
+          setError(
+            "We couldn't identify messages from both participants. Please ensure your screenshots show messages from both people in the conversation.",
+          )
+        } else {
+          setError(`An error occurred: ${error.message}. Please try again with different screenshots.`)
+        }
+      } else {
+        setError("An unexpected error occurred. Please try again with different screenshots.")
+      }
+
       setProcessingStage(null)
+      // Show guidelines when OCR fails
+      setShowGuidelines(true)
     } finally {
       setIsSubmitting(false)
     }
@@ -146,6 +165,36 @@ export default function UploadPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Screenshot Guidelines Button */}
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-pink-600 flex items-center gap-1"
+                  onClick={() => setShowGuidelines(!showGuidelines)}
+                >
+                  <Info className="h-4 w-4" />
+                  {showGuidelines ? "Hide Guidelines" : "Screenshot Tips"}
+                </Button>
+              </div>
+
+              {/* Screenshot Guidelines */}
+              {showGuidelines && (
+                <Alert className="bg-pink-50 border-pink-200 mb-4">
+                  <div className="space-y-2">
+                    <h3 className="font-medium text-pink-800">Screenshot Guidelines for Best Results:</h3>
+                    <ul className="list-disc pl-5 text-sm text-pink-700 space-y-1">
+                      <li>Use native resolution screenshots (not screenshots-of-screenshots)</li>
+                      <li>Ensure both sides of the conversation are clearly visible</li>
+                      <li>Include sender names and timestamps when possible</li>
+                      <li>Avoid cropping important parts of the conversation</li>
+                      <li>Use screenshots from common chat apps (WhatsApp, iMessage, etc.)</li>
+                      <li>Make sure text is clear and readable</li>
+                    </ul>
+                  </div>
+                </Alert>
+              )}
+
               {/* Dropzone */}
               <div
                 {...getRootProps()}

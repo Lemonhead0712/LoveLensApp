@@ -1,129 +1,43 @@
 import type { Message } from "./types"
 import { createWorker } from "tesseract.js"
-import { deduplicateMessages } from "./string-utils"
+import { preprocessImage, defaultOptions, type PreprocessingOptions } from "./image-preprocessing"
 
-// Interface for OCR result
-interface OCRResult {
+// Interface for OCR result with bounding box
+interface OCRWord {
   text: string
-  boundingBox: {
-    x: number
-    y: number
-    width: number
-    height: number
+  bbox: {
+    x0: number
+    y0: number
+    x1: number
+    y1: number
   }
   confidence: number
 }
 
-// Interface for message with position information
+// Interface for a grouped message line
+interface MessageLine {
+  text: string
+  x: number
+  y: number
+  width: number
+  height: number
+  confidence: number
+}
+
+// Interface for a complete message with position
 interface PositionedMessage {
   content: string
-  position: "left" | "right" | "unknown"
-  timestamp?: string
+  position: "left" | "right"
+  y: number
   confidence: number
+  timestamp?: string
 }
 
 /**
- * Extracts text from an image using Tesseract.js OCR
- * @param imageData Base64 encoded image data
- * @returns Array of extracted messages
+ * Helper function to check if a date string is valid
  */
-export async function extractTextFromImage(imageData: string): Promise<Message[]> {
-  try {
-    // Initialize Tesseract worker
-    const worker = await createWorker("eng")
-
-    // Process image with Tesseract - without passing the progress callback
-    const { data } = await worker.recognize(imageData, {
-      rectangle: true, // Enable rectangle detection for better message boundary detection
-    })
-
-    // Extract words with bounding boxes
-    const ocrResults: OCRResult[] = data.words.map((word) => ({
-      text: word.text,
-      boundingBox: {
-        x: word.bbox.x0,
-        y: word.bbox.y0,
-        width: word.bbox.x1 - word.bbox.x0,
-        height: word.bbox.y1 - word.bbox.y0,
-      },
-      confidence: word.confidence / 100, // Convert to 0-1 scale
-    }))
-
-    // Group words into messages
-    const messages = groupWordsIntoMessages(ocrResults)
-
-    // Process OCR results to extract messages with positions
-    const positionedMessages = processOCRResults(messages)
-
-    // Attribute messages to senders based on position and context
-    const attributedMessages = attributeMessagesToSenders(positionedMessages)
-
-    // Deduplicate messages
-    const uniqueMessages = deduplicateMessages(attributedMessages)
-
-    // Terminate worker
-    await worker.terminate()
-
-    return uniqueMessages
-  } catch (error) {
-    console.error("Error extracting text from image:", error)
-    throw new Error(`Failed to extract text from image: ${(error as Error).message}`)
-  }
-}
-
-/**
- * Extracts text from multiple images using Tesseract.js OCR
- * @param files Array of image files
- * @returns Array of extracted messages from all images
- */
-export async function extractTextFromImages(files: File[]): Promise<string[]> {
-  try {
-    const results: string[] = []
-
-    // Process each file sequentially to avoid memory issues
-    for (const file of files) {
-      try {
-        // Convert file to base64
-        const base64Data = await fileToBase64(file)
-
-        // Use a simpler approach for text extraction
-        const text = await extractTextSimple(base64Data)
-
-        if (text && text.trim()) {
-          results.push(text)
-        }
-      } catch (fileError) {
-        console.warn(`Error processing file ${file.name}:`, fileError)
-        // Continue with other files
-      }
-    }
-
-    return results
-  } catch (error) {
-    console.error("Error extracting text from images:", error)
-    throw new Error(`Failed to extract text from images: ${(error as Error).message}`)
-  }
-}
-
-/**
- * Simplified text extraction that doesn't use progress callbacks
- */
-async function extractTextSimple(imageData: string): Promise<string> {
-  try {
-    // Create a new worker for each image to avoid memory issues
-    const worker = await createWorker("eng")
-
-    // Recognize text without progress callback
-    const { data } = await worker.recognize(imageData)
-
-    // Terminate worker
-    await worker.terminate()
-
-    return data.text
-  } catch (error) {
-    console.error("Error in simplified text extraction:", error)
-    return ""
-  }
+function isValidDate(input: any): boolean {
+  return input && typeof input === "string" && !isNaN(Date.parse(input))
 }
 
 /**
@@ -139,32 +53,205 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Groups individual words into complete messages based on their positions
- * @param words Array of OCR word results
- * @returns Array of OCR results representing complete messages
+ * Extract timestamp from message content if present
  */
-function groupWordsIntoMessages(words: OCRResult[]): OCRResult[] {
+function extractTimestamp(content: string): { content: string; timestamp?: string } {
+  // Common timestamp patterns in chat apps (both Android and iPhone)
+  const timestampPatterns = [
+    /(\d{1,2}:\d{2}(?:\s?[AP]M)?)/i, // 12:34 PM
+    /(\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2})/i, // 01/23/2023 12:34
+    /(\d{1,2}\s+[A-Za-z]{3,}\s+\d{2,4}\s+\d{1,2}:\d{2})/i, // 23 Jan 2023 12:34
+    /(\d{1,2}:\d{2}:\d{2}(?:\s?[AP]M)?)/i, // 12:34:56 PM
+    /([A-Za-z]{3,},\s+\d{1,2}\s+[A-Za-z]{3,})/i, // Mon, 18 May
+    /([A-Za-z]{3,}\s+\d{1,2})/i, // May 18
+    /(\d{1,2}:\d{2})/i, // 12:34 (fallback, might catch non-timestamps)
+  ]
+
+  for (const pattern of timestampPatterns) {
+    const match = content.match(pattern)
+    if (match) {
+      // Remove the timestamp from the content
+      const cleanedContent = content.replace(match[0], "").trim()
+      return {
+        content: cleanedContent,
+        timestamp: match[1],
+      }
+    }
+  }
+
+  return { content }
+}
+
+/**
+ * Filter out common system messages and metadata
+ */
+function filterSystemMessages(content: string): string {
+  // Common system message patterns to filter out
+  const systemPatterns = [
+    /^Delivered$/i,
+    /^Read$/i,
+    /^Sent$/i,
+    /^Today$/i,
+    /^Yesterday$/i,
+    /^Last seen/i,
+    /^Typing\.\.\.$/i,
+    /^[A-Za-z]+ is typing\.\.\.$/i,
+    /^This message was deleted$/i,
+    /^You deleted this message$/i,
+    /^Message not sent\.$/i,
+    /^Missed call$/i,
+    /^Missed video call$/i,
+    /^Call ended$/i,
+  ]
+
+  // Check if the content matches any system pattern
+  for (const pattern of systemPatterns) {
+    if (pattern.test(content)) {
+      return ""
+    }
+  }
+
+  return content
+}
+
+/**
+ * Group words into message lines based on vertical position
+ */
+function groupWordsIntoLines(words: OCRWord[]): MessageLine[] {
   // Sort words by vertical position (y-coordinate)
   const sortedWords = [...words].sort((a, b) => {
     // If words are on roughly the same line (within 10px), sort by x-coordinate
-    if (Math.abs(a.boundingBox.y - b.boundingBox.y) < 10) {
-      return a.boundingBox.x - b.boundingBox.x
+    if (Math.abs(a.bbox.y0 - b.bbox.y0) < 10) {
+      return a.bbox.x0 - b.bbox.x0
     }
     // Otherwise sort by y-coordinate
-    return a.boundingBox.y - b.boundingBox.y
+    return a.bbox.y0 - b.bbox.y0
   })
 
-  const messages: OCRResult[] = []
-  let currentMessage: OCRResult | null = null
+  const lines: MessageLine[] = []
+  let currentLine: MessageLine | null = null
   let lastY = -1
 
-  // Group words into messages based on their vertical position
+  // Group words into lines based on their vertical position
   for (const word of sortedWords) {
-    // Skip words with very low confidence
-    if (word.confidence < 0.5) continue
+    // Skip words with very low confidence or empty text
+    if (word.confidence < 30 || !word.text.trim()) continue
 
     // If this is a new line or the first word
-    if (lastY === -1 || Math.abs(word.boundingBox.y - lastY) > 15) {
+    if (lastY === -1 || Math.abs(word.bbox.y0 - lastY) > 15) {
+      // If we have a current line, add it to the list
+      if (currentLine) {
+        lines.push(currentLine)
+      }
+
+      // Start a new line
+      currentLine = {
+        text: word.text,
+        x: word.bbox.x0,
+        y: word.bbox.y0,
+        width: word.bbox.x1 - word.bbox.x0,
+        height: word.bbox.y1 - word.bbox.y0,
+        confidence: word.confidence,
+      }
+    } else {
+      // Add to current line
+      if (currentLine) {
+        currentLine.text += ` ${word.text}`
+        // Update width to encompass both words
+        const newWidth = Math.max(currentLine.width, word.bbox.x1 - currentLine.x)
+        currentLine.width = newWidth
+        // Average the confidence
+        currentLine.confidence = (currentLine.confidence + word.confidence) / 2
+      }
+    }
+
+    lastY = word.bbox.y0
+  }
+
+  // Add the last line if it exists
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines
+}
+
+/**
+ * Detect chat app type from screenshot characteristics
+ */
+function detectChatAppType(lines: MessageLine[]): "android" | "iphone" | "unknown" {
+  // Count messages on far left vs indented
+  const farLeftCount = lines.filter((line) => line.x <= 30).length
+  const indentedCount = lines.filter((line) => line.x > 30 && line.x < 100).length
+  const farRightCount = lines.filter((line) => line.x >= 100).length
+
+  // Check for patterns characteristic of different chat apps
+  if (farLeftCount > 5 && indentedCount > 5) {
+    return "android" // Android typically has messages on far left and indented
+  } else if (farLeftCount > 5 && farRightCount > 5) {
+    return "iphone" // iPhone typically has messages on far left and far right
+  }
+
+  return "unknown"
+}
+
+/**
+ * Group lines into complete messages based on proximity and indentation
+ * Enhanced to handle both Android and iPhone chat layouts
+ */
+function groupLinesIntoMessages(lines: MessageLine[]): PositionedMessage[] {
+  // Sort lines by vertical position
+  const sortedLines = [...lines].sort((a, b) => a.y - b.y)
+
+  // Detect chat app type to adjust position detection
+  const appType = detectChatAppType(sortedLines)
+  console.log(`Detected chat app type: ${appType}`)
+
+  // Determine the threshold for left vs right based on app type
+  let positionThreshold = 50 // Default threshold
+  if (appType === "iphone") {
+    // For iPhone, calculate a dynamic threshold based on the distribution of x values
+    const xValues = sortedLines.map((line) => line.x)
+    const minX = Math.min(...xValues)
+    const maxX = Math.max(...xValues)
+    positionThreshold = minX + (maxX - minX) / 2
+  } else if (appType === "android") {
+    // For Android, use a more flexible threshold
+    positionThreshold = 40
+  } else {
+    // For unknown app types, try to determine threshold from the data
+    const xValues = sortedLines.map((line) => line.x).sort((a, b) => a - b)
+    // Find the largest gap in x-coordinates to determine the natural split
+    let maxGap = 0
+    let gapPosition = 50
+    for (let i = 1; i < xValues.length; i++) {
+      const gap = xValues[i] - xValues[i - 1]
+      if (gap > maxGap) {
+        maxGap = gap
+        gapPosition = (xValues[i] + xValues[i - 1]) / 2
+      }
+    }
+    // Only use the gap-based threshold if we found a significant gap
+    if (maxGap > 20) {
+      positionThreshold = gapPosition
+    }
+  }
+
+  const messages: PositionedMessage[] = []
+  let currentMessage: PositionedMessage | null = null
+  let lastPosition: "left" | "right" | null = null
+  let lastY = -1
+
+  for (const line of sortedLines) {
+    // Filter out system messages and metadata
+    const filteredText = filterSystemMessages(line.text)
+    if (!filteredText) continue
+
+    // Determine position based on x-coordinate and app type
+    const position = line.x <= positionThreshold ? "left" : "right"
+
+    // If this is a new message or sender changed or large vertical gap
+    if (lastY === -1 || position !== lastPosition || Math.abs(line.y - lastY) > 50) {
       // If we have a current message, add it to the list
       if (currentMessage) {
         messages.push(currentMessage)
@@ -172,25 +259,22 @@ function groupWordsIntoMessages(words: OCRResult[]): OCRResult[] {
 
       // Start a new message
       currentMessage = {
-        text: word.text,
-        boundingBox: { ...word.boundingBox },
-        confidence: word.confidence,
+        content: filteredText,
+        position,
+        y: line.y,
+        confidence: line.confidence,
       }
     } else {
-      // Add to current message
+      // Continue the current message
       if (currentMessage) {
-        currentMessage.text += ` ${word.text}`
-        // Update bounding box to encompass both words
-        currentMessage.boundingBox.width = Math.max(
-          currentMessage.boundingBox.width,
-          word.boundingBox.x + word.boundingBox.width - currentMessage.boundingBox.x,
-        )
+        currentMessage.content += `\n${filteredText}`
         // Average the confidence
-        currentMessage.confidence = (currentMessage.confidence + word.confidence) / 2
+        currentMessage.confidence = (currentMessage.confidence + line.confidence) / 2
       }
     }
 
-    lastY = word.boundingBox.y
+    lastPosition = position
+    lastY = line.y
   }
 
   // Add the last message if it exists
@@ -202,72 +286,255 @@ function groupWordsIntoMessages(words: OCRResult[]): OCRResult[] {
 }
 
 /**
- * Process OCR results to extract messages with positions
- * @param ocrResults Array of OCR results
- * @returns Array of positioned messages
+ * Process OCR results to extract messages with accurate sender attribution
  */
-function processOCRResults(ocrResults: OCRResult[]): PositionedMessage[] {
-  // Sort results by vertical position (y-coordinate)
-  const sortedResults = [...ocrResults].sort((a, b) => a.boundingBox.y - b.boundingBox.y)
+async function processOCRWithBoundingBoxes(
+  imageFile: File,
+  firstPersonName: string,
+  secondPersonName: string,
+  preprocessingOptions?: Partial<PreprocessingOptions>,
+): Promise<Message[]> {
+  try {
+    console.log(`Processing image with bounding box detection for ${firstPersonName} and ${secondPersonName}`)
 
-  // Find the center of the image by analyzing the x-coordinates of all messages
-  const allXCoords = sortedResults.map((r) => r.boundingBox.x)
-  const minX = Math.min(...allXCoords)
-  const maxX = Math.max(...allXCoords.map((x) => x + 200)) // Assuming average message width
-  const centerX = minX + (maxX - minX) / 2
+    // Create a worker - simplified initialization for compatibility
+    const worker = await createWorker()
 
-  // Convert OCR results to positioned messages
-  return sortedResults
-    .map((result) => {
-      // Clean up the text
-      const cleanedText = result.text.trim().replace(/\s+/g, " ")
+    // Set parameters for sparse text detection if supported
+    try {
+      await worker.setParameters({
+        tessedit_pageseg_mode: "11", // PSM.SPARSE_TEXT_OSD for better chat message detection
+        tessedit_char_whitelist:
+          "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?!:;'\"()-_+=@#$%^&*<>{}[]|\\/ ", // Allow common characters
+        tessjs_create_hocr: "1", // Enable HOCR output for better bounding box data
+        tessjs_create_tsv: "1", // Enable TSV output for more detailed word data
+      })
+    } catch (paramError) {
+      console.warn("Could not set Tesseract parameters, continuing with defaults:", paramError)
+    }
 
-      // Skip empty messages
-      if (!cleanedText) {
-        return {
-          content: "",
-          position: "unknown",
-          confidence: 0,
-        }
-      }
+    // Preprocess the image to improve OCR results
+    console.log("Preprocessing image...")
+    const processedImageData = await preprocessImage(imageFile, preprocessingOptions)
+    console.log("Image preprocessing complete")
 
-      // Determine position based on x-coordinate
-      const position = result.boundingBox.x < centerX ? "left" : "right"
+    // Before recognition
+    console.log("Starting OCR recognition...")
+    const result = await worker.recognize(processedImageData)
+    console.log("OCR recognition completed")
+
+    await worker.terminate()
+
+    // Check if result has the expected structure
+    if (!result || !result.data || !result.data.words || !Array.isArray(result.data.words)) {
+      console.warn("OCR result does not have the expected structure:", result)
+      // Return empty array, the calling function will handle fallback
+      return []
+    }
+
+    // Log the raw OCR text for debugging
+    console.log("Raw OCR text:", result.data.text)
+
+    // Extract words with bounding boxes - with null checks
+    const words: OCRWord[] = result.data.words
+      .map((word) => ({
+        text: word.text || "",
+        bbox: word.bbox || { x0: 0, y0: 0, x1: 0, y1: 0 },
+        confidence: word.confidence || 0,
+      }))
+      .filter((word) => word.text.trim() !== "")
+
+    // If no words were extracted, return empty array
+    if (words.length === 0) {
+      console.warn("No words extracted from OCR result")
+      return []
+    }
+
+    // Group words into lines
+    const lines = groupWordsIntoLines(words)
+
+    // If no lines were created, return empty array
+    if (lines.length === 0) {
+      console.warn("No lines created from words")
+      return []
+    }
+
+    // Group lines into messages
+    const positionedMessages = groupLinesIntoMessages(lines)
+
+    // If no messages were created, return empty array
+    if (positionedMessages.length === 0) {
+      console.warn("No messages created from lines")
+      return []
+    }
+
+    // Count messages on each side to verify we have both participants
+    const leftCount = positionedMessages.filter((m) => m.position === "left").length
+    const rightCount = positionedMessages.filter((m) => m.position === "right").length
+
+    console.log(
+      `Detected ${leftCount} messages on left (${secondPersonName}) and ${rightCount} messages on right (${firstPersonName})`,
+    )
+
+    // Convert positioned messages to the Message format
+    const messages: Message[] = positionedMessages.map((message, index) => {
+      // Try to extract timestamp from the message content
+      const { content, timestamp } = extractTimestamp(message.content)
+
+      // Create a timestamp if none was extracted
+      const messageTimestamp = isValidDate(timestamp)
+        ? new Date(timestamp).toISOString()
+        : new Date(Date.now() - (positionedMessages.length - index) * 60000).toISOString()
+
+      // Determine sender based on position
+      // In both Android and iPhone, left messages are typically from the other person
+      const sender = message.position === "left" ? secondPersonName : firstPersonName
 
       return {
-        content: cleanedText,
-        position,
-        confidence: result.confidence,
+        sender,
+        text: content.trim(), // Use text property to match Message interface
+        timestamp: messageTimestamp,
       }
     })
-    .filter((msg) => msg.content.length > 0) // Filter out empty messages
+
+    return messages
+  } catch (error) {
+    console.error("Error processing OCR with bounding boxes:", error)
+    // Return empty array instead of throwing, the calling function will handle fallback
+    return []
+  }
 }
 
 /**
- * Attribute messages to senders based on position and context
- * @param positionedMessages Array of positioned messages
- * @returns Array of attributed messages
+ * Extract messages from screenshots using bounding box detection
+ * This is the main function that should be called from other parts of the application
  */
-function attributeMessagesToSenders(positionedMessages: PositionedMessage[]): Message[] {
-  // Count messages on each side
-  const leftCount = positionedMessages.filter((m) => m.position === "left").length
-  const rightCount = positionedMessages.filter((m) => m.position === "right").length
+export async function extractMessagesFromScreenshots(
+  screenshots: File[],
+  firstPersonName: string,
+  secondPersonName: string,
+): Promise<Message[]> {
+  try {
+    console.log(`Extracting text from ${screenshots.length} screenshots using enhanced OCR with preprocessing`)
 
-  // Assume the side with more messages is "person1" (the user)
-  const person1Position = leftCount >= rightCount ? "left" : "right"
-  const person2Position = person1Position === "left" ? "right" : "left"
-
-  // Convert positioned messages to attributed messages
-  return positionedMessages.map((message, index) => {
-    // Generate a timestamp (messages get progressively later)
-    const timestamp = new Date(Date.now() - (positionedMessages.length - index) * 60000).toISOString()
-
-    return {
-      sender: message.position === person1Position ? "person1" : "person2",
-      content: message.content,
-      timestamp,
+    if (!screenshots || screenshots.length === 0) {
+      throw new Error("No screenshots provided. Please upload at least one screenshot.")
     }
-  })
+
+    // Process each screenshot and combine the results
+    const allMessages: Message[] = []
+    const failedScreenshots: string[] = []
+
+    // Try different preprocessing options for better results
+    const preprocessingOptions = [
+      // Option 1: Default settings (grayscale + normalize + adaptive threshold)
+      { ...defaultOptions },
+
+      // Option 2: More aggressive contrast enhancement
+      {
+        ...defaultOptions,
+        normalize: true,
+        adaptiveThreshold: true,
+        sharpen: true,
+      },
+
+      // Option 3: Simple threshold instead of adaptive
+      {
+        ...defaultOptions,
+        adaptiveThreshold: false,
+        threshold: true,
+        thresholdValue: 128,
+      },
+
+      // Option 4: Invert colors (for dark mode screenshots)
+      {
+        ...defaultOptions,
+        invert: true,
+      },
+    ]
+
+    for (const screenshot of screenshots) {
+      try {
+        console.log(`Processing screenshot: ${screenshot.name}`)
+
+        // Try each preprocessing option until we get good results
+        let messages: Message[] = []
+        let bestOptionIndex = -1
+
+        for (let i = 0; i < preprocessingOptions.length; i++) {
+          console.log(`Trying preprocessing option ${i + 1}...`)
+          const optionMessages = await processOCRWithBoundingBoxes(
+            screenshot,
+            firstPersonName,
+            secondPersonName,
+            preprocessingOptions[i],
+          )
+
+          if (optionMessages && optionMessages.length > 0) {
+            // If this option gave us more messages than previous ones, use it
+            if (optionMessages.length > messages.length) {
+              messages = optionMessages
+              bestOptionIndex = i
+            }
+
+            // If we got a good number of messages, stop trying options
+            if (optionMessages.length >= 5) {
+              break
+            }
+          }
+        }
+
+        if (messages && messages.length > 0) {
+          console.log(
+            `Successfully extracted ${messages.length} messages from ${screenshot.name} using option ${bestOptionIndex + 1}`,
+          )
+          allMessages.push(...messages)
+        } else {
+          console.warn(`No messages extracted from ${screenshot.name} after trying all preprocessing options`)
+          failedScreenshots.push(screenshot.name)
+        }
+      } catch (screenshotError) {
+        console.error(`Error processing screenshot ${screenshot.name}:`, screenshotError)
+        failedScreenshots.push(screenshot.name)
+        // Continue with other screenshots
+      }
+    }
+
+    // If no messages were extracted, throw a detailed error
+    if (allMessages.length === 0) {
+      if (failedScreenshots.length === screenshots.length) {
+        throw new Error(
+          `OCR failed: No messages could be extracted from any of the screenshots. Please check that your screenshots clearly show text messages.`,
+        )
+      } else {
+        throw new Error(`OCR failed: No messages could be extracted from the screenshots.`)
+      }
+    }
+
+    // Sort messages by timestamp
+    const sortedMessages = allMessages.sort((a, b) => {
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    })
+
+    // Verify we have messages from both participants
+    const senders = new Set(sortedMessages.map((m) => m.sender))
+    if (senders.size < 2) {
+      console.warn("Could not detect messages from both participants, check screenshot format")
+    }
+
+    console.log(`Extracted ${sortedMessages.length} messages (${senders.size} participants)`)
+
+    // Log some sample messages for debugging
+    if (sortedMessages.length > 0) {
+      console.log("Sample messages:", sortedMessages.slice(0, 3))
+    }
+
+    return sortedMessages
+  } catch (error) {
+    console.error("Error in extractMessagesFromScreenshots:", error)
+    // Rethrow the error to be handled by the caller
+    throw error
+  }
 }
 
 /**
@@ -276,362 +543,61 @@ function attributeMessagesToSenders(positionedMessages: PositionedMessage[]): Me
  * @returns Boolean indicating if messages are valid
  */
 export function validateExtractedMessages(messages: Message[]): boolean {
-  // Check if we have at least 2 messages
-  if (messages.length < 2) {
+  // Check if we have at least 2 messages total
+  if (!messages || messages.length < 2) {
     return false
   }
 
-  // Check if we have messages from both senders
-  const senders = new Set(messages.map((m) => m.sender))
-  if (senders.size < 2) {
+  // Get unique senders
+  const senders = [...new Set(messages.map((m) => m.sender))]
+
+  // Check if we have at least one sender with messages
+  if (senders.length === 0) {
     return false
   }
 
   // Check if any message has empty content
-  if (messages.some((m) => !m.content || m.content.trim() === "")) {
+  if (messages.some((m) => !m.text || m.text.trim() === "")) {
     return false
   }
 
   return true
 }
 
-// Extract text from screenshots using OCR as an assistant to the AI analysis
-export async function extractTextFromScreenshots(
-  files: File[],
-  firstPersonName: string,
-  secondPersonName: string,
+/**
+ * Extract text from a single image
+ * @param imageData Base64 image data
+ * @param progressCallback Optional callback for progress updates
+ * @returns Array of extracted messages
+ */
+export async function extractTextFromImage(
+  imageData: string,
+  progressCallback?: (progress: number) => void,
 ): Promise<Message[]> {
   try {
-    console.log(`Extracting text from ${files.length} screenshots to feed into AI analysis`)
+    // Create a dummy file object from the base64 data
+    const byteString = atob(imageData.split(",")[1])
+    const mimeString = imageData.split(",")[0].split(":")[1].split(";")[0]
+    const ab = new ArrayBuffer(byteString.length)
+    const ia = new Uint8Array(ab)
 
-    // In a real implementation, we would use a proper OCR service
-    // For now, we'll use the browser's FileReader to read the image files
-    // and then process them to extract text
-
-    const messages: Message[] = []
-    let messageId = 1
-
-    // Ensure we have files to process
-    if (!files || files.length === 0) {
-      console.error("No files provided for OCR processing")
-      throw new Error("No files provided for OCR processing")
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i)
     }
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+    const blob = new Blob([ab], { type: mimeString })
+    const file = new File([blob], "screenshot.png", { type: mimeString })
 
-      try {
-        // Process each file to extract text
-        // This would be replaced with actual OCR in a production environment
-        const extractedText = await processImageFile(file)
+    // Use default names for testing - these will be replaced later
+    const messages = await processOCRWithBoundingBoxes(file, "User", "Friend")
 
-        if (!extractedText) {
-          console.warn(`No text extracted from file ${file.name}`)
-          continue
-        }
-
-        // Parse the extracted text into messages with improved attribution
-        const parsedMessages = parseTextIntoMessagesImproved(
-          extractedText,
-          firstPersonName,
-          secondPersonName,
-          messageId,
-          new Date(),
-        )
-
-        if (parsedMessages && parsedMessages.length > 0) {
-          messages.push(...parsedMessages)
-          messageId += parsedMessages.length
-        }
-      } catch (fileError) {
-        console.error(`Error processing file ${file.name}:`, fileError)
-        // Continue with other files even if one fails
-      }
+    if (progressCallback) {
+      progressCallback(100)
     }
 
-    console.log(`OCR extracted ${messages.length} messages, preparing for AI analysis`)
-
-    // Deduplicate messages before returning
-    const uniqueMessages = deduplicateMessages(messages)
-    console.log(`After deduplication: ${uniqueMessages.length} unique messages`)
-
-    // If no messages were extracted, create some dummy messages for testing
-    if (uniqueMessages.length === 0) {
-      console.warn("No messages extracted from files, creating dummy messages for testing")
-
-      // Create dummy messages for testing
-      const baseDate = new Date()
-
-      // Add some dummy messages from first person
-      uniqueMessages.push({
-        id: "1",
-        text: `Hello ${secondPersonName}, how are you today?`,
-        timestamp: new Date(baseDate.getTime() - 3600000).toISOString(),
-        sender: firstPersonName,
-        status: "read",
-      })
-
-      // Add some dummy messages from second person
-      uniqueMessages.push({
-        id: "2",
-        text: `Hi ${firstPersonName}, I'm doing well! How about you?`,
-        timestamp: new Date(baseDate.getTime() - 3500000).toISOString(),
-        sender: secondPersonName,
-        status: "read",
-      })
-
-      // Add more dummy messages
-      uniqueMessages.push({
-        id: "3",
-        text: "I'm good too. I was wondering if you'd like to meet up this weekend?",
-        timestamp: new Date(baseDate.getTime() - 3400000).toISOString(),
-        sender: firstPersonName,
-        status: "read",
-      })
-
-      uniqueMessages.push({
-        id: "4",
-        text: "That sounds great! I'd love to. What did you have in mind?",
-        timestamp: new Date(baseDate.getTime() - 3300000).toISOString(),
-        sender: secondPersonName,
-        status: "read",
-      })
-    }
-
-    // Sort messages by timestamp
-    return uniqueMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    return messages
   } catch (error) {
-    console.error("Error extracting text from screenshots:", error)
-    throw new Error(
-      `Failed to extract text from screenshots: ${error instanceof Error ? error.message : String(error)}`,
-    )
+    console.error("Error extracting text from image:", error)
+    return []
   }
-}
-
-// Process an image file to extract text
-// In a real implementation, this would use a proper OCR service
-async function processImageFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    try {
-      // In a real implementation, we would use Tesseract.js or a cloud OCR API
-      // For now, we'll just extract metadata from the file to simulate OCR
-      const fileInfo = `File: ${file.name}, Size: ${file.size}, Type: ${file.type}, Last Modified: ${new Date(file.lastModified).toISOString()}`
-
-      // Add some simulated conversation text based on the file name
-      let simulatedText = ""
-
-      if (file.name.toLowerCase().includes("chat") || file.name.toLowerCase().includes("message")) {
-        simulatedText = `
-          Person A: Hey, how are you doing today? 10:15 AM
-          Person B: I'm doing well, thanks for asking! How about you? 10:16 AM
-          Person A: Pretty good. I've been thinking about our conversation yesterday. 10:18 AM
-          Person B: Yes, I've been reflecting on it too. I think we made some good progress. 10:20 AM
-          Person A: I agree. I appreciate you taking the time to listen. 10:22 AM
-          Person B: Of course! That's what friends are for. 10:23 AM
-        `
-      } else {
-        simulatedText = `
-          This appears to be a screenshot of a conversation.
-          Person A - 9:45 AM: Good morning!
-          Person B - 9:47 AM: Morning! Did you sleep well?
-          Person A - 9:48 AM: Not really, I was up late working on that project.
-          Person B - 9:50 AM: Oh no, you should try to get more rest.
-        `
-      }
-
-      // Combine file info and simulated text
-      const result = fileInfo + "\n\n" + simulatedText
-
-      // Simulate processing time
-      setTimeout(() => {
-        resolve(result)
-      }, 500)
-    } catch (error) {
-      reject(error)
-    }
-  })
-}
-
-// Improved message parsing with better attribution
-function parseTextIntoMessagesImproved(
-  text: string,
-  firstPersonName: string,
-  secondPersonName: string,
-  startId: number,
-  baseDate: Date,
-): Message[] {
-  // In a real implementation, this would parse the OCR text into structured messages
-  const messages: Message[] = []
-
-  // Split the text by newlines to simulate different messages
-  const lines = text.split("\n").filter((line) => line.trim().length > 0)
-
-  // First pass: identify message patterns and potential senders
-  const potentialSenders = new Set<string>()
-  const messagePatterns = []
-
-  for (const line of lines) {
-    const trimmedLine = line.trim()
-
-    // Skip file metadata and non-message lines
-    if (trimmedLine.startsWith("File:") || trimmedLine.length < 5) {
-      continue
-    }
-
-    // Check for common message patterns
-    let sender = null
-    let messageText = trimmedLine
-    let timestamp = null
-
-    // Pattern: "Person A: Message text"
-    const colonPattern = /^([^:]+):\s*(.+)$/
-    const colonMatch = trimmedLine.match(colonPattern)
-
-    if (colonMatch) {
-      sender = colonMatch[1].trim()
-      messageText = colonMatch[2].trim()
-      potentialSenders.add(sender)
-
-      // Check if there's a timestamp at the end
-      const timestampMatch = messageText.match(/(.+)\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)$/i)
-      if (timestampMatch) {
-        messageText = timestampMatch[1].trim()
-        timestamp = timestampMatch[2].trim()
-      }
-    }
-    // Pattern: "Person A - 10:15 AM: Message text"
-    else {
-      const dashPattern = /^([^-]+)-\s*([^:]+):\s*(.+)$/
-      const dashMatch = trimmedLine.match(dashPattern)
-
-      if (dashMatch) {
-        sender = dashMatch[1].trim()
-        timestamp = dashMatch[2].trim()
-        messageText = dashMatch[3].trim()
-        potentialSenders.add(sender)
-      }
-    }
-
-    messagePatterns.push({
-      line: trimmedLine,
-      sender,
-      messageText,
-      timestamp,
-    })
-  }
-
-  // Second pass: map detected senders to provided names
-  let firstPersonDetected = ""
-  let secondPersonDetected = ""
-
-  if (potentialSenders.size >= 2) {
-    // Convert set to array for easier handling
-    const senderArray = Array.from(potentialSenders)
-
-    // If we have exactly two senders, map them directly
-    if (senderArray.length === 2) {
-      firstPersonDetected = senderArray[0]
-      secondPersonDetected = senderArray[1]
-    }
-    // If we have more than two, try to find best matches
-    else {
-      // Look for exact matches first
-      for (const sender of senderArray) {
-        if (sender.toLowerCase() === firstPersonName.toLowerCase()) {
-          firstPersonDetected = sender
-        } else if (sender.toLowerCase() === secondPersonName.toLowerCase()) {
-          secondPersonDetected = sender
-        }
-      }
-
-      // If we still don't have matches, use the first two detected senders
-      if (!firstPersonDetected || !secondPersonDetected) {
-        firstPersonDetected = firstPersonDetected || senderArray[0]
-        secondPersonDetected = secondPersonDetected || senderArray[1]
-      }
-    }
-  }
-
-  // Third pass: create messages with proper attribution
-  let lastSender = null
-  let messageIndex = 0
-
-  for (const pattern of messagePatterns) {
-    // Skip non-message lines
-    if (!pattern.messageText || pattern.messageText.length < 2) {
-      continue
-    }
-
-    let sender
-
-    // If we have a detected sender in this line
-    if (pattern.sender) {
-      // Map the detected sender to one of our person names
-      if (pattern.sender === firstPersonDetected) {
-        sender = firstPersonName
-      } else if (pattern.sender === secondPersonDetected) {
-        sender = secondPersonName
-      } else {
-        // If this is a new sender we haven't mapped yet
-        if (lastSender === firstPersonName) {
-          sender = secondPersonName
-        } else {
-          sender = firstPersonName
-        }
-      }
-    }
-    // If no sender detected in this line, alternate based on last sender
-    else {
-      if (!lastSender) {
-        sender = firstPersonName
-      } else {
-        sender = lastSender === firstPersonName ? secondPersonName : firstPersonName
-      }
-    }
-
-    // Create timestamp
-    let timestamp
-    if (pattern.timestamp) {
-      // Try to parse the detected timestamp
-      const timestampDate = new Date(baseDate)
-
-      // Simple timestamp parsing for common formats
-      const timeMatch = pattern.timestamp.match(/(\d{1,2}):(\d{2})(?:\s*(AM|PM))?/i)
-      if (timeMatch) {
-        let hours = Number.parseInt(timeMatch[1])
-        const minutes = Number.parseInt(timeMatch[2])
-        const ampm = timeMatch[3]?.toUpperCase()
-
-        // Handle AM/PM
-        if (ampm === "PM" && hours < 12) {
-          hours += 12
-        } else if (ampm === "AM" && hours === 12) {
-          hours = 0
-        }
-
-        timestampDate.setHours(hours, minutes, 0, 0)
-        timestamp = timestampDate.toISOString()
-      } else {
-        // Fallback: create sequential timestamps
-        timestamp = new Date(baseDate.getTime() + messageIndex * 60000).toISOString()
-      }
-    } else {
-      // No timestamp detected, create sequential timestamps
-      timestamp = new Date(baseDate.getTime() + messageIndex * 60000).toISOString()
-    }
-
-    // Add the message
-    messages.push({
-      id: (startId + messageIndex).toString(),
-      text: pattern.messageText,
-      timestamp,
-      sender,
-      status: "read",
-    })
-
-    lastSender = sender
-    messageIndex++
-  }
-
-  return messages
 }

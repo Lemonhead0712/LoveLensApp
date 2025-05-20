@@ -7,7 +7,7 @@ interface LogoSVGProps {
   color?: string
 }
 
-export function LogoSVG({ className, size = 40 }: LogoSVGProps) {
+function LogoSVG({ className, size = 40 }: LogoSVGProps) {
   return (
     <div className={cn("relative", className)} style={{ width: size, height: size }}>
       <Image
@@ -21,3 +21,5 @@ export function LogoSVG({ className, size = 40 }: LogoSVGProps) {
     </div>
   )
 }
+
+export default LogoSVG

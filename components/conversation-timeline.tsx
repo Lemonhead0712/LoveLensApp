@@ -7,7 +7,7 @@ interface ConversationTimelineProps {
   data: ConversationTimelinePoint[]
 }
 
-export function ConversationTimeline({ data }: ConversationTimelineProps) {
+function ConversationTimeline({ data }: ConversationTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 })
@@ -197,3 +197,5 @@ export function ConversationTimeline({ data }: ConversationTimelineProps) {
     </div>
   )
 }
+
+export default ConversationTimeline

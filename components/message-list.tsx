@@ -9,7 +9,7 @@ interface MessageListProps {
   highlightedMessageId?: string
 }
 
-export function MessageList({ messages, firstPersonName, highlightedMessageId }: MessageListProps) {
+function MessageList({ messages, firstPersonName, highlightedMessageId }: MessageListProps) {
   // Group messages by date
   const groupedMessages: { [key: string]: Message[] } = {}
 
@@ -166,3 +166,5 @@ function getSentimentData(sentiment: number) {
     }
   }
 }
+
+export default MessageList

@@ -9,7 +9,7 @@ interface SparkleEffectProps {
   className?: string
 }
 
-export function SparkleEffect({ count = 15, minSize = 4, maxSize = 8, className = "" }: SparkleEffectProps) {
+function SparkleEffect({ count = 15, minSize = 4, maxSize = 8, className = "" }: SparkleEffectProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -59,3 +59,7 @@ export function SparkleEffect({ count = 15, minSize = 4, maxSize = 8, className 
     </div>
   )
 }
+
+// Export both as default and named export for backward compatibility
+export { SparkleEffect }
+export default SparkleEffect

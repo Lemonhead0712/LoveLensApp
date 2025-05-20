@@ -1,124 +1,146 @@
+// Message interface
 export interface Message {
-  sender: string
-  content: string
+  text: string
   timestamp: string
-  sentiment?: number
-  [key: string]: any
-}
-
-export interface CategoryScores {
-  criticism: number
-  defensiveness: number
-  contempt: number
-  stonewalling: number
-  emotional_awareness: number
-  repair_attempts: number
-  positive_communication: number
-  [key: string]: number
-}
-
-export interface NegativeInsights {
-  criticism_examples: string[]
-  defensiveness_examples: string[]
-  contempt_examples: string[]
-  stonewalling_examples: string[]
-}
-
-export interface SentimentAnalysis {
-  scores: CategoryScores
-  negative_insights: NegativeInsights
-  summary: string
-}
-
-export interface AnalysisResults {
-  participants: {
-    name: string
-    emotionalIntelligence: number
-    communicationStyle: string
-    isFirstPerson: boolean
-  }[]
-  messageCount: number
-  overallScore: number
-  finalCompatibilityScore?: number
-  emotionalBreakdown: EmotionalBreakdown
-  secondPersonEmotionalBreakdown: EmotionalBreakdown
-  gottmanScores: GottmanScores
-  insights: string[]
-  recommendations: string[]
-  gottmanSummary: string
-  gottmanRecommendations: string[]
-  conversationTimeline: ConversationTimelinePoint[]
-  keyMoments: KeyMoment[]
-  messages: Message[]
-  firstPersonProfile: any
-  secondPersonProfile: any
-  relationshipDynamics: RelationshipDynamics
-  analysisMethod: string
-  fallbackOccurred: boolean
-  fallbackReason: string
-  fallbackDetails: {
-    sentiment: boolean
-    profiles: boolean
-    dynamics: boolean
-  }
-  negativeInsights: any
-  id: string
-}
-
-export interface EmotionalBreakdown {
-  empathy: number
-  selfAwareness: number
-  socialSkills: number
-  emotionalRegulation: number
-  motivation: number
-  adaptability: number
-}
-
-export interface GottmanScores {
-  criticism: number
-  contempt: number
-  defensiveness: number
-  stonewalling: number
-  emotionalBids: number
-  turnTowards: number
-  repairAttempts: number
-  sharedMeaning: number
-}
-
-export interface ConversationTimelinePoint {
-  participant: string
-  timestamp: string
+  isFromMe: boolean
   sentiment: number
 }
 
-export interface KeyMoment {
-  title: string
-  description: string
-  timestamp: string
-  messageText: string
-  sender: string
-  sentiment?: number
+// Sentiment analysis result
+export interface SentimentResult {
+  score: number
+  comparative: number
+  tokens: string[]
+  words: string[]
+  positive: string[]
+  negative: string[]
 }
 
-export interface Person {
-  name: string
+// Communication style result
+export interface CommunicationStyleResult {
+  assertiveness: number
+  responsiveness: number
+  emotionalExpressiveness: number
+  clarity: number
+  dominantStyle: string
+  secondaryStyle: string
 }
 
-export interface RelationshipDynamics {
-  positiveToNegativeRatio: number
-  biddingPatterns: {
-    emotionalBids: number
-    turningToward: number
-    turningAway: number
-    turningAgainst: number
+// Psychological profile
+export interface PsychologicalProfile {
+  attachmentStyle: string
+  egoState: {
+    parent: number
+    adult: number
+    child: number
+    dominantState: string
   }
-  conflictStyle: string
-  sharedMeaning: number
-  attachmentCompatibility: string
-  communicationCompatibility: string
-  keyStrengths: string[]
-  keyGrowthAreas: string[]
+  cognitiveBiases: string[]
+  personalityTraits: {
+    openness: number
+    conscientiousness: number
+    extraversion: number
+    agreeableness: number
+    neuroticism: number
+  }
+  strengths: string[]
+  growthAreas: string[]
 }
 
-export type AnalysisResult = AnalysisResults
-export type RelationshipDynamics = RelationshipDynamics
+// Emotional intelligence result
+export interface EmotionalIntelligenceResult {
+  selfAwareness: number
+  selfRegulation: number
+  motivation: number
+  empathy: number
+  socialSkills: number
+  overallScore: number
+}
+
+// Person data
+export interface PersonData {
+  messages: Message[]
+  sentimentResults: SentimentResult[]
+  communicationStyle: CommunicationStyleResult
+  psychologicalProfile: PsychologicalProfile
+  emotionalIntelligence: EmotionalIntelligenceResult
+}
+
+// Conversation data
+export interface ConversationData {
+  personA: {
+    name: string
+    communicationStyle: string
+    emotionalIntelligence: {
+      empathy: number
+      selfAwareness: number
+      socialSkills: number
+      emotionalRegulation: number
+      motivation: number
+      adaptability: number
+    }
+    psychologicalProfile: {
+      attachmentStyle: {
+        primaryStyle: string
+        secondaryStyle?: string | null
+      }
+      transactionalAnalysis: {
+        dominantEgoState: string
+      }
+    }
+    sentiment: number
+    insights: string[]
+    recommendations: string[]
+  }
+  personB: {
+    name: string
+    communicationStyle: string
+    emotionalIntelligence: {
+      empathy: number
+      selfAwareness: number
+      socialSkills: number
+      emotionalRegulation: number
+      motivation: number
+      adaptability: number
+    }
+    psychologicalProfile: {
+      attachmentStyle: {
+        primaryStyle: string
+        secondaryStyle?: string | null
+      }
+      transactionalAnalysis: {
+        dominantEgoState: string
+      }
+    }
+    sentiment: number
+    insights: string[]
+    recommendations: string[]
+  }
+}
+
+// Analysis result
+export interface AnalysisResult {
+  id: string
+  timestamp: string
+  conversationData: ConversationData
+  compatibility: {
+    finalScore: number
+    attachment: number
+    communication: number
+    emotionalSync: number
+    gottmanScores: {
+      criticism: number
+      contempt: number
+      defensiveness: number
+      stonewalling: number
+      partnerCriticism?: number
+      partnerContempt?: number
+      partnerDefensiveness?: number
+      partnerStonewalling?: number
+      positiveNegativeRatio?: number
+    }
+    gottmanSummary: string
+  }
+  messagesWithSentiment: Message[]
+  validationWarnings?: string[]
+}

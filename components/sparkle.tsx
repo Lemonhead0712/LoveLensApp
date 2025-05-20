@@ -52,7 +52,7 @@ const Sparkle = ({ color = "#FFC0CB", size = 10, style = {} }: SparkleProps) => 
   )
 }
 
-export function SparkleEffect() {
+function SparkleEffect() {
   const [sparkles, setSparkles] = useState<any[]>([])
 
   useEffect(() => {
@@ -83,3 +83,7 @@ export function SparkleEffect() {
     </div>
   )
 }
+
+// Export both as default and named export for backward compatibility
+export { SparkleEffect }
+export default SparkleEffect

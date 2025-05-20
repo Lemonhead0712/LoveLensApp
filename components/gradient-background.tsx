@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect, useState, useRef } from "react"
 
-export function GradientBackground({ children }: { children: React.ReactNode }) {
+function GradientBackground({ children }: { children: React.ReactNode }) {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [isMobile, setIsMobile] = useState(false)
   const throttleRef = useRef<number | null>(null)
@@ -76,3 +76,9 @@ export function GradientBackground({ children }: { children: React.ReactNode }) 
     </div>
   )
 }
+
+// Named export for backward compatibility
+export { GradientBackground }
+
+// Default export
+export default GradientBackground

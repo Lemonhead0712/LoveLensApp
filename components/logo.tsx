@@ -11,7 +11,7 @@ interface LogoProps {
   showText?: boolean
 }
 
-export function Logo({ size = "medium", withText = true, asLink = true, className = "", showText = true }: LogoProps) {
+function Logo({ size = "medium", withText = true, asLink = true, className = "", showText = true }: LogoProps) {
   // Adjust size based on screen size
   const sizeMap = {
     small: { default: 32, sm: 40 },
@@ -67,3 +67,7 @@ export function Logo({ size = "medium", withText = true, asLink = true, classNam
 
   return logoContent
 }
+
+// Export both as named export and default export for backward compatibility
+export { Logo }
+export default Logo

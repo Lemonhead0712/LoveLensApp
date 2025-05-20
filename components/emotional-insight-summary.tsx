@@ -8,7 +8,7 @@ interface EmotionalInsightSummaryProps {
   title?: string
 }
 
-export function EmotionalInsightSummary({ insights, title = "Emotional Insights" }: EmotionalInsightSummaryProps) {
+function EmotionalInsightSummary({ insights, title = "Emotional Insights" }: EmotionalInsightSummaryProps) {
   if (!insights || insights.length === 0) {
     return null
   }
@@ -34,3 +34,5 @@ export function EmotionalInsightSummary({ insights, title = "Emotional Insights"
     </Card>
   )
 }
+
+export default EmotionalInsightSummary

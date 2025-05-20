@@ -23,11 +23,7 @@ function getRatioDescription(ratio: number): string {
   }
 }
 
-export function RelationshipDynamicsCard({
-  dynamics,
-  participant1Name,
-  participant2Name,
-}: RelationshipDynamicsCardProps) {
+function RelationshipDynamicsCard({ dynamics, participant1Name, participant2Name }: RelationshipDynamicsCardProps) {
   // Ensure dynamics has all required properties with defaults
   const safeData = {
     positiveToNegativeRatio: dynamics?.positiveToNegativeRatio || 3.5,
@@ -191,3 +187,9 @@ export function RelationshipDynamicsCard({
     </Card>
   )
 }
+
+// Maintain the named export for backward compatibility
+export { RelationshipDynamicsCard }
+
+// Add default export
+export default RelationshipDynamicsCard

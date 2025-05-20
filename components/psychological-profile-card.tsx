@@ -10,12 +10,16 @@ import { AttachmentStyle, EgoState } from "@/lib/psychological-frameworks"
 
 interface PsychologicalProfileCardProps {
   profile: any
-  participantName: string
+  participantName?: string
 }
 
-export function PsychologicalProfileCard({ profile, participantName }: PsychologicalProfileCardProps) {
+function PsychologicalProfileCard({ profile, participantName = "Person" }: PsychologicalProfileCardProps) {
   // Generate different default values based on participant name to ensure uniqueness
-  const isFirstPerson = participantName.toLowerCase().includes("lamar")
+  // Use a safe check for participantName before calling toLowerCase()
+  const isFirstPerson =
+    participantName && typeof participantName === "string"
+      ? participantName.toLowerCase().includes("you") || participantName.toLowerCase() === "you"
+      : false
 
   const defaultAttachmentStyle = {
     primaryStyle: isFirstPerson ? ("Secure" as AttachmentStyle) : ("Anxious" as AttachmentStyle),
@@ -269,7 +273,7 @@ export function PsychologicalProfileCard({ profile, participantName }: Psycholog
             />
           </div>
 
-          {cognitivePatterns.topDistortions.length > 0 && (
+          {cognitivePatterns.topDistortions && cognitivePatterns.topDistortions.length > 0 && (
             <div className="mb-3">
               <h4 className="text-sm font-medium mb-2 flex items-center">
                 <AlertTriangle className="h-3 w-3 text-amber-500 mr-1" />
@@ -283,7 +287,7 @@ export function PsychologicalProfileCard({ profile, participantName }: Psycholog
             </div>
           )}
 
-          {cognitivePatterns.topHealthyPatterns.length > 0 && (
+          {cognitivePatterns.topHealthyPatterns && cognitivePatterns.topHealthyPatterns.length > 0 && (
             <div>
               <h4 className="text-sm font-medium mb-2 flex items-center">
                 <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
@@ -336,3 +340,6 @@ function getAttachmentDescription(style: AttachmentStyle): string {
       return "Shows a balanced communication style with various attachment elements."
   }
 }
+
+export { PsychologicalProfileCard }
+export default PsychologicalProfileCard

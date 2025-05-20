@@ -1,252 +1,516 @@
 import type { AnalysisResults, Message } from "./types"
-import { extractTextFromScreenshots } from "./ocr-service"
+import { extractMessagesFromScreenshots } from "./ocr-service"
 import { analyzeSentiment } from "./sentiment-analyzer"
-import { getCommunicationStyleLabel } from "./communication-styles"
+import { saveAnalysisResults, getAnalysisResults, storeTransformedAnalysisResult } from "./storage-utils"
+import { validateAnalysisResults } from "./result-validator"
+import { generatePsychologicalProfile } from "./psychological-frameworks"
 
-// Process screenshots and generate analysis results
+// Main function to analyze screenshots
 export async function analyzeScreenshots(
-  files: File[],
-  firstPersonName = "Person A",
-  secondPersonName = "Person B",
-): Promise<AnalysisResults | null> {
+  screenshots: File[],
+  firstPersonName: string,
+  secondPersonName: string,
+): Promise<AnalysisResults> {
   try {
-    console.log(`Starting analysis for ${firstPersonName} and ${secondPersonName} with ${files.length} files`)
+    console.log(`Starting analysis for ${screenshots.length} screenshots`)
+    console.log(`First person: ${firstPersonName}, Second person: ${secondPersonName}`)
 
-    // Step 1: Extract text from screenshots using OCR
-    console.log("Extracting text from screenshots...")
-    const extractedMessages = await extractTextFromScreenshots(files, firstPersonName, secondPersonName)
-    console.log(`Extracted ${extractedMessages.length} messages from screenshots`)
+    // Extract messages from screenshots
+    const extractedMessages = await extractMessagesFromScreenshots(screenshots, firstPersonName, secondPersonName)
+    console.log(`Extracted ${extractedMessages.length} messages`)
 
-    if (extractedMessages.length === 0) {
-      console.error("No messages could be extracted from the provided screenshots")
-      throw new Error("No messages could be extracted from the provided screenshots")
+    // 🔁 Re-Establish Two-Way Separation - Clearly separate messages by sender
+    const messagesA = extractedMessages.filter((msg) => msg.sender === firstPersonName)
+    const messagesB = extractedMessages.filter((msg) => msg.sender === secondPersonName)
+
+    if (!messagesA.length || !messagesB.length) {
+      throw new Error("OCR message separation failed: One or both sides have zero messages.")
     }
-
-    // Step 2: Analyze sentiment and generate insights
-    console.log("Analyzing sentiment and generating insights...")
-    const analysisResults = await analyzeSentiment(extractedMessages, firstPersonName, secondPersonName)
-
-    if (!analysisResults) {
-      console.error("Sentiment analysis failed to produce results")
-      throw new Error("Sentiment analysis failed to produce results")
-    }
-
-    // Step 3: Calculate emotional intelligence scores based on the sentiment analysis
-    const firstPersonMessages = extractedMessages.filter((msg) => msg.sender === firstPersonName)
-    const secondPersonMessages = extractedMessages.filter((msg) => msg.sender === secondPersonName)
-
-    // Calculate weighted sentiment for each person - FIX: Use message count, not length
-    const firstPersonSentiment = calculateNormalizedSentiment(firstPersonMessages)
-    const secondPersonSentiment = calculateNormalizedSentiment(secondPersonMessages)
 
     console.log(
-      `Normalized sentiment - ${firstPersonName}: ${firstPersonSentiment}, ${secondPersonName}: ${secondPersonSentiment}`,
+      `Separated messages - ${firstPersonName}: ${messagesA.length}, ${secondPersonName}: ${messagesB.length}`,
     )
 
-    // Get linguistic patterns for normalization
-    const firstPersonLinguistics = analysisResults.firstPersonProfile?.linguisticPatterns
-    const secondPersonLinguistics = analysisResults.secondPersonProfile?.linguisticPatterns
+    // ✅ Soft Handling + Logging - Replace error throwing with warnings
+    const validationWarnings: string[] = []
 
-    if (!firstPersonLinguistics || !secondPersonLinguistics) {
-      console.warn("Linguistic patterns missing, using default values")
+    if (!messagesA || messagesA.length === 0) {
+      const warning = `⚠️ No messages from ${firstPersonName}. Skipping their analysis.`
+      console.warn(warning)
+      validationWarnings.push(warning)
     }
 
-    // Normalize linguistic patterns - safely handle missing data
-    const normalizedLinguistics = normalizeLinguisticPatterns(
-      firstPersonLinguistics || getDefaultLinguisticPatterns(),
-      secondPersonLinguistics || getDefaultLinguisticPatterns(),
+    if (!messagesB || messagesB.length === 0) {
+      const warning = `⚠️ No messages from ${secondPersonName}. Skipping their analysis.`
+      console.warn(warning)
+      validationWarnings.push(warning)
+    }
+
+    // Initialize variables with default values
+    let sentimentA: any = { overallScore: 0, messagesWithSentiment: [], gottmanScores: {}, relationshipDynamics: {} }
+    let sentimentB: any = { overallScore: 0, messagesWithSentiment: [], gottmanScores: {}, relationshipDynamics: {} }
+    let linguisticA: any = {}
+    let linguisticB: any = {}
+    let communicationStyleA = "Unknown"
+    let communicationStyleB = "Unknown"
+    let profileA: any = {
+      attachmentStyle: { primaryStyle: "Unknown" },
+      transactionalAnalysis: { dominantEgoState: "Unknown" },
+      cognitivePatterns: {},
+    }
+    let profileB: any = {
+      attachmentStyle: { primaryStyle: "Unknown" },
+      transactionalAnalysis: { dominantEgoState: "Unknown" },
+      cognitivePatterns: {},
+    }
+    let emotionalBreakdownA: any = {}
+    let emotionalBreakdownB: any = {}
+    let emotionalIntelligenceA = 0
+    let emotionalIntelligenceB = 0
+
+    // ✅ Wrap Each Participant's Analysis in Conditional Blocks
+    const participants: any[] = []
+
+    // Analyze first person if they have messages
+    if (messagesA && messagesA.length > 0) {
+      console.log(`Analyzing sentiment for ${firstPersonName}...`)
+      sentimentA = await analyzeSentiment(messagesA, firstPersonName)
+
+      console.log(`Analyzing linguistic patterns for ${firstPersonName}...`)
+      linguisticA = calculateLinguisticPatterns(messagesA)
+
+      console.log(`Determining communication style for ${firstPersonName}...`)
+      communicationStyleA = determineCommStyle(linguisticA, messagesA)
+
+      console.log(`Generating psychological profile for ${firstPersonName}...`)
+      profileA = generatePsychologicalProfile(messagesA, firstPersonName)
+
+      console.log(`Calculating emotional intelligence for ${firstPersonName}...`)
+      emotionalBreakdownA = calculateEmotionalBreakdown(messagesA, sentimentA.overallScore)
+      emotionalIntelligenceA = calculateEmotionalIntelligence(
+        emotionalBreakdownA,
+        sentimentA.firstPersonProfile,
+        linguisticA,
+        messagesA,
+      )
+
+      // Add first person to participants array
+      participants.push({
+        name: firstPersonName,
+        communicationStyle: communicationStyleA,
+        emotionalIntelligence: emotionalIntelligenceA,
+        attachmentStyle: profileA.attachmentStyle.primaryStyle,
+        egoState: profileA.transactionalAnalysis.dominantEgoState,
+        cognitivePatterns: profileA.cognitivePatterns,
+        emotionalBreakdown: emotionalBreakdownA,
+        psychologicalProfile: profileA,
+        sentiment: sentimentA.overallScore,
+        linguisticPatterns: linguisticA,
+        insights: sentimentA.insights || [],
+        recommendations: sentimentA.recommendations || [],
+      })
+    } else {
+      // Add placeholder for first person
+      participants.push({
+        name: firstPersonName,
+        note: "No messages found from this participant. Analysis skipped.",
+        communicationStyle: "Unknown",
+        emotionalIntelligence: 0,
+        attachmentStyle: "Unknown",
+        egoState: "Unknown",
+        cognitivePatterns: {},
+        emotionalBreakdown: {},
+        psychologicalProfile: {},
+        sentiment: 0,
+        linguisticPatterns: {},
+        insights: [],
+        recommendations: [],
+      })
+    }
+
+    // Analyze second person if they have messages
+    if (messagesB && messagesB.length > 0) {
+      console.log(`Analyzing sentiment for ${secondPersonName}...`)
+      sentimentB = await analyzeSentiment(messagesB, secondPersonName)
+
+      console.log(`Analyzing linguistic patterns for ${secondPersonName}...`)
+      linguisticB = calculateLinguisticPatterns(messagesB)
+
+      console.log(`Determining communication style for ${secondPersonName}...`)
+      communicationStyleB = determineCommStyle(linguisticB, messagesB)
+
+      console.log(`Generating psychological profile for ${secondPersonName}...`)
+      profileB = generatePsychologicalProfile(messagesB, secondPersonName)
+
+      console.log(`Calculating emotional intelligence for ${secondPersonName}...`)
+      emotionalBreakdownB = calculateEmotionalBreakdown(messagesB, sentimentB.overallScore)
+      emotionalIntelligenceB = calculateEmotionalIntelligence(
+        emotionalBreakdownB,
+        sentimentB.firstPersonProfile,
+        linguisticB,
+        messagesB,
+      )
+
+      // Add second person to participants array
+      participants.push({
+        name: secondPersonName,
+        communicationStyle: communicationStyleB,
+        emotionalIntelligence: emotionalIntelligenceB,
+        attachmentStyle: profileB.attachmentStyle.primaryStyle,
+        egoState: profileB.transactionalAnalysis.dominantEgoState,
+        cognitivePatterns: profileB.cognitivePatterns,
+        emotionalBreakdown: emotionalBreakdownB,
+        psychologicalProfile: profileB,
+        sentiment: sentimentB.overallScore,
+        linguisticPatterns: linguisticB,
+        insights: sentimentB.insights || [],
+        recommendations: sentimentB.recommendations || [],
+      })
+    } else {
+      // Add placeholder for second person
+      participants.push({
+        name: secondPersonName,
+        note: "No messages found from this participant. Analysis skipped.",
+        communicationStyle: "Unknown",
+        emotionalIntelligence: 0,
+        attachmentStyle: "Unknown",
+        egoState: "Unknown",
+        cognitivePatterns: {},
+        emotionalBreakdown: {},
+        psychologicalProfile: {},
+        sentiment: 0,
+        linguisticPatterns: {},
+        insights: [],
+        recommendations: [],
+      })
+    }
+
+    // Calculate compatibility only if both participants have messages
+    let compatibility: any = null
+    if (messagesA && messagesA.length > 0 && messagesB && messagesB.length > 0) {
+      // Calculate compatibility scores
+      const attachmentCompatibilityScore = calculateAttachmentCompatibility(
+        profileA.attachmentStyle.primaryStyle,
+        profileB.attachmentStyle.primaryStyle,
+      )
+
+      const communicationStyleCompatibilityScore = calculateCommunicationStyleCompatibility(
+        communicationStyleA,
+        communicationStyleB,
+      )
+
+      const emotionalSyncScore = calculateEmotionalSynchrony(emotionalBreakdownA, emotionalBreakdownB)
+
+      // Calculate category scores
+      const categoryScores = calculateCategoryScores(
+        emotionalIntelligenceA,
+        emotionalIntelligenceB,
+        sentimentA.gottmanScores,
+        emotionalBreakdownA,
+        emotionalBreakdownB,
+        sentimentA.relationshipDynamics,
+        communicationStyleA,
+        communicationStyleB,
+        profileA,
+        profileB,
+      )
+
+      const finalCompatibilityScore = calculateFinalCompatibilityScore(categoryScores)
+
+      // Structure the compatibility data
+      compatibility = {
+        attachment: attachmentCompatibilityScore,
+        communication: communicationStyleCompatibilityScore,
+        emotionalSync: emotionalSyncScore,
+        categoryScores,
+        finalScore: finalCompatibilityScore,
+        gottmanScores: sentimentA.gottmanScores,
+        relationshipDynamics: sentimentA.relationshipDynamics,
+      }
+    } else {
+      // Create a placeholder compatibility object with null values
+      compatibility = {
+        attachment: null,
+        communication: null,
+        emotionalSync: null,
+        categoryScores: {
+          emotionalIntelligence: null,
+          communicationStyles: null,
+          compatibility: null,
+          psychology: null,
+          relationshipDynamics: null,
+        },
+        finalScore: null,
+        gottmanScores: {},
+        relationshipDynamics: {},
+        note: "Compatibility analysis requires messages from both participants.",
+      }
+      validationWarnings.push("⚠️ Compatibility analysis skipped due to missing messages from one or both participants.")
+    }
+
+    // Enhance the messagesWithSentiment handling in analyzeScreenshots
+    // Combine messages with sentiment
+    const messagesWithSentiment = [
+      ...(sentimentA.messagesWithSentiment || []),
+      ...(sentimentB.messagesWithSentiment || []),
+    ].sort((a, b) =>
+      a.timestamp && b.timestamp ? new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() : 0,
     )
 
-    // Calculate emotional breakdowns using the helper function
-    const firstPersonEmo = profileToBreakdown(
-      analysisResults.firstPersonProfile || getDefaultProfile(),
-      firstPersonSentiment,
-    )
-    const secondPersonEmo = profileToBreakdown(
-      analysisResults.secondPersonProfile || getDefaultProfile(),
-      secondPersonSentiment,
-    )
+    // Ensure each message has required properties
+    const enhancedMessagesWithSentiment = messagesWithSentiment.map((msg) => ({
+      ...msg,
+      sender: msg.sender || "Unknown",
+      text: msg.text || "",
+      timestamp: msg.timestamp || new Date().toISOString(),
+      sentiment: msg.sentiment || 50,
+      sentimentScore: msg.sentimentScore || 50,
+      detectedTone: msg.detectedTone || "neutral",
+    }))
 
-    // Calculate emotional intelligence based on normalized breakdowns
-    const firstPersonEI = calculateEmotionalIntelligence(
-      firstPersonEmo,
-      analysisResults.firstPersonProfile || getDefaultProfile(),
-      normalizedLinguistics.first,
-    )
+    // Build the final results object
+    const results = {
+      id: generateAnalysisId(),
+      timestamp: new Date().toISOString(),
+      participants,
+      compatibility,
+      messagesWithSentiment: enhancedMessagesWithSentiment,
+      keyMoments: [...(sentimentA.keyMoments || []), ...(sentimentB.keyMoments || [])],
+      gottmanSummary: sentimentA.gottmanSummary || "Analysis incomplete due to insufficient data.",
+      gottmanRecommendations: sentimentA.gottmanRecommendations || [],
+      analysisMethod: "partial-if-available",
+      validationWarnings,
+    }
 
-    const secondPersonEI = calculateEmotionalIntelligence(
-      secondPersonEmo,
-      analysisResults.secondPersonProfile || getDefaultProfile(),
-      normalizedLinguistics.second,
-    )
-
-    console.log(`Emotional intelligence - ${firstPersonName}: ${firstPersonEI}, ${secondPersonName}: ${secondPersonEI}`)
-
-    // Step 4: Determine communication styles based on normalized linguistic patterns
-    const firstPersonStyle = determineCommStyle(normalizedLinguistics.first)
-    const secondPersonStyle = determineCommStyle(normalizedLinguistics.second)
-
-    // Step 5: Generate timeline data from messages with sentiment
-    const timelineData = generateTimelineData(analysisResults.messagesWithSentiment || [])
-
-    // Step 6: Calculate category scores for final compatibility score
-    const categoryScores = calculateCategoryScores(
-      firstPersonEI,
-      secondPersonEI,
-      analysisResults.gottmanScores || getDefaultGottmanScores(),
-      firstPersonEmo,
-      secondPersonEmo,
-      analysisResults.relationshipDynamics || getDefaultRelationshipDynamics(),
+    // Log the messagesWithSentiment for debugging
+    console.log(`Final messagesWithSentiment count: ${enhancedMessagesWithSentiment.length}`)
+    console.log(
+      "Sample messagesWithSentiment:",
+      enhancedMessagesWithSentiment.length > 0
+        ? enhancedMessagesWithSentiment.slice(0, 2)
+        : "No messages with sentiment",
     )
 
-    // Step 7: Calculate final compatibility score (average of category averages)
-    const finalCompatibilityScore = calculateFinalCompatibilityScore(categoryScores)
+    // Validate results to ensure they're not too similar
+    const validationResult = validateAnalysisResults(results)
 
-    // Step 8: Compile the final analysis results
-    const results: AnalysisResults = {
+    // Combine existing warnings with new ones
+    if (validationResult.warnings && validationResult.warnings.length > 0) {
+      results.validationWarnings = [...results.validationWarnings, ...validationResult.warnings]
+    }
+
+    // Save analysis results
+    await saveAnalysisResults(results)
+    await storeTransformedAnalysisResult(results)
+
+    // Log the final results for debugging
+    console.log("Final Results:", JSON.stringify(results, null, 2))
+
+    return results
+  } catch (error) {
+    console.error("Error analyzing screenshots:", error)
+    // Create a minimal valid result object even in case of error
+    const errorResults: AnalysisResults = {
+      id: generateAnalysisId(),
+      timestamp: new Date().toISOString(),
       participants: [
         {
           name: firstPersonName,
-          emotionalIntelligence: firstPersonEI,
-          communicationStyle: firstPersonStyle,
-          isFirstPerson: true,
+          note: "Analysis failed due to an error.",
+          communicationStyle: "Unknown",
+          emotionalIntelligence: 0,
+          attachmentStyle: "Unknown",
+          egoState: "Unknown",
+          cognitivePatterns: {},
+          emotionalBreakdown: {},
+          psychologicalProfile: {},
+          sentiment: 0,
+          linguisticPatterns: {},
+          insights: [],
+          recommendations: [],
         },
         {
           name: secondPersonName,
-          emotionalIntelligence: secondPersonEI,
-          communicationStyle: secondPersonStyle,
-          isFirstPerson: false,
+          note: "Analysis failed due to an error.",
+          communicationStyle: "Unknown",
+          emotionalIntelligence: 0,
+          attachmentStyle: "Unknown",
+          egoState: "Unknown",
+          cognitivePatterns: {},
+          emotionalBreakdown: {},
+          psychologicalProfile: {},
+          sentiment: 0,
+          linguisticPatterns: {},
+          insights: [],
+          recommendations: [],
         },
       ],
-      messageCount: analysisResults.messagesWithSentiment?.length || extractedMessages.length,
-      overallScore: analysisResults.overallScore || 0,
-      finalCompatibilityScore, // Add the new properly calculated score
-      emotionalBreakdown: firstPersonEmo,
-      secondPersonEmotionalBreakdown: secondPersonEmo,
-      gottmanScores: analysisResults.gottmanScores || getDefaultGottmanScores(),
-      insights: analysisResults.insights || [],
-      recommendations: analysisResults.recommendations || [],
-      gottmanSummary: analysisResults.gottmanSummary || "",
-      gottmanRecommendations: analysisResults.gottmanRecommendations || [],
-      conversationTimeline: timelineData,
-      keyMoments: analysisResults.keyMoments || [],
-      messages: analysisResults.messagesWithSentiment || extractedMessages,
-      firstPersonProfile: analysisResults.firstPersonProfile || getDefaultProfile(),
-      secondPersonProfile: analysisResults.secondPersonProfile || getDefaultProfile(),
-      relationshipDynamics: analysisResults.relationshipDynamics || getDefaultRelationshipDynamics(),
-      analysisMethod: analysisResults.analysisMethod || "standard",
-      categoryScores, // Add category scores for transparency
+      compatibility: null,
+      messagesWithSentiment: [],
+      keyMoments: [],
+      gottmanSummary: "Analysis failed due to an error.",
+      gottmanRecommendations: [],
+      analysisMethod: "error-fallback",
+      validationWarnings: [`Error analyzing screenshots: ${error instanceof Error ? error.message : String(error)}`],
     }
+    return errorResults
+  }
+}
 
-    console.log("Analysis completed successfully")
-    return results
+// Function to get previous analysis results
+export async function getPreviousAnalysis(): Promise<AnalysisResults | null> {
+  try {
+    return await getAnalysisResults()
   } catch (error) {
-    console.error("Error in analyzeScreenshots:", error)
-    throw new Error(`Failed to analyze screenshots: ${error instanceof Error ? error.message : String(error)}`)
+    console.error("Error getting previous analysis:", error)
+    return null
   }
 }
 
-// New function to calculate category scores
-interface CategoryScores {
-  emotionalIntelligence: number
-  communicationStyles: number
-  compatibility: number
-  psychology: number
-  relationshipDynamics: number
-}
+// Calculate linguistic patterns from messages directly
+function calculateLinguisticPatterns(messages: Message[]) {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot calculate linguistic patterns: No messages provided")
+  }
 
-function calculateCategoryScores(
-  firstPersonEI: number,
-  secondPersonEI: number,
-  gottmanScores: any,
-  firstPersonEmo: any,
-  secondPersonEmo: any,
-  relationshipDynamics: any,
-): CategoryScores {
-  // 1. Emotional Intelligence - average of both participants
-  const emotionalIntelligence = (firstPersonEI + secondPersonEI) / 2
+  // Calculate emotional expressiveness based on sentiment variance
+  const sentiments = messages.map((m) => m.sentiment || 50)
+  const avgSentiment = sentiments.reduce((sum, val) => sum + val, 0) / sentiments.length
+  const variance = sentiments.reduce((sum, val) => sum + Math.pow(val - avgSentiment, 2), 0) / sentiments.length
+  const emotionalExpressiveness = Math.min(100, Math.max(30, 50 + variance / 10))
 
-  // 2. Communication Styles - based on complementary styles and clarity
-  const communicationStyles =
-    (100 -
-      Math.abs(firstPersonEmo.selfAwareness - secondPersonEmo.selfAwareness) +
-      (100 - Math.abs(firstPersonEmo.socialSkills - secondPersonEmo.socialSkills)) +
-      gottmanScores.sharedMeaning) /
-    3
+  // Calculate cognitive complexity based on message length and vocabulary
+  const avgLength = messages.reduce((sum, m) => sum + (m.text?.length || 0), 0) / messages.length
+  const uniqueWords = new Set(
+    messages.flatMap((m) => {
+      // Add type checking for message.text
+      const text = typeof m.text === "string" ? m.text.toLowerCase() : ""
+      return text.split(/\s+/)
+    }),
+  ).size
+  const cognitiveComplexity = Math.min(100, Math.max(30, 40 + avgLength / 10 + uniqueWords / 20))
 
-  // 3. Compatibility - based on Gottman positive metrics
-  const compatibility =
-    (gottmanScores.emotionalBids +
-      gottmanScores.turnTowards +
-      gottmanScores.repairAttempts +
-      gottmanScores.sharedMeaning) /
-    4
+  // Calculate social engagement based on message frequency and questions
+  const questionCount = messages.filter((m) => {
+    const text = typeof m.text === "string" ? m.text : ""
+    return text.includes("?")
+  }).length
+  const questionRatio = questionCount / messages.length
+  const socialEngagement = Math.min(100, Math.max(30, 40 + messages.length / 2 + questionRatio * 50))
 
-  // 4. Psychology - based on attachment and cognitive patterns
-  const psychology =
-    ((relationshipDynamics.attachmentCompatibility === "Highly Compatible"
-      ? 90
-      : relationshipDynamics.attachmentCompatibility === "Compatible with Growth Potential"
-        ? 75
-        : relationshipDynamics.attachmentCompatibility === "Moderately Compatible"
-          ? 60
-          : relationshipDynamics.attachmentCompatibility === "Potentially Challenging"
-            ? 40
-            : 50) +
-      (firstPersonEmo.adaptability + secondPersonEmo.adaptability) / 2) /
-    2
+  // Calculate psychological distancing based on third-person references
+  const thirdPersonCount = messages.filter((m) => {
+    const text = typeof m.text === "string" ? m.text.toLowerCase() : ""
+    return text.includes(" he ") || text.includes(" she ") || text.includes(" they ") || text.includes(" them ")
+  }).length
+  const thirdPersonRatio = thirdPersonCount / messages.length
+  const psychologicalDistancing = Math.min(100, Math.max(30, 40 + thirdPersonRatio * 100))
 
-  // 5. Relationship Dynamics - based on Gottman negative metrics (inverted) and ratio
-  const relationshipDynamics_score =
-    (100 -
-      gottmanScores.criticism +
-      (100 - gottmanScores.contempt) +
-      (100 - gottmanScores.defensiveness) +
-      (100 - gottmanScores.stonewalling) +
-      Math.min(100, relationshipDynamics.positiveToNegativeRatio * 20)) /
-    5
+  // Calculate certainty level based on definitive language
+  const certaintyKeywords = ["definitely", "always", "never", "must", "absolutely", "certainly", "sure", "know"]
+  const uncertaintyKeywords = ["maybe", "perhaps", "possibly", "might", "could", "sometimes", "think", "guess"]
 
-  // Ensure all scores are within 0-100 range
+  let certaintyCount = 0
+  let uncertaintyCount = 0
+
+  messages.forEach((message) => {
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
+
+    certaintyKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) certaintyCount++
+    })
+
+    uncertaintyKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) uncertaintyCount++
+    })
+  })
+
+  const totalCertaintyWords = certaintyCount + uncertaintyCount || 1
+  const certaintyRatio = certaintyCount / totalCertaintyWords
+  const certaintyLevel = Math.min(100, Math.max(30, 40 + certaintyRatio * 60))
+
   return {
-    emotionalIntelligence: normalizeScore(emotionalIntelligence),
-    communicationStyles: normalizeScore(communicationStyles),
-    compatibility: normalizeScore(compatibility),
-    psychology: normalizeScore(psychology),
-    relationshipDynamics: normalizeScore(relationshipDynamics_score),
+    emotionalExpressiveness,
+    cognitiveComplexity,
+    socialEngagement,
+    dominantEmotions: determineDominantEmotions(messages),
+    psychologicalDistancing,
+    certaintyLevel,
   }
 }
 
-// New function to calculate final compatibility score
-function calculateFinalCompatibilityScore(categoryScores: CategoryScores): number {
-  const average =
-    (categoryScores.emotionalIntelligence +
-      categoryScores.communicationStyles +
-      categoryScores.compatibility +
-      categoryScores.psychology +
-      categoryScores.relationshipDynamics) /
-    5
+// Determine dominant emotions from messages
+function determineDominantEmotions(messages: Message[]): string[] {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot determine dominant emotions: No messages provided")
+  }
 
-  // Round to 1 decimal place
-  return Math.round(average * 10) / 10
+  const emotionKeywords = {
+    Joy: ["happy", "joy", "glad", "excited", "great", "😊", "😃", "😄"],
+    Sadness: ["sad", "sorry", "miss", "upset", "disappointed", "😢", "😔", "😞"],
+    Anger: ["angry", "mad", "annoyed", "frustrated", "😠", "😡", "😤"],
+    Fear: ["afraid", "worried", "nervous", "scared", "anxious", "😨", "😰", "😱"],
+    Surprise: ["wow", "omg", "surprised", "unexpected", "😮", "😲", "😯"],
+    Trust: ["trust", "believe", "sure", "definitely", "rely", "count on"],
+    Anticipation: ["looking forward", "can't wait", "hope", "excited for"],
+    Disgust: ["gross", "disgusting", "ew", "yuck", "🤢", "🤮"],
+  }
+
+  const emotionCounts: Record<string, number> = {}
+
+  // Initialize counts
+  Object.keys(emotionKeywords).forEach((emotion) => {
+    emotionCounts[emotion] = 0
+  })
+
+  // Count emotion keywords in messages
+  messages.forEach((message) => {
+    // Add type checking for message.text
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
+
+    Object.entries(emotionKeywords).forEach(([emotion, keywords]) => {
+      keywords.forEach((keyword) => {
+        if (text.includes(keyword)) {
+          emotionCounts[emotion]++
+        }
+      })
+    })
+  })
+
+  // Sort emotions by count and return top 3
+  return Object.entries(emotionCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emotion]) => emotion)
 }
 
-// FIX: Calculate sentiment based on message count, not length
+// Calculate sentiment based on message count, not length
 function calculateNormalizedSentiment(messages: Message[]): number {
-  if (messages.length === 0) return 50 // Default neutral sentiment
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot calculate sentiment: No messages provided")
+  }
 
   // Simple average of sentiment scores
   const sum = messages.reduce((total, msg) => total + (msg.sentiment ?? 50), 0)
   return Math.round(sum / messages.length)
 }
 
-// Improved normalization function
+// Normalize score within bounds
 function normalizeScore(value: number, min = 0, max = 100): number {
   // Ensure value is within bounds
-  return Math.min(100, Math.max(0, value))
+  return Math.min(max, Math.max(min, value))
 }
 
 // Helper function to normalize linguistic patterns between two participants
 function normalizeLinguisticPatterns(firstPatterns: any, secondPatterns: any) {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have patterns
+  if (!firstPatterns || !secondPatterns) {
+    throw new Error("Cannot normalize linguistic patterns: Missing pattern data")
+  }
+
   // Normalize emotional expressiveness
   const minExp = Math.min(firstPatterns.emotionalExpressiveness || 0, secondPatterns.emotionalExpressiveness || 0)
   const maxExp = Math.max(firstPatterns.emotionalExpressiveness || 100, secondPatterns.emotionalExpressiveness || 100)
@@ -261,7 +525,7 @@ function normalizeLinguisticPatterns(firstPatterns: any, secondPatterns: any) {
 
   // Normalize social engagement
   const minSoc = Math.min(firstPatterns.socialEngagement || 0, secondPatterns.socialEngagement || 0)
-  const maxSoc = Math.max(firstPatterns.socialEngagement || 100, secondPatterns.socialEngagement || 100)
+  const maxSoc = Math.max(firstPatterns.socialEngagement || 100, secondPatterns.cognitiveComplexity || 100)
   const normSocFirst = normalizeScore(firstPatterns.socialEngagement || 50, minSoc, maxSoc)
   const normSocSecond = normalizeScore(secondPatterns.socialEngagement || 50, minSoc, maxSoc)
 
@@ -300,27 +564,30 @@ function normalizeLinguisticPatterns(firstPatterns: any, secondPatterns: any) {
 }
 
 // Helper function to calculate emotional intelligence score with normalized values
-function calculateEmotionalIntelligence(emotionalBreakdown: any, profile: any, normalizedLinguistics: any): number {
-  // Calculate attachment score based on attachment style
-  const attachmentScore =
-    profile.attachmentStyle?.primaryStyle === "Secure"
-      ? 85
-      : profile.attachmentStyle?.primaryStyle === "Anxious"
-        ? 65
-        : profile.attachmentStyle?.primaryStyle === "Avoidant"
-          ? 60
-          : 55
+function calculateEmotionalIntelligence(
+  emotionalBreakdown: any,
+  profile: any,
+  linguisticPatterns: any,
+  messages: Message[],
+): number {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot calculate emotional intelligence: No messages provided")
+  }
 
-  // Calculate normalized linguistic score
-  const normalizedLinguisticScore =
-    (normalizedLinguistics.emotionalExpressiveness +
-      normalizedLinguistics.cognitiveComplexity +
-      normalizedLinguistics.socialEngagement +
-      (100 - normalizedLinguistics.psychologicalDistancing)) /
+  // Calculate attachment score based on message patterns
+  const attachmentScore = calculateAttachmentScore(messages)
+
+  // Calculate linguistic score
+  const linguisticScore =
+    (linguisticPatterns.emotionalExpressiveness +
+      linguisticPatterns.cognitiveComplexity +
+      linguisticPatterns.socialEngagement +
+      (100 - (linguisticPatterns.psychologicalDistancing || 50))) /
     4
 
-  // Calculate normalized emotional score
-  const normalizedEmotionalScore =
+  // Calculate emotional score
+  const emotionalScore =
     (emotionalBreakdown.empathy +
       emotionalBreakdown.selfAwareness +
       emotionalBreakdown.emotionalRegulation +
@@ -330,34 +597,116 @@ function calculateEmotionalIntelligence(emotionalBreakdown: any, profile: any, n
     6
 
   // Weighted average of different scores
-  return Math.round(attachmentScore * 0.3 + normalizedLinguisticScore * 0.3 + normalizedEmotionalScore * 0.4)
+  return Math.round(attachmentScore * 0.3 + linguisticScore * 0.3 + emotionalScore * 0.4)
 }
 
-// Helper function to determine communication style using normalized values
-function determineCommStyle(normalizedLinguistics: any): string {
-  // Calculate scores for each style using normalized values
-  const assertiveScore =
-    normalizedLinguistics.certaintyLevel * 0.7 + normalizedLinguistics.psychologicalDistancing * 0.3
-  const analyticalScore = normalizedLinguistics.cognitiveComplexity * 0.6 + normalizedLinguistics.certaintyLevel * 0.4
-  const expressiveScore =
-    normalizedLinguistics.emotionalExpressiveness * 0.8 + normalizedLinguistics.socialEngagement * 0.2
-  const supportiveScore =
-    normalizedLinguistics.emotionalExpressiveness * 0.5 + normalizedLinguistics.socialEngagement * 0.5
+// Calculate attachment score from messages
+function calculateAttachmentScore(messages: Message[]): number {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot calculate attachment score: No messages provided")
+  }
 
-  // Find the two highest scores
+  // Keywords associated with different attachment styles
+  const secureKeywords = ["trust", "comfortable", "support", "together", "understand"]
+  const anxiousKeywords = ["worry", "afraid", "need", "miss", "alone", "always"]
+  const avoidantKeywords = ["space", "independent", "fine", "busy", "later", "time"]
+
+  let secureCount = 0
+  let anxiousCount = 0
+  let avoidantCount = 0
+
+  messages.forEach((message) => {
+    // Add type checking for message.text
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
+
+    secureKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) secureCount++
+    })
+
+    anxiousKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) anxiousCount++
+    })
+
+    avoidantKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) avoidantCount++
+    })
+  })
+
+  const total = secureCount + anxiousCount + avoidantCount || 1
+  const secureRatio = secureCount / total
+
+  // Higher secure ratio = higher attachment score
+  return Math.round(65 + secureRatio * 30)
+}
+
+// Helper function to determine communication style using linguistic patterns
+function determineCommStyle(linguisticPatterns: any, messages: Message[]): string {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot determine communication style: No messages provided")
+  }
+
+  // Calculate scores for each style using linguistic patterns
+  const assertiveScore = linguisticPatterns.certaintyLevel * 0.7 + linguisticPatterns.psychologicalDistancing * 0.3
+
+  const analyticalScore = linguisticPatterns.cognitiveComplexity * 0.6 + linguisticPatterns.certaintyLevel * 0.4
+
+  const expressiveScore = linguisticPatterns.emotionalExpressiveness * 0.8 + linguisticPatterns.socialEngagement * 0.2
+
+  const supportiveScore = linguisticPatterns.emotionalExpressiveness * 0.5 + linguisticPatterns.socialEngagement * 0.5
+
+  // Calculate defensive score based on specific patterns
+  const defensiveKeywords = ["not my fault", "you always", "you never", "i didn't", "wasn't me", "you're wrong"]
+  let defensiveCount = 0
+
+  messages.forEach((message) => {
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
+
+    defensiveKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) defensiveCount++
+    })
+  })
+
+  const defensiveRatio = defensiveCount / messages.length
+  const defensiveScore = Math.min(100, Math.max(30, 40 + defensiveRatio * 200))
+
+  // Calculate passive score based on specific patterns
+  const passiveKeywords = ["whatever", "i guess", "if you want", "doesn't matter", "up to you", "fine"]
+  let passiveCount = 0
+
+  messages.forEach((message) => {
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
+
+    passiveKeywords.forEach((keyword) => {
+      if (text.includes(keyword)) passiveCount++
+    })
+  })
+
+  const passiveRatio = passiveCount / messages.length
+  const passiveScore = Math.min(100, Math.max(30, 40 + passiveRatio * 200))
+
+  // Find the highest scoring style
   const scores = [
     { style: "Assertive", score: assertiveScore },
     { style: "Analytical", score: analyticalScore },
     { style: "Expressive", score: expressiveScore },
     { style: "Supportive", score: supportiveScore },
+    { style: "Defensive", score: defensiveScore },
+    { style: "Passive", score: passiveScore },
   ].sort((a, b) => b.score - a.score)
 
-  // Return the communication style label for the two highest scoring styles
-  return getCommunicationStyleLabel(scores[0].style, scores[1].style)
+  // Return the highest scoring style
+  return scores[0].style
 }
 
 // Helper function to generate timeline data from messages
 function generateTimelineData(messages: Message[]) {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot generate timeline data: No messages provided")
+  }
+
   return messages
     .map((message) => ({
       participant: message.sender,
@@ -367,86 +716,301 @@ function generateTimelineData(messages: Message[]) {
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 }
 
-// Helper function to convert a profile to an emotional breakdown
-function profileToBreakdown(profile: any, sentiment: number): any {
-  if (!profile || !profile.linguisticPatterns) {
-    return getDefaultEmotionalBreakdown()
+// Calculate emotional breakdown directly from messages
+function calculateEmotionalBreakdown(messages: Message[], sentiment: number): any {
+  // 🚫 Step 3: Remove Fallback Profiles - Ensure we have messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Cannot calculate emotional breakdown: No messages provided")
   }
 
-  const lp = profile.linguisticPatterns
+  // Calculate empathy based on question frequency and positive responses
+  const questionCount = messages.filter((m) => {
+    const text = typeof m.text === "string" ? m.text : ""
+    return text.includes("?")
+  }).length
+  const questionRatio = questionCount / messages.length
+  const positiveResponseCount = messages.filter((m) => (m.sentiment || 0) > 60).length
+  const empathy = Math.min(100, Math.max(30, 40 + questionRatio * 50 + positiveResponseCount * 5))
+
+  // Calculate self-awareness based on "I" statements and reflection
+  const iStatementCount = messages.filter((m) => {
+    const text = typeof m.text === "string" ? m.text.toLowerCase() : ""
+    return text.includes(" i ") || text.startsWith("i ")
+  }).length
+  const iStatementRatio = iStatementCount / messages.length
+  const selfAwareness = Math.min(100, Math.max(30, 40 + iStatementRatio * 60))
+
+  // Calculate social skills based on engagement patterns
+  const socialSkills = Math.min(100, Math.max(30, 40 + messages.length / 3))
+
+  // Calculate emotional regulation based on sentiment consistency
+  const sentiments = messages.map((m) => m.sentiment || 50)
+  const avgSentiment = sentiments.reduce((sum, val) => sum + val, 0) / sentiments.length
+  const variance = sentiments.reduce((sum, val) => sum + Math.pow(val - avgSentiment, 2), 0) / sentiments.length
+  const emotionalRegulation = Math.min(100, Math.max(30, 80 - variance / 5))
+
+  // Calculate motivation based on sentiment and message frequency
+  const motivation = normalizeScore(sentiment + 10)
+
+  // Calculate adaptability based on response variety
+  const uniqueWords = new Set(
+    messages.flatMap((m) => {
+      const text = typeof m.text === "string" ? m.text.toLowerCase() : ""
+      return text.split(/\s+/)
+    }),
+  ).size
+  const uniqueWordsRatio =
+    uniqueWords /
+    (messages.reduce((sum, m) => {
+      const text = typeof m.text === "string" ? m.text : ""
+      return sum + (text.split(/\s+/).length || 0)
+    }, 0) || 1)
+  const adaptability = Math.min(100, Math.max(30, 40 + uniqueWordsRatio * 100))
 
   return {
-    empathy: normalizeScore(lp.emotionalExpressiveness || 50),
-    selfAwareness: normalizeScore(lp.cognitiveComplexity || 50),
-    socialSkills: normalizeScore(lp.socialEngagement || 50),
-    emotionalRegulation: normalizeScore(100 - (lp.psychologicalDistancing || 50)),
-    motivation: normalizeScore(sentiment + 15),
-    adaptability: normalizeScore(100 - (lp.certaintyLevel || 50)),
+    empathy,
+    selfAwareness,
+    socialSkills,
+    emotionalRegulation,
+    motivation,
+    adaptability,
   }
 }
 
-// Default values for null safety
-function getDefaultLinguisticPatterns() {
+// Calculate emotional synchrony between two people's emotional breakdowns
+function calculateEmotionalSynchrony(breakdownA: any, breakdownB: any): number {
+  // If either breakdown is missing or empty, return a default value
+  if (!breakdownA || !breakdownB || Object.keys(breakdownA).length === 0 || Object.keys(breakdownB).length === 0) {
+    return 50 // Default middle value
+  }
+
+  // Calculate the difference in each emotional component
+  const empathyDiff = Math.abs((breakdownA.empathy || 50) - (breakdownB.empathy || 50))
+  const selfAwarenessDiff = Math.abs((breakdownA.selfAwareness || 50) - (breakdownB.selfAwareness || 50))
+  const socialSkillsDiff = Math.abs((breakdownA.socialSkills || 50) - (breakdownB.socialSkills || 50))
+  const emotionalRegulationDiff = Math.abs(
+    (breakdownA.emotionalRegulation || 50) - (breakdownB.emotionalRegulation || 50),
+  )
+  const motivationDiff = Math.abs((breakdownA.motivation || 50) - (breakdownB.motivation || 50))
+  const adaptabilityDiff = Math.abs((breakdownA.adaptability || 50) - (breakdownB.adaptability || 50))
+
+  // Calculate the average difference
+  const avgDiff =
+    (empathyDiff + selfAwarenessDiff + socialSkillsDiff + emotionalRegulationDiff + motivationDiff + adaptabilityDiff) /
+    6
+
+  // Convert to a synchrony score (100 - average difference)
+  return Math.round(100 - avgDiff)
+}
+
+// Calculate category scores for compatibility
+function calculateCategoryScores(
+  firstPersonEI: number,
+  secondPersonEI: number,
+  gottmanScores: any,
+  firstPersonEmo: any,
+  secondPersonEmo: any,
+  relationshipDynamics: any,
+  firstPersonCommStyle: string,
+  secondPersonCommStyle: string,
+  firstPersonPsychProfile: any,
+  secondPersonPsychProfile: any,
+): any {
+  // Handle missing data with default values
+  gottmanScores = gottmanScores || {}
+  relationshipDynamics = relationshipDynamics || {}
+  firstPersonEmo = firstPersonEmo || {}
+  secondPersonEmo = secondPersonEmo || {}
+
+  // 1. Emotional Intelligence - average of both participants
+  const emotionalIntelligence = Math.round((firstPersonEI + secondPersonEI) / 2)
+
+  // 2. Communication Styles - based on complementary styles and clarity
+  // Calculate communication style compatibility
+  const communicationStyleCompatibility = calculateCommunicationStyleCompatibility(
+    firstPersonCommStyle,
+    secondPersonCommStyle,
+  )
+
+  const communicationStyles = Math.round(
+    (communicationStyleCompatibility +
+      (100 - Math.abs((firstPersonEmo.selfAwareness || 50) - (secondPersonEmo.selfAwareness || 50))) +
+      (100 - Math.abs((firstPersonEmo.socialSkills || 50) - (secondPersonEmo.socialSkills || 50))) +
+      (gottmanScores?.sharedMeaning || 50)) /
+      4,
+  )
+
+  // 3. Compatibility - based on Gottman positive metrics
+  const compatibility = Math.round(
+    ((gottmanScores?.emotionalBids || 50) +
+      (gottmanScores?.turnTowards || 50) +
+      (gottmanScores?.repairAttempts || 50) +
+      (gottmanScores?.sharedMeaning || 50)) /
+      4,
+  )
+
+  // 4. Psychology - based on attachment and cognitive patterns
+  // Calculate attachment style compatibility
+  const attachmentCompatibility = calculateAttachmentCompatibility(
+    firstPersonPsychProfile?.attachmentStyle?.primaryStyle || "Unknown",
+    secondPersonPsychProfile?.attachmentStyle?.primaryStyle || "Unknown",
+  )
+
+  const psychology = Math.round(
+    (attachmentCompatibility + ((firstPersonEmo.adaptability || 50) + (secondPersonEmo.adaptability || 50)) / 2) / 2,
+  )
+
+  // 5. Relationship Dynamics - based on Gottman negative metrics (inverted) and ratio
+  const relationshipDynamics_score = Math.round(
+    (100 -
+      (gottmanScores?.criticism || 50) +
+      (100 - (gottmanScores?.contempt || 50)) +
+      (100 - (gottmanScores?.defensiveness || 50)) +
+      (100 - (gottmanScores?.stonewalling || 50)) +
+      Math.min(100, (relationshipDynamics?.positiveToNegativeRatio || 1) * 20)) /
+      5,
+  )
+
+  // Ensure all scores are within 0-100 range
   return {
-    emotionalExpressiveness: 50,
-    cognitiveComplexity: 50,
-    socialEngagement: 50,
-    psychologicalDistancing: 50,
-    certaintyLevel: 50,
-    dominantEmotions: [],
+    emotionalIntelligence: normalizeScore(emotionalIntelligence),
+    communicationStyles: normalizeScore(communicationStyles),
+    compatibility: normalizeScore(compatibility),
+    psychology: normalizeScore(psychology),
+    relationshipDynamics: normalizeScore(relationshipDynamics_score),
   }
 }
 
-function getDefaultProfile() {
-  return {
-    attachmentStyle: {
-      primaryStyle: "Secure",
-      secondaryStyle: null,
-      confidence: 50,
+// Calculate attachment style compatibility
+function calculateAttachmentCompatibility(style1: string, style2: string): number {
+  // Default to 50 if either style is unknown
+  if (style1 === "Unknown" || style2 === "Unknown") {
+    return 50
+  }
+
+  // Define compatibility matrix for different attachment styles
+  const compatibilityMatrix: Record<string, Record<string, number>> = {
+    secure: {
+      secure: 95, // Highly compatible
+      anxious: 75, // Can work well with patience
+      avoidant: 70, // Can work with understanding
+      disorganized: 60, // Challenging but possible
     },
-    linguisticPatterns: getDefaultLinguisticPatterns(),
-    transactionalAnalysis: {
-      dominantEgoState: "Adult",
-      egoStateDistribution: {
-        parent: 33,
-        adult: 34,
-        child: 33,
-      },
+    anxious: {
+      secure: 75, // Secure partner can provide stability
+      anxious: 50, // May amplify each other's anxieties
+      avoidant: 40, // Classic anxious-avoidant trap
+      disorganized: 35, // Very challenging
     },
-    growthAreas: ["improving communication clarity"],
+    avoidant: {
+      secure: 70, // Secure partner can help avoidant open up
+      anxious: 40, // Classic anxious-avoidant trap
+      avoidant: 60, // May work due to mutual space needs
+      disorganized: 30, // Very challenging
+    },
+    disorganized: {
+      secure: 60, // Secure partner can provide stability
+      anxious: 35, // Very challenging
+      avoidant: 30, // Very challenging
+      disorganized: 25, // Extremely challenging
+    },
   }
+
+  // Return compatibility score from matrix, or default to 50 if not found
+  return compatibilityMatrix[style1.toLowerCase()]?.[style2.toLowerCase()] || 50
 }
 
-function getDefaultEmotionalBreakdown() {
-  return {
-    empathy: 50,
-    selfAwareness: 50,
-    socialSkills: 50,
-    emotionalRegulation: 50,
-    motivation: 50,
-    adaptability: 50,
+// Calculate communication style compatibility
+function calculateCommunicationStyleCompatibility(style1: string, style2: string): number {
+  // Default to 50 if either style is unknown
+  if (style1 === "Unknown" || style2 === "Unknown") {
+    return 50
   }
+
+  // Define compatibility matrix for different communication styles
+  const compatibilityMatrix: Record<string, Record<string, number>> = {
+    Assertive: {
+      Assertive: 60, // Two assertive people may clash
+      Analytical: 75, // Can work well together
+      Expressive: 65, // Mixed compatibility
+      Supportive: 85, // Good balance
+      Defensive: 40, // Challenging combination
+      Passive: 70, // Can work but may be imbalanced
+    },
+    Analytical: {
+      Assertive: 75, // Can work well together
+      Analytical: 80, // Good for problem-solving
+      Expressive: 60, // May have communication gaps
+      Supportive: 70, // Decent balance
+      Defensive: 50, // Challenging
+      Passive: 65, // May lack momentum
+    },
+    Expressive: {
+      Assertive: 65, // Mixed compatibility
+      Analytical: 60, // May have communication gaps
+      Expressive: 75, // Energetic but may lack focus
+      Supportive: 90, // Excellent balance
+      Defensive: 45, // Challenging
+      Passive: 80, // Good balance
+    },
+    Supportive: {
+      Assertive: 85, // Good balance
+      Analytical: 70, // Decent balance
+      Expressive: 90, // Excellent balance
+      Supportive: 85, // Very harmonious
+      Defensive: 60, // Can be helpful
+      Passive: 65, // May lack direction
+    },
+    Defensive: {
+      Assertive: 40, // Challenging combination
+      Analytical: 50, // Challenging
+      Expressive: 45, // Challenging
+      Supportive: 60, // Can be helpful
+      Defensive: 30, // Very challenging
+      Passive: 50, // Challenging
+    },
+    Passive: {
+      Assertive: 70, // Can work but may be imbalanced
+      Analytical: 65, // May lack momentum
+      Expressive: 80, // Good balance
+      Supportive: 65, // May lack direction
+      Defensive: 50, // Challenging
+      Passive: 40, // May lack momentum and direction
+    },
+  }
+
+  // Return compatibility score from matrix, or default to 50 if not found
+  return compatibilityMatrix[style1]?.[style2] || 50
 }
 
-function getDefaultGottmanScores() {
-  return {
-    criticism: 50,
-    contempt: 50,
-    defensiveness: 50,
-    stonewalling: 50,
-    emotionalBids: 50,
-    turnTowards: 50,
-    repairAttempts: 50,
-    sharedMeaning: 50,
+// Calculate final compatibility score
+function calculateFinalCompatibilityScore(categoryScores: any): number {
+  // Handle missing category scores
+  if (!categoryScores) {
+    return 50 // Default middle value
   }
+
+  const average =
+    ((categoryScores.emotionalIntelligence || 50) +
+      (categoryScores.communicationStyles || 50) +
+      (categoryScores.compatibility || 50) +
+      (categoryScores.psychology || 50) +
+      (categoryScores.relationshipDynamics || 50)) /
+    5
+
+  // Round to 1 decimal place
+  return Math.round(average * 10) / 10
 }
 
-function getDefaultRelationshipDynamics() {
-  return {
-    positiveToNegativeRatio: 1,
-    conflictStyle: "Balanced",
-    attachmentCompatibility: "Moderately Compatible",
-    keyGrowthAreas: ["Improving communication"],
-    relationshipStrengths: ["Potential for growth"],
+// Generate a unique analysis ID
+function generateAnalysisId(): string {
+  return `analysis_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+}
+
+function getCommunicationStyleLabel(style1: string, style2: string): string {
+  if (style1 === style2) {
+    return `${style1}`
   }
+
+  return `${style1} - ${style2}`
 }

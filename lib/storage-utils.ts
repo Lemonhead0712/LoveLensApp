@@ -193,3 +193,147 @@ export async function clearAllAnalysisResults(): Promise<boolean> {
     return false
   }
 }
+
+const ANALYSIS_RESULT_KEY = "love_lens_analysis_result"
+
+export async function storeSingleAnalysisResult(result: AnalysisResult): Promise<void> {
+  try {
+    localStorage.setItem(ANALYSIS_RESULT_KEY, JSON.stringify(result))
+  } catch (error) {
+    console.error("Error storing analysis result:", error)
+  }
+}
+
+export async function getStoredAnalysisResult(): Promise<AnalysisResult | null> {
+  try {
+    const storedResult = localStorage.getItem(ANALYSIS_RESULT_KEY)
+    if (storedResult) {
+      return JSON.parse(storedResult) as AnalysisResult
+    }
+    return null
+  } catch (error) {
+    console.error("Error retrieving stored analysis result:", error)
+    return null
+  }
+}
+
+export async function clearStoredAnalysisResult(): Promise<void> {
+  try {
+    localStorage.removeItem(ANALYSIS_RESULT_KEY)
+  } catch (error) {
+    console.error("Error clearing stored analysis result:", error)
+  }
+}
+
+// Add this function to transform AnalysisResults to AnalysisResult format
+import type { AnalysisResults } from "./types"
+
+export function transformAnalysisResultsToResult(results: AnalysisResults): AnalysisResult {
+  console.log("Transforming analysis results to result format:", results)
+
+  // Extract participants data
+  const firstPerson = results.participants[0]
+  const secondPerson = results.participants.length > 1 ? results.participants[1] : null
+
+  // Create the conversation data structure
+  const conversationData = {
+    personA: {
+      name: firstPerson.name,
+      communicationStyle: firstPerson.communicationStyle || "Balanced",
+      emotionalIntelligence: firstPerson.emotionalBreakdown || {
+        empathy: 60,
+        selfAwareness: 65,
+        socialSkills: 70,
+        emotionalRegulation: 55,
+        motivation: 60,
+        adaptability: 65,
+      },
+      psychologicalProfile: firstPerson.psychologicalProfile || {
+        attachmentStyle: { primaryStyle: "Secure" },
+        transactionalAnalysis: { dominantEgoState: "Adult" },
+      },
+      sentiment: firstPerson.sentiment || 65,
+      insights: firstPerson.insights || [],
+      recommendations: firstPerson.recommendations || [],
+    },
+    personB: secondPerson
+      ? {
+          name: secondPerson.name,
+          communicationStyle: secondPerson.communicationStyle || "Balanced",
+          emotionalIntelligence: secondPerson.emotionalBreakdown || {
+            empathy: 60,
+            selfAwareness: 65,
+            socialSkills: 70,
+            emotionalRegulation: 55,
+            motivation: 60,
+            adaptability: 65,
+          },
+          psychologicalProfile: secondPerson.psychologicalProfile || {
+            attachmentStyle: { primaryStyle: "Secure" },
+            transactionalAnalysis: { dominantEgoState: "Adult" },
+          },
+          sentiment: secondPerson.sentiment || 65,
+          insights: secondPerson.insights || [],
+          recommendations: secondPerson.recommendations || [],
+        }
+      : {
+          name: "Partner",
+          communicationStyle: "Balanced",
+          emotionalIntelligence: {
+            empathy: 60,
+            selfAwareness: 65,
+            socialSkills: 70,
+            emotionalRegulation: 55,
+            motivation: 60,
+            adaptability: 65,
+          },
+          psychologicalProfile: {
+            attachmentStyle: { primaryStyle: "Secure" },
+            transactionalAnalysis: { dominantEgoState: "Adult" },
+          },
+          sentiment: 65,
+          insights: [],
+          recommendations: [],
+        },
+  }
+
+  // Create the compatibility structure
+  const compatibility = {
+    finalScore: results.compatibility?.finalScore || 65,
+    attachment: results.compatibility?.attachment || 60,
+    communication: results.compatibility?.communication || 70,
+    emotionalSync: results.compatibility?.emotionalSync || 65,
+    gottmanScores: results.compatibility?.gottmanScores || {
+      criticism: 30,
+      contempt: 25,
+      defensiveness: 35,
+      stonewalling: 20,
+    },
+    gottmanSummary: results.gottmanSummary || "Analysis incomplete due to insufficient data.",
+  }
+
+  // Create the final result object
+  const result: AnalysisResult = {
+    id: results.id,
+    timestamp: results.timestamp,
+    conversationData,
+    compatibility,
+    messagesWithSentiment: results.messagesWithSentiment || [],
+    validationWarnings: results.validationWarnings || [],
+  }
+
+  console.log("Transformed result:", result)
+  return result
+}
+
+// Modify storeAnalysisResult to use the transformation
+export async function storeTransformedAnalysisResult(results: AnalysisResults): Promise<void> {
+  try {
+    console.log("Storing transformed analysis result:", results)
+    const transformedResult = transformAnalysisResultsToResult(results)
+    localStorage.setItem(ANALYSIS_RESULT_KEY, JSON.stringify(transformedResult))
+    console.log("Successfully stored transformed result")
+  } catch (error) {
+    console.error("Error storing analysis result:", error)
+  }
+}

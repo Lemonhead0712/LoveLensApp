@@ -1,286 +1,211 @@
 import type { Message } from "./types"
-import { getOpenAIKey, isOpenAIEnabled } from "./api-config"
+import { createWorker } from "tesseract.js"
+import { createCanvas, loadImage } from "canvas"
 
-// Interface for OCR result
-interface OCRResult {
-  text: string
-  boundingBox: {
-    x: number
-    y: number
-    width: number
-    height: number
+// Interface for OCR preprocessing options
+interface PreprocessingOptions {
+  grayscale: boolean
+  enhanceContrast: boolean
+  resize: boolean
+  targetWidth?: number
+  debug: boolean
+}
+
+/**
+ * Preprocess image before OCR to improve text recognition
+ */
+async function preprocessImage(
+  imageFile: File,
+  options: PreprocessingOptions = {
+    grayscale: true,
+    enhanceContrast: true,
+    resize: true,
+    targetWidth: 1200,
+    debug: false,
+  },
+): Promise<string> {
+  // Convert file to image data
+  const arrayBuffer = await imageFile.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const image = await loadImage(buffer)
+
+  // Create canvas with original dimensions or resize if needed
+  let width = image.width
+  let height = image.height
+
+  if (options.resize && options.targetWidth && width < options.targetWidth) {
+    // Upscale small images to improve OCR
+    const scaleFactor = options.targetWidth / width
+    width = options.targetWidth
+    height = Math.floor(height * scaleFactor)
   }
-  confidence: number
-}
 
-// Interface for message with position information
-interface PositionedMessage {
-  content: string
-  position: "left" | "right" | "unknown"
-  timestamp?: string
-  confidence: number
-}
+  const canvas = createCanvas(width, height)
+  const ctx = canvas.getContext("2d")
 
-// Enhanced OCR service with better message attribution and OpenAI refinement
-export async function extractTextFromImage(imageData: string): Promise<Message[]> {
-  try {
-    console.log("Starting OCR extraction process...")
+  // Draw original image
+  ctx.drawImage(image, 0, 0, width, height)
 
-    // Step 1: Perform initial OCR on the image
-    const ocrResults = await performOCR(imageData)
+  // Apply grayscale if enabled
+  if (options.grayscale) {
+    const imageData = ctx.getImageData(0, 0, width, height)
+    const data = imageData.data
 
-    if (!ocrResults || ocrResults.length === 0) {
-      console.warn("OCR returned no results")
-      return []
+    for (let i = 0; i < data.length; i += 4) {
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
+      data[i] = avg // red
+      data[i + 1] = avg // green
+      data[i + 2] = avg // blue
     }
 
-    console.log(`OCR extracted ${ocrResults.length} text blocks`)
-
-    // Step 2: Process OCR results to extract messages with positions
-    const positionedMessages = processOCRResults(ocrResults)
-
-    // Step 3: Use OpenAI to refine and enhance the OCR results
-    const enhancedMessages = await enhanceWithOpenAI(positionedMessages)
-
-    // Step 4: Attribute messages to senders based on position and context
-    const attributedMessages = attributeMessagesToSenders(enhancedMessages)
-
-    console.log(`Extracted and processed ${attributedMessages.length} messages`)
-    return attributedMessages
-  } catch (error) {
-    console.error("Error extracting text from image:", error)
-    throw new Error("Failed to extract text from image")
+    ctx.putImageData(imageData, 0, 0)
   }
+
+  // Apply contrast enhancement if enabled
+  if (options.enhanceContrast) {
+    const imageData = ctx.getImageData(0, 0, width, height)
+    const data = imageData.data
+
+    // Find min and max values
+    let min = 255
+    let max = 0
+
+    for (let i = 0; i < data.length; i += 4) {
+      const val = (data[i] + data[i + 1] + data[i + 2]) / 3
+      if (val < min) min = val
+      if (val > max) max = val
+    }
+
+    // Apply contrast stretching
+    const range = max - min
+    if (range > 0) {
+      for (let i = 0; i < data.length; i += 4) {
+        for (let j = 0; j < 3; j++) {
+          data[i + j] = ((data[i + j] - min) / range) * 255
+        }
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0)
+  }
+
+  // Return as data URL
+  return canvas.toDataURL("image/png")
 }
 
-// Perform OCR on the image data
-async function performOCR(imageData: string): Promise<OCRResult[]> {
-  // In a production environment, this would call an actual OCR API like Google Cloud Vision,
-  // Microsoft Computer Vision, or Tesseract.js
-
-  // For now, we'll simulate the OCR process with improved positioning logic
-  // This would be replaced with actual API calls in production
-
+/**
+ * Extract messages from screenshots with enhanced preprocessing
+ */
+export async function extractMessagesWithEnhancedOCR(
+  screenshots: File[],
+  firstPersonName: string,
+  secondPersonName: string,
+  debugMode = false,
+): Promise<{ messages: Message[]; debugData?: any[] }> {
   try {
-    // Convert base64 image data to a format suitable for OCR API
-    // const imageBuffer = Buffer.from(imageData.split(',')[1], 'base64')
+    console.log(`Extracting text from ${screenshots.length} screenshots with enhanced OCR`)
 
-    // Simulate OCR API call delay
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    if (!screenshots || screenshots.length === 0) {
+      throw new Error("No screenshots provided")
+    }
 
-    // Simulate OCR results
-    // In production, this would be the result from the OCR API
-    return [
-      {
-        text: "Hey, how are you doing today?",
-        boundingBox: { x: 10, y: 50, width: 200, height: 30 },
-        confidence: 0.95,
-      },
-      {
-        text: "I'm okay. Just tired from work.",
-        boundingBox: { x: 250, y: 100, width: 200, height: 30 },
-        confidence: 0.92,
-      },
-      {
-        text: "You always say that. Do you ever take breaks?",
-        boundingBox: { x: 10, y: 150, width: 200, height: 30 },
-        confidence: 0.88,
-      },
-      {
-        text: "What do you mean 'always'? That's not fair.",
-        boundingBox: { x: 250, y: 200, width: 200, height: 30 },
-        confidence: 0.9,
-      },
-    ]
-  } catch (error) {
-    console.error("OCR processing error:", error)
-    throw new Error("Failed to process image with OCR")
-  }
-}
+    // Process each screenshot with enhanced preprocessing
+    const allMessages: Message[] = []
+    const debugData: any[] = []
 
-// Process OCR results to extract messages with positions
-function processOCRResults(ocrResults: OCRResult[]): PositionedMessage[] {
-  // Sort results by vertical position (y-coordinate)
-  const sortedResults = [...ocrResults].sort((a, b) => a.boundingBox.y - b.boundingBox.y)
+    for (const screenshot of screenshots) {
+      try {
+        // Preprocess the image
+        const preprocessedImage = await preprocessImage(screenshot, {
+          grayscale: true,
+          enhanceContrast: true,
+          resize: true,
+          targetWidth: 1200,
+          debug: debugMode,
+        })
 
-  // Determine left/right threshold based on image width
-  // In a real implementation, this would be based on the actual image dimensions
-  const centerX = 150 // Assume image width is 300px
+        // Create a worker with optimized settings for chat messages
+        const worker = await createWorker()
 
-  // Convert OCR results to positioned messages
-  return sortedResults.map((result) => {
-    // Determine position based on x-coordinate
-    const position = result.boundingBox.x < centerX ? "left" : "right"
+        // Set parameters optimized for chat bubbles and sparse text
+        await worker.setParameters({
+          tessedit_pageseg_mode: "11", // PSM_SPARSE_TEXT_OSD - Better for chat bubbles
+          tessedit_char_whitelist:
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?!:;'\"()-_+=@#$%^&*<>{}[]|\\/ ",
+          tessjs_create_hocr: "1", // Enable HOCR output for debugging
+          tessjs_create_tsv: "1", // Enable TSV output for detailed word data
+        })
+
+        // Recognize text
+        console.log(`Processing screenshot: ${screenshot.name}`)
+        const result = await worker.recognize(preprocessedImage)
+
+        // Store debug data if enabled
+        if (debugMode) {
+          debugData.push({
+            filename: screenshot.name,
+            words: result.data.words,
+            hocr: result.data.hocr,
+            tsv: result.data.tsv,
+            text: result.data.text,
+          })
+        }
+
+        // Process the OCR result to extract messages
+        // This would call your existing processing functions
+        // ...
+
+        await worker.terminate()
+      } catch (error) {
+        console.error(`Error processing screenshot ${screenshot.name}:`, error)
+      }
+    }
+
+    // Validate and return results
+    if (allMessages.length === 0) {
+      throw new Error("OCR failed: No messages could be extracted from the screenshots")
+    }
 
     return {
-      content: result.text,
-      position,
-      confidence: result.confidence,
-    }
-  })
-}
-
-// Use OpenAI to enhance and refine OCR results
-async function enhanceWithOpenAI(positionedMessages: PositionedMessage[]): Promise<PositionedMessage[]> {
-  if (!isOpenAIEnabled()) {
-    console.log("OpenAI enhancement skipped: API not enabled")
-    return positionedMessages
-  }
-
-  try {
-    const apiKey = await getOpenAIKey()
-
-    if (!apiKey) {
-      console.warn("OpenAI API key not available, skipping enhancement")
-      return positionedMessages
-    }
-
-    console.log("Enhancing OCR results with OpenAI...")
-
-    // Prepare the messages for OpenAI processing
-    const messagesForProcessing = positionedMessages
-      .map(
-        (msg, index) => `Message ${index + 1} (${msg.position} side, confidence: ${msg.confidence}): "${msg.content}"`,
-      )
-      .join("\n")
-
-    // Create the prompt for OpenAI
-    const prompt = `
-      I have extracted the following text messages from a conversation screenshot using OCR.
-      Some messages may contain errors, be incomplete, or have formatting issues.
-      
-      ${messagesForProcessing}
-      
-      Please correct any OCR errors, fix formatting issues, and ensure each message is complete and makes sense.
-      Return the corrected messages in JSON format as an array of objects with the following structure:
-      [
-        {
-          "content": "corrected message text",
-          "position": "left or right (same as original)",
-          "confidence": number (original confidence or 1.0 if fully corrected)
-        }
-      ]
-      
-      Only return the JSON array, nothing else.
-    `
-
-    // Call OpenAI API
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an OCR correction assistant. Your task is to fix errors in text extracted from images and return the corrected text in JSON format.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 1000,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      console.warn(`OpenAI API error: ${errorData.error?.message || response.statusText}`)
-      return positionedMessages
-    }
-
-    const data = await response.json()
-    const enhancedText = data.choices[0]?.message?.content?.trim()
-
-    if (!enhancedText) {
-      console.warn("Empty response from OpenAI")
-      return positionedMessages
-    }
-
-    // Extract JSON from the response
-    const jsonMatch = enhancedText.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) {
-      console.warn("Could not extract JSON from OpenAI response")
-      return positionedMessages
-    }
-
-    try {
-      const enhancedMessages = JSON.parse(jsonMatch[0])
-      console.log(`OpenAI successfully enhanced ${enhancedMessages.length} messages`)
-      return enhancedMessages
-    } catch (error) {
-      console.error("Error parsing enhanced messages from OpenAI:", error)
-      return positionedMessages
+      messages: allMessages,
+      debugData: debugMode ? debugData : undefined,
     }
   } catch (error) {
-    console.error("Error enhancing OCR results with OpenAI:", error)
-    return positionedMessages
+    console.error("Error in enhanced OCR extraction:", error)
+    throw error
   }
 }
 
-// Attribute messages to senders based on position and context
-function attributeMessagesToSenders(positionedMessages: PositionedMessage[]): Message[] {
-  // Count messages on each side
-  const leftCount = positionedMessages.filter((m) => m.position === "left").length
-  const rightCount = positionedMessages.filter((m) => m.position === "right").length
+/**
+ * Debug utility to visualize OCR bounding boxes
+ */
+export function createDebugVisualization(imageDataUrl: string, words: any[]): string {
+  return new Promise(async (resolve) => {
+    const image = await loadImage(imageDataUrl)
+    const canvas = createCanvas(image.width, image.height)
+    const ctx = canvas.getContext("2d")
 
-  // Assume the side with more messages is "person1" (the user)
-  const person1Position = leftCount >= rightCount ? "left" : "right"
-  const person2Position = person1Position === "left" ? "right" : "left"
+    // Draw original image
+    ctx.drawImage(image, 0, 0)
 
-  // Convert positioned messages to attributed messages
-  return positionedMessages.map((message) => ({
-    sender: message.position === person1Position ? "person1" : "person2",
-    content: message.content,
-    timestamp: message.timestamp || new Date().toISOString(),
-  }))
-}
+    // Draw bounding boxes
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.7)"
+    ctx.lineWidth = 2
 
-// Function to deduplicate messages
-export function deduplicateMessages(messages: Message[]): Message[] {
-  const uniqueMessages: Message[] = []
-  const seenContents = new Set<string>()
+    words.forEach((word) => {
+      if (word.bbox) {
+        const { x0, y0, x1, y1 } = word.bbox
+        ctx.strokeRect(x0, y0, x1 - x0, y1 - y0)
 
-  for (const message of messages) {
-    // Normalize content for comparison (trim whitespace, lowercase)
-    const normalizedContent = message.content.trim().toLowerCase()
+        // Add text label
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)"
+        ctx.fillRect(x0, y0 - 20, 100, 20)
+        ctx.fillStyle = "rgba(0, 0, 0, 1)"
+        ctx.font = "12px Arial"
+        ctx.fillText(`${word.text} (${word.confidence.toFixed(0)}%)`, x0, y0 - 5)
+      }
+    })
 
-    // Skip if we've seen this content before
-    if (seenContents.has(normalizedContent)) {
-      continue
-    }
-
-    // Add to unique messages and mark as seen
-    uniqueMessages.push(message)
-    seenContents.add(normalizedContent)
-  }
-
-  return uniqueMessages
-}
-
-// Function to validate extracted messages
-export function validateExtractedMessages(messages: Message[]): boolean {
-  // Check if we have at least 2 messages
-  if (messages.length < 2) {
-    return false
-  }
-
-  // Check if we have messages from both senders
-  const senders = new Set(messages.map((m) => m.sender))
-  if (senders.size < 2) {
-    return false
-  }
-
-  // Check if any message has empty content
-  if (messages.some((m) => !m.content || m.content.trim() === "")) {
-    return false
-  }
-
-  return true
+    resolve(canvas.toDataURL("image/png"))
+  })
 }

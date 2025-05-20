@@ -33,7 +33,7 @@ const defaultNavItems: NavItem[] = [
   },
 ]
 
-export function MobileMenu({ items = defaultNavItems }: MobileMenuProps) {
+function MobileMenu({ items = defaultNavItems }: MobileMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   // Prevent body scrolling when menu is open
@@ -102,3 +102,5 @@ export function MobileMenu({ items = defaultNavItems }: MobileMenuProps) {
     </div>
   )
 }
+
+export default MobileMenu

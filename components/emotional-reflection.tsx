@@ -11,7 +11,7 @@ interface EmotionalReflectionProps {
   secondPersonBreakdown: EmotionalBreakdown
 }
 
-export function EmotionalReflection({
+function EmotionalReflection({
   firstPersonName,
   secondPersonName,
   firstPersonBreakdown,
@@ -88,3 +88,5 @@ export function EmotionalReflection({
     </Card>
   )
 }
+
+export default EmotionalReflection

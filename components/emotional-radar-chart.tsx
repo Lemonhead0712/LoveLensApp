@@ -10,7 +10,7 @@ interface EmotionalRadarChartProps {
   showValues?: boolean
 }
 
-export function EmotionalRadarChart({
+function EmotionalRadarChart({
   data,
   color = "rgba(244, 63, 94, 0.8)",
   showLabels = true,
@@ -19,31 +19,33 @@ export function EmotionalRadarChart({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 400, height: 400 })
+  const [error, setError] = useState<string | null>(null)
 
-  // Resize handler to make the canvas responsive
+  // Validate data
   useEffect(() => {
-    const handleResize = () => {
-      if (containerRef.current) {
-        const { width } = containerRef.current.getBoundingClientRect()
-        // Keep it square for radar chart
-        setDimensions({
-          width: width,
-          height: width,
-        })
-      }
+    if (!data) {
+      setError("No data provided")
+      return
     }
 
-    // Initial sizing
-    handleResize()
+    const requiredKeys = [
+      "empathy",
+      "selfAwareness",
+      "socialSkills",
+      "emotionalRegulation",
+      "motivation",
+      "adaptability",
+    ]
+    const missingKeys = requiredKeys.filter((key) => typeof data[key as keyof typeof data] !== "number")
 
-    // Add resize listener
-    window.addEventListener("resize", handleResize)
-
-    // Clean up
-    return () => {
-      window.removeEventListener("resize", handleResize)
+    if (missingKeys.length > 0) {
+      setError(`Missing required data: ${missingKeys.join(", ")}`)
+      console.error("EmotionalRadarChart data validation failed:", { data, missingKeys })
+      return
     }
-  }, [])
+
+    setError(null)
+  }, [data])
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -244,9 +246,23 @@ export function EmotionalRadarChart({
     })
   }
 
+  // Add error display
+  if (error) {
+    return (
+      <div className="w-full aspect-square flex items-center justify-center bg-gray-50 rounded-lg">
+        <div className="text-red-500 text-sm p-4 text-center">
+          <p>Error rendering chart: {error}</p>
+          <p className="text-xs mt-2">Please check the console for more details.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div ref={containerRef} className="w-full aspect-square">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="w-full h-full" />
     </div>
   )
 }
+
+export default EmotionalRadarChart

@@ -2,114 +2,109 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card-override"
-import { Button } from "@/components/ui/button-override"
-import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { ArrowLeft, Heart, AlertTriangle, ThumbsUp, MessageSquare, Zap, InfoIcon, Sparkles } from "lucide-react"
-import type { AnalysisResults } from "@/lib/types"
-import { Badge } from "@/components/ui/badge"
-import { EmotionalIntelligenceBreakdown } from "@/components/emotional-intelligence-breakdown"
-import { InteractionPatternsChart } from "@/components/interaction-patterns-chart"
-import { CommunicationStylesChart } from "@/components/communication-styles-chart"
-import { CompatibilityChart } from "@/components/compatibility-chart"
-import {
-  generateCommunicationStyles,
-  generateCompatibilityCategories,
-  getCommunicationStyleLabel,
-} from "@/lib/communication-styles"
-import { PsychologicalProfilesTab } from "@/components/psychological-profiles-tab"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { SparkleEffect } from "@/components/sparkle-effect"
-import { getAnalysisResults } from "@/lib/storage-utils"
+import { getAnalysisResults, transformAnalysisResultsToResult } from "@/lib/storage-utils"
 import { LoadingScreen } from "@/components/loading-screen"
-import { EmotionalFlags } from "@/components/emotional-flags"
-import { EmotionalInsightSummary } from "@/components/emotional-insight-summary"
-import { EmotionalReflection } from "@/components/emotional-reflection"
-import { CircularProgress } from "@/components/circular-progress"
+import { Button } from "@/components/ui/button-override"
+import { AlertTriangle } from "lucide-react"
+import Link from "next/link"
+import { Header } from "@/components/header"
+import ProfileCard from "@/components/ProfileCard"
+import CompatibilityCard from "@/components/CompatibilityCard"
+import GottmanBreakdown from "@/components/GottmanBreakdown"
+import EmotionalRadarChart from "@/components/emotional-radar-chart"
+import CommunicationStylesChart from "@/components/communication-styles-chart"
+import PsychologicalProfileCard from "@/components/psychological-profile-card"
+import RelationshipDynamicsCard from "@/components/relationship-dynamics-card"
+import { GottmanScoreCard } from "@/components/gottman-score-card"
+import { EmotionalIntelligenceBreakdown } from "@/components/emotional-intelligence-breakdown"
+
+// Add the DebugDataViewer to the results page
+import DebugDataViewer from "@/components/debug-data-viewer"
 
 export default function ResultsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const id = searchParams.get("id")
-  const [results, setResults] = useState<AnalysisResults | null>(null)
+  const resultId = searchParams.get("id")
+
+  const [results, setResults] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
-  const [loadingStage, setLoadingStage] = useState<string>("Initializing analysis...")
-  const [activeTab, setActiveTab] = useState("emotional")
-  const [analysisMethod, setAnalysisMethod] = useState<"openai" | "rule-based">("rule-based")
   const [error, setError] = useState<string | null>(null)
-  const [advancedView, setAdvancedView] = useState(false)
 
   useEffect(() => {
-    // Check if we have an ID parameter
-    if (!id) {
-      console.error("No ID parameter provided in URL")
+    if (!resultId) {
       setError("No analysis ID provided. Please upload conversation screenshots to get started.")
       setLoading(false)
       return
     }
 
-    console.log("Loading analysis results with ID:", id)
+    // Debug: list what's actually in localStorage
+    console.log("LocalStorage keys:", Object.keys(localStorage))
+    console.log("Looking for result with ID:", resultId)
 
-    // Simulate the analysis stages with appropriate messages
-    const loadingStages = [
-      { message: "Initializing analysis...", duration: 800 },
-      { message: "Processing conversation data...", duration: 1200 },
-      { message: "Analyzing emotional patterns...", duration: 1500 },
-      { message: "Evaluating relationship dynamics...", duration: 1300 },
-      { message: "Generating psychological profiles...", duration: 1700 },
-      { message: "Calculating compatibility metrics...", duration: 1000 },
-      { message: "Preparing your results...", duration: 1200 },
-    ]
+    // Try to get results
+    const stored = getAnalysisResults(resultId)
+    if (stored) {
+      console.log("Results found immediately:", stored)
 
-    let currentStageIndex = 0
-    const updateLoadingStage = () => {
-      if (currentStageIndex < loadingStages.length) {
-        setLoadingStage(loadingStages[currentStageIndex].message)
-        setTimeout(() => {
-          currentStageIndex++
-          updateLoadingStage()
-        }, loadingStages[currentStageIndex].duration)
-      } else {
-        // When all stages are complete, fetch the actual results
-        fetchResults()
-      }
-    }
-
-    // Start the loading sequence
-    updateLoadingStage()
-
-    // This function will be called after all loading stages are complete
-    const fetchResults = () => {
       try {
-        console.log("Fetching analysis results for ID:", id)
-        const storedResults = getAnalysisResults(id)
-
-        if (storedResults) {
-          console.log("Analysis results found:", storedResults)
-          setResults(storedResults)
-          setAnalysisMethod(storedResults.analysisMethod || "rule-based")
-        } else {
-          console.error("No analysis results found for ID:", id)
-
-          // If no results found, redirect to upload page with an error message
-          router.push("/upload?error=no_results_found")
-        }
-      } catch (error) {
-        console.error("Error loading analysis results:", error)
-        setError(
-          `An error occurred while loading analysis results: ${error instanceof Error ? error.message : "Please try again."}`,
-        )
-      } finally {
+        // Transform the data if needed
+        const transformedResults = transformResultsIfNeeded(stored)
+        setResults(transformedResults)
+        setLoading(false)
+      } catch (err) {
+        console.error("Error transforming results:", err)
+        setError("Error processing analysis results. Please try again.")
         setLoading(false)
       }
+    } else {
+      // Wait briefly before redirecting in case localStorage isn't ready yet
+      setTimeout(() => {
+        const retry = getAnalysisResults(resultId)
+        if (retry) {
+          console.log("Results found after delay:", retry)
+
+          try {
+            // Transform the data if needed
+            const transformedResults = transformResultsIfNeeded(retry)
+            setResults(transformedResults)
+            setLoading(false)
+          } catch (err) {
+            console.error("Error transforming results after retry:", err)
+            setError("Error processing analysis results. Please try again.")
+            setLoading(false)
+          }
+        } else {
+          console.warn(`No results found for ID ${resultId} after retry.`)
+          setError("No analysis results found. Please upload conversation screenshots to get started.")
+          setLoading(false)
+        }
+      }, 1500)
     }
-  }, [id, router])
+  }, [resultId])
+
+  // Function to transform results if they're in the old format
+  function transformResultsIfNeeded(data: any): any {
+    console.log("Checking if results need transformation:", data)
+
+    // If it's already in the expected format with conversationData
+    if (data.conversationData && data.conversationData.personA && data.conversationData.personB) {
+      console.log("Data already in expected format")
+      return data
+    }
+
+    // If it's in the AnalysisResults format with participants array
+    if (data.participants && Array.isArray(data.participants)) {
+      console.log("Transforming data from AnalysisResults format")
+      return transformAnalysisResultsToResult(data)
+    }
+
+    // If we can't determine the format, throw an error
+    console.error("Unknown data format:", data)
+    throw new Error("Unknown data format")
+  }
 
   if (loading) {
-    return <LoadingScreen message={loadingStage} fullScreen={true} />
+    return <LoadingScreen message="Loading your relationship insights..." />
   }
 
   if (error || !results) {
@@ -129,437 +124,322 @@ export default function ResultsPage() {
     )
   }
 
-  // Find the first person (user) and second person (other participant)
-  const firstPerson = results.participants.find((p) => p.isFirstPerson) || results.participants[0]
-  const secondPerson = results.participants.find((p) => !p.isFirstPerson) || results.participants[1]
+  // Extract data from results
+  const personA = results.conversationData?.personA || {}
+  const personB = results.conversationData?.personB || {}
 
-  // Get the emotional breakdowns for each participant
-  const firstPersonBreakdown = results.emotionalBreakdown
-  const secondPersonBreakdown = results.secondPersonEmotionalBreakdown || {
-    empathy: 75,
-    selfAwareness: 78,
-    socialSkills: 82,
-    emotionalRegulation: 70,
-    motivation: 65,
-    adaptability: 75,
+  // Extract Gottman Four Horsemen scores for both participants
+  const personAGottmanScores = {
+    criticism: results.compatibility?.gottmanScores?.criticism || 30,
+    contempt: results.compatibility?.gottmanScores?.contempt || 25,
+    defensiveness: results.compatibility?.gottmanScores?.defensiveness || 35,
+    stonewalling: results.compatibility?.gottmanScores?.stonewalling || 20,
   }
 
-  // Generate communication styles
-  const firstPersonStyles = generateCommunicationStyles(firstPersonBreakdown, results.gottmanScores, true)
-  const secondPersonStyles = generateCommunicationStyles(secondPersonBreakdown, results.gottmanScores, false)
-
-  // Get dominant styles
-  const getDominantStyle = (styles: any[]): any => {
-    return [...styles].sort((a, b) => b.score - a.score)[0]
+  const personBGottmanScores = {
+    criticism: results.compatibility?.gottmanScores?.partnerCriticism || 35,
+    contempt: results.compatibility?.gottmanScores?.partnerContempt || 30,
+    defensiveness: results.compatibility?.gottmanScores?.partnerDefensiveness || 40,
+    stonewalling: results.compatibility?.gottmanScores?.partnerStonewalling || 25,
   }
 
-  const getSecondaryStyle = (styles: any[]): any | null => {
-    const sortedStyles = [...styles].sort((a, b) => b.score - a.score)
-    return sortedStyles[1].score > sortedStyles[0].score * 0.7 ? sortedStyles[1] : null
-  }
-
-  const firstPersonDominantStyle = getDominantStyle(firstPersonStyles)
-  const firstPersonSecondaryStyle = getSecondaryStyle(firstPersonStyles)
-  const secondPersonDominantStyle = getDominantStyle(secondPersonStyles)
-  const secondPersonSecondaryStyle = getSecondaryStyle(secondPersonStyles)
-
-  const firstPersonStyleLabel = getCommunicationStyleLabel(
-    firstPersonDominantStyle.name,
-    firstPersonSecondaryStyle?.name || null,
-  )
-  const secondPersonStyleLabel = getCommunicationStyleLabel(
-    secondPersonDominantStyle.name,
-    secondPersonSecondaryStyle?.name || null,
-  )
-
-  // Generate compatibility categories
-  const compatibilityCategories = generateCompatibilityCategories(
-    results.gottmanScores,
-    firstPersonBreakdown,
-    secondPersonBreakdown,
-  )
-
-  // Create default psychological profiles if not available in results
-  const defaultFirstPersonProfile = {
-    attachmentStyle: {
-      primaryStyle: "Secure",
-      secondaryStyle: null,
-      confidence: 70,
-    },
-    transactionalAnalysis: {
-      dominantEgoState: "Adult",
-      egoStateDistribution: {
-        parent: 30,
-        adult: 40,
-        child: 30,
-      },
-    },
-    linguisticPatterns: {
-      cognitiveComplexity: 60,
-      emotionalExpressiveness: 55,
-      socialEngagement: 65,
-      dominantEmotions: ["Joy", "Trust", "Anticipation"],
-    },
-    cognitivePatterns: {
-      topDistortions: [],
-      topHealthyPatterns: ["Balanced Perspective", "Evidence-Based Thinking"],
-      overallBalance: 65,
-    },
-    communicationStrengths: ["Clear communication", "Active listening"],
-    growthAreas: ["Developing emotional awareness", "Practicing mindful responses"],
-  }
-
-  const defaultSecondPersonProfile = {
-    attachmentStyle: {
-      primaryStyle: "Anxious",
-      secondaryStyle: "Secure",
-      confidence: 65,
-    },
-    transactionalAnalysis: {
-      dominantEgoState: "Parent",
-      egoStateDistribution: {
-        parent: 45,
-        adult: 35,
-        child: 20,
-      },
-    },
-    linguisticPatterns: {
-      cognitiveComplexity: 72,
-      emotionalExpressiveness: 48,
-      socialEngagement: 58,
-      dominantEmotions: ["Trust", "Surprise", "Joy"],
-    },
-    cognitivePatterns: {
-      topDistortions: ["Mental Filter", "Should Statements"],
-      topHealthyPatterns: ["Acceptance", "Realistic Evaluation"],
-      overallBalance: 58,
-    },
-    communicationStrengths: ["Emotional awareness", "Conflict resolution"],
-    growthAreas: ["Reducing defensive reactions", "Improving active listening"],
-  }
-
-  // Use the profiles from results if available, otherwise use defaults
-  const firstPersonProfile = results.firstPersonProfile || defaultFirstPersonProfile
-  const secondPersonProfile = results.secondPersonProfile || defaultSecondPersonProfile
-
-  // Extract insights from results for the emotional insight summary
-  const emotionalInsights =
-    results.insights?.filter(
-      (insight) =>
-        insight.includes("emotion") ||
-        insight.includes("feel") ||
-        insight.includes("empathy") ||
-        insight.includes("tone") ||
-        insight.includes("express"),
-    ) || []
-
-  // Get emoji representation based on emotional intelligence score
-  const getEmotionalEmoji = (score: number) => {
-    if (score >= 90) return "😊"
-    if (score >= 80) return "🙂"
-    if (score >= 70) return "😌"
-    if (score >= 60) return "😐"
-    if (score >= 50) return "🤔"
-    if (score >= 40) return "😕"
-    if (score >= 30) return "😟"
-    return "😢"
-  }
-
-  // Ensure we have a valid ID for navigation
-  const resultId = results.id || id
+  // Get Gottman ratio from compatibility data
+  const gottmanRatio = results.compatibility?.gottmanScores?.positiveNegativeRatio || undefined
 
   return (
-    <div className="flex flex-col min-h-screen bg-love-gradient">
-      <SparkleEffect count={20} className="absolute inset-0 pointer-events-none" />
+    <div className="min-h-screen bg-gradient-to-b from-purple-50 to-blue-50">
+      <Header />
 
-      <main className="flex-1 container px-4 py-6 sm:py-10 md:py-12 relative z-10">
-        <div className="mb-6 sm:mb-10">
-          <Link href="/upload" className="flex items-center text-gray-600 hover:text-gray-900 mb-4 sm:mb-6 pl-1">
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Upload
-          </Link>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gradient">Your Emotional Intelligence Analysis</h1>
-            <Badge
-              variant={analysisMethod === "openai" ? "default" : "outline"}
-              className={`gap-1 px-3 py-1.5 text-sm self-start md:self-auto ${
-                analysisMethod === "openai" ? "bg-gradient-to-r from-pink-500 to-purple-500" : ""
-              }`}
-            >
-              {analysisMethod === "openai" ? (
-                <>
-                  <Zap className="h-3.5 w-3.5 mr-1" />
-                  OpenAI Enhanced
-                </>
-              ) : (
-                "Standard Analysis"
-              )}
-            </Badge>
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-center mb-8">Your Relationship Insights</h1>
+
+        {/* Individual Profiles Section */}
+        <section className="mb-8">
+          <h2 className="text-2xl font-semibold mb-6 text-center">Individual Profiles</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {personA && (
+              <ProfileCard
+                name={personA.name || "You"}
+                communicationStyle={personA.communicationStyle || "Balanced"}
+                emotionalIntelligence={
+                  typeof personA.emotionalIntelligence === "number" ? personA.emotionalIntelligence : 65
+                }
+                attachmentStyle={personA.psychologicalProfile?.attachmentStyle?.primaryStyle || "Secure"}
+                egoState={personA.psychologicalProfile?.transactionalAnalysis?.dominantEgoState || "Adult"}
+                sentiment={personA.sentiment || 70}
+                insight={personA.insights?.[0]}
+                recommendation={personA.recommendations?.[0]}
+              />
+            )}
+
+            {personB && (
+              <ProfileCard
+                name={personB.name || "Partner"}
+                communicationStyle={personB.communicationStyle || "Balanced"}
+                emotionalIntelligence={
+                  typeof personB.emotionalIntelligence === "number" ? personB.emotionalIntelligence : 65
+                }
+                attachmentStyle={personB.psychologicalProfile?.attachmentStyle?.primaryStyle || "Secure"}
+                egoState={personB.psychologicalProfile?.transactionalAnalysis?.dominantEgoState || "Adult"}
+                sentiment={personB.sentiment || 70}
+                insight={personB.insights?.[0]}
+                recommendation={personB.recommendations?.[0]}
+              />
+            )}
           </div>
-          <p className="text-gray-600 text-base sm:text-lg">
-            Analysis based on {results.messageCount} messages between {firstPerson.name} and {secondPerson.name}
+        </section>
+
+        {/* Compatibility Card Section */}
+        <section className="mb-8">
+          <CompatibilityCard
+            finalScore={results.compatibility?.finalScore || 65}
+            attachment={results.compatibility?.attachment || 60}
+            communication={results.compatibility?.communication || 70}
+            emotionalSync={results.compatibility?.emotionalSync || 65}
+            gottmanSummary={results.compatibility?.gottmanSummary || results.gottmanSummary}
+            gottmanRatio={gottmanRatio}
+          />
+        </section>
+
+        {/* Gottman Breakdown Section */}
+        <section className="mb-8">
+          <GottmanBreakdown
+            personA={{
+              name: personA.name || "You",
+              scores: personAGottmanScores,
+            }}
+            personB={{
+              name: personB.name || "Partner",
+              scores: personBGottmanScores,
+            }}
+          />
+        </section>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">You</h2>
+            {personA.emotionalIntelligence ? (
+              <EmotionalRadarChart data={personA.emotionalIntelligence} />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No emotional intelligence data available.
+              </div>
+            )}
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Partner</h2>
+            {personB.emotionalIntelligence ? (
+              <EmotionalRadarChart data={personB.emotionalIntelligence} />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No emotional intelligence data available.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Communication Style</h2>
+            {personA.communicationStyle ? (
+              <CommunicationStylesChart communicationStyle={personA.communicationStyle} />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No communication style data available.
+              </div>
+            )}
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Partner's Communication Style</h2>
+            {personB.communicationStyle ? (
+              <CommunicationStylesChart communicationStyle={personB.communicationStyle} />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No communication style data available.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Psychological Profile</h2>
+            {personA.psychologicalProfile ? (
+              <PsychologicalProfileCard
+                profile={personA.psychologicalProfile}
+                participantName={personA.name || "You"}
+              />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No psychological profile data available.
+              </div>
+            )}
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Partner's Psychological Profile</h2>
+            {personB.psychologicalProfile ? (
+              <PsychologicalProfileCard
+                profile={personB.psychologicalProfile}
+                participantName={personB.name || "Partner"}
+              />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No psychological profile data available.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Emotional Intelligence</h2>
+            {personA.emotionalIntelligence ? (
+              <EmotionalIntelligenceBreakdown emotionalIntelligence={personA.emotionalIntelligence} />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No emotional intelligence data available.
+              </div>
+            )}
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold mb-4 text-center">Your Partner's Emotional Intelligence</h2>
+            {personB.emotionalIntelligence ? (
+              <EmotionalIntelligenceBreakdown emotionalIntelligence={personB.emotionalIntelligence} />
+            ) : (
+              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+                No emotional intelligence data available.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4 text-center">Relationship Dynamics</h2>
+          {personA && personB ? (
+            <RelationshipDynamicsCard personA={personA} personB={personB} />
+          ) : (
+            <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+              No relationship dynamics data available.
+            </div>
+          )}
+        </div>
+
+        <div className="mb-8">
+          <h2 className="text-2xl font-semibold mb-4 text-center">Gottman Method Assessment</h2>
+          {personA && personB ? (
+            <GottmanScoreCard personA={personA} personB={personB} />
+          ) : (
+            <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
+              No Gottman assessment data available.
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-center mt-8">
+          <Button onClick={() => router.push("/reflections")}>View Detailed Reflections</Button>
+        </div>
+      </div>
+
+      {/* Debug Preview: Results Object Mapping */}
+      <section className="p-4 mt-8 border border-dashed rounded bg-slate-100 max-w-7xl mx-auto mb-8">
+        <h2 className="text-lg font-semibold mb-2 text-purple-700">[Debug Preview] Results Data Mapping</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {personA && personB && (
+            <>
+              <div className="bg-white p-4 rounded shadow text-sm space-y-1">
+                <h3 className="font-bold text-base text-blue-600">{personA.name || "Person A"}</h3>
+                <p>
+                  <strong>Communication Style:</strong> {personA.communicationStyle}
+                </p>
+                <p>
+                  <strong>Attachment Style:</strong>{" "}
+                  {personA.psychologicalProfile?.attachmentStyle?.primaryStyle || "N/A"}
+                </p>
+                <p>
+                  <strong>Ego State:</strong>{" "}
+                  {personA.psychologicalProfile?.transactionalAnalysis?.dominantEgoState || "N/A"}
+                </p>
+                <p>
+                  <strong>Sentiment Score:</strong> {personA.sentiment}
+                </p>
+                <div className="mt-2">
+                  <strong>Emotional Intelligence:</strong>
+                  <ul className="list-disc pl-5">
+                    {Object.entries(personA.emotionalIntelligence || {}).map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {value}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="mt-1">
+                  <strong>Top Insight:</strong> {personA.insights?.[0] || "N/A"}
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded shadow text-sm space-y-1">
+                <h3 className="font-bold text-base text-pink-600">{personB.name || "Person B"}</h3>
+                <p>
+                  <strong>Communication Style:</strong> {personB.communicationStyle}
+                </p>
+                <p>
+                  <strong>Attachment Style:</strong>{" "}
+                  {personB.psychologicalProfile?.attachmentStyle?.primaryStyle || "N/A"}
+                </p>
+                <p>
+                  <strong>Ego State:</strong>{" "}
+                  {personB.psychologicalProfile?.transactionalAnalysis?.dominantEgoState || "N/A"}
+                </p>
+                <p>
+                  <strong>Sentiment Score:</strong> {personB.sentiment}
+                </p>
+                <div className="mt-2">
+                  <strong>Emotional Intelligence:</strong>
+                  <ul className="list-disc pl-5">
+                    {Object.entries(personB.emotionalIntelligence || {}).map(([key, value]) => (
+                      <li key={key}>
+                        {key}: {value}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="mt-1">
+                  <strong>Top Insight:</strong> {personB.insights?.[0] || "N/A"}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="mt-6 text-sm">
+          <h4 className="font-semibold mb-2">Compatibility Summary</h4>
+          <p>
+            <strong>Final Score:</strong> {results.compatibility?.finalScore}
+          </p>
+          <p>
+            <strong>Attachment Match:</strong> {results.compatibility?.attachment}
+          </p>
+          <p>
+            <strong>Communication Sync:</strong> {results.compatibility?.communication}
+          </p>
+          <p>
+            <strong>Emotional Synchrony:</strong> {results.compatibility?.emotionalSync}
+          </p>
+          <p>
+            <strong>Gottman Ratio:</strong> {results.compatibility?.gottmanScores?.positiveNegativeRatio}
           </p>
         </div>
 
-        <div className="flex items-center justify-end mb-6">
-          <div className="flex items-center space-x-2">
-            <Switch id="advanced-view" checked={advancedView} onCheckedChange={setAdvancedView} />
-            <Label htmlFor="advanced-view">Advanced View</Label>
-          </div>
+        <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded">
+          <p className="text-xs text-yellow-700">
+            This is a development-only preview section to verify data structure. Remove before production.
+          </p>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6 sm:mb-8 md:mb-12">
-          <Card className="bg-love-card shadow-lg border-pink-100 overflow-hidden float-animation">
-            <CardHeader className="pb-2 sm:pb-3 pt-4 sm:pt-6 px-4 sm:px-6">
-              <CardTitle className="text-base sm:text-lg flex items-center">
-                <Heart className="h-4 w-4 sm:h-5 sm:w-5 text-rose-500 mr-1.5 sm:mr-2.5" />
-                Overall Compatibility
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-              <div className="text-center py-2 sm:py-4">
-                <CircularProgress
-                  value={results.finalCompatibilityScore || results.overallScore}
-                  size={160}
-                  strokeWidth={12}
-                  className="mx-auto mb-3"
-                  valueClassName="text-3xl sm:text-4xl font-bold text-gradient"
-                  label={getCompatibilityMessage(results.finalCompatibilityScore || results.overallScore)}
-                  labelClassName="text-gray-600 text-sm sm:text-base mt-2"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="bg-love-card shadow-lg border-pink-100 overflow-hidden float-animation"
-            style={{ animationDelay: "0.2s" }}
-          >
-            <CardHeader className="pb-2 sm:pb-3 pt-4 sm:pt-6 px-4 sm:px-6">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base sm:text-lg flex items-center">
-                  <ThumbsUp className="h-4 w-4 sm:h-5 sm:w-5 text-rose-500 mr-1.5 sm:mr-2.5" />
-                  Emotional Intelligence
-                </CardTitle>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <InfoIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs text-xs sm:text-sm">
-                        Emotional Intelligence (EI) is the ability to understand and manage emotions effectively. Scores
-                        are calculated based on empathy, self-awareness, and emotional regulation.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </CardHeader>
-            <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-              <div className="space-y-4 sm:space-y-5 pt-2">
-                {results.participants.map((participant, index) => (
-                  <div key={index}>
-                    <div className="flex justify-between mb-1 sm:mb-2">
-                      <span className="font-medium text-sm sm:text-base">{participant.name}</span>
-                      <div className="flex items-center">
-                        {!advancedView && (
-                          <span className="text-2xl mr-2">{getEmotionalEmoji(participant.emotionalIntelligence)}</span>
-                        )}
-                        <span className="font-semibold text-sm sm:text-base">{participant.emotionalIntelligence}%</span>
-                      </div>
-                    </div>
-                    <div className="relative h-2 sm:h-2.5 rounded-full bg-gray-200 overflow-hidden">
-                      <div
-                        className={`absolute top-0 left-0 h-full rounded-full ${
-                          index === 0
-                            ? "bg-gradient-to-r from-rose-400 to-rose-600"
-                            : "bg-gradient-to-r from-blue-400 to-blue-600"
-                        }`}
-                        style={{ width: `${participant.emotionalIntelligence}%` }}
-                      ></div>
-                    </div>
-                    {advancedView && index === 0 && (
-                      <EmotionalFlags emotionalBreakdown={firstPersonBreakdown} personName={participant.name} />
-                    )}
-                    {advancedView && index === 1 && (
-                      <EmotionalFlags emotionalBreakdown={secondPersonBreakdown} personName={participant.name} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className="bg-love-card shadow-lg border-pink-100 overflow-hidden float-animation"
-            style={{ animationDelay: "0.4s" }}
-          >
-            <CardHeader className="pb-2 sm:pb-3 pt-4 sm:pt-6 px-4 sm:px-6">
-              <CardTitle className="text-base sm:text-lg flex items-center">
-                <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-rose-500 mr-1.5 sm:mr-2.5" />
-                Communication Style
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 sm:px-6 pb-4 sm:pb-6">
-              <div className="space-y-4 sm:space-y-5 pt-2">
-                <div className="flex items-center">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-rose-300 to-rose-500 flex items-center justify-center mr-3 sm:mr-4">
-                    <span className="font-medium text-white text-base sm:text-lg">{firstPerson.name.charAt(0)}</span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm sm:text-base">{firstPerson.name}</p>
-                    <p className="text-xs sm:text-sm text-gray-600 mt-0.5">{firstPersonStyleLabel}</p>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-blue-300 to-blue-500 flex items-center justify-center mr-3 sm:mr-4">
-                    <span className="font-medium text-white text-base sm:text-lg">{secondPerson.name.charAt(0)}</span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm sm:text-base">{secondPerson.name}</p>
-                    <p className="text-xs sm:text-sm text-gray-600 mt-0.5">{secondPersonStyleLabel}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {advancedView && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <EmotionalInsightSummary
-              insights={emotionalInsights.length > 0 ? emotionalInsights : results.insights || []}
-            />
-            <EmotionalReflection
-              firstPersonName={firstPerson.name}
-              secondPersonName={secondPerson.name}
-              firstPersonBreakdown={firstPersonBreakdown}
-              secondPersonBreakdown={secondPersonBreakdown}
-            />
-          </div>
-        )}
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-          <div className="flex justify-end mb-4">
-            <Button
-              onClick={() => router.push(`/reflections?id=${resultId}`)}
-              className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700"
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              View Reflections & Growth Plan
-            </Button>
-          </div>
-
-          <div className="bg-love-card shadow-lg border border-pink-100 rounded-lg p-4 sm:p-6">
-            <TabsContent value="emotional" className="mt-0">
-              {!advancedView ? (
-                <div className="text-center py-8">
-                  <div className="flex justify-center space-x-8 mb-8">
-                    <div className="text-center">
-                      <div className="text-6xl mb-2">{getEmotionalEmoji(firstPerson.emotionalIntelligence)}</div>
-                      <p className="font-medium">{firstPerson.name}</p>
-                      <p className="text-sm text-gray-600">{firstPerson.emotionalIntelligence}% EI Score</p>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-6xl mb-2">{getEmotionalEmoji(secondPerson.emotionalIntelligence)}</div>
-                      <p className="font-medium">{secondPerson.name}</p>
-                      <p className="text-sm text-gray-600">{secondPerson.emotionalIntelligence}% EI Score</p>
-                    </div>
-                  </div>
-                  <div className="max-w-2xl mx-auto">
-                    <h3 className="text-xl font-semibold mb-3">Summary</h3>
-                    <p className="text-gray-700">
-                      {results.insights && results.insights.length > 0
-                        ? results.insights[0]
-                        : `Based on your conversation analysis, ${firstPerson.name} shows ${
-                            firstPerson.emotionalIntelligence > secondPerson.emotionalIntelligence ? "higher" : "lower"
-                          } emotional intelligence than ${secondPerson.name}. This affects how you communicate and connect with each other.`}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <EmotionalIntelligenceBreakdown
-                  participant1={{
-                    name: firstPerson.name,
-                    emotionalBreakdown: firstPersonBreakdown,
-                    score: firstPerson.emotionalIntelligence,
-                  }}
-                  participant2={{
-                    name: secondPerson.name,
-                    emotionalBreakdown: secondPersonBreakdown,
-                    score: secondPerson.emotionalIntelligence,
-                  }}
-                  insights={results.insights}
-                  recommendations={results.recommendations}
-                />
-              )}
-            </TabsContent>
-
-            <TabsContent value="communication" className="mt-0">
-              <CommunicationStylesChart
-                participant1={{
-                  name: firstPerson.name,
-                  styles: firstPersonStyles,
-                }}
-                participant2={{
-                  name: secondPerson.name,
-                  styles: secondPersonStyles,
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="compatibility" className="mt-0">
-              <CompatibilityChart
-                overallScore={results.finalCompatibilityScore || results.overallScore}
-                categories={compatibilityCategories}
-              />
-            </TabsContent>
-
-            <TabsContent value="psychology" className="mt-0">
-              <PsychologicalProfilesTab
-                firstPersonName={firstPerson.name}
-                secondPersonName={secondPerson.name}
-                firstPersonProfile={firstPersonProfile}
-                secondPersonProfile={secondPersonProfile}
-                relationshipDynamics={results.relationshipDynamics || {}}
-              />
-            </TabsContent>
-
-            <TabsContent value="relationship" className="mt-0">
-              <InteractionPatternsChart
-                gottmanScores={results.gottmanScores}
-                participant1Name={firstPerson.name}
-                participant2Name={secondPerson.name}
-                summary={results.gottmanSummary}
-                recommendations={results.gottmanRecommendations}
-              />
-            </TabsContent>
-          </div>
-        </Tabs>
-        <div className="mt-8 flex justify-center">
-          <Button
-            onClick={() => router.push(`/reflections?id=${resultId}`)}
-            className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white"
-          >
-            View Growth Recommendations
-          </Button>
-        </div>
-      </main>
-
-      <footer className="border-t border-pink-100 py-8 sm:py-10 bg-white bg-opacity-80 backdrop-blur-sm relative z-10">
-        <div className="container px-4 sm:px-6 text-center text-gray-500">
-          <p>© {new Date().getFullYear()} LoveLens. All rights reserved.</p>
-        </div>
-      </footer>
+      </section>
+      {/* Add Debug Data Viewer */}
+      <DebugDataViewer data={results} title="Analysis Results Data Structure" initialCollapsed={true} />
     </div>
   )
-}
-
-function getCompatibilityMessage(score: number): string {
-  if (score >= 90) return "Exceptional compatibility"
-  if (score >= 80) return "Strong compatibility"
-  if (score >= 70) return "Good compatibility"
-  if (score >= 60) return "Moderate compatibility"
-  if (score >= 50) return "Fair compatibility"
-  return "Needs improvement"
 }

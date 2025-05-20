@@ -11,6 +11,9 @@ import { storeAnalysisResult } from "@/lib/storage-utils"
 import { extractTextFromImage, validateExtractedMessages } from "@/lib/ocr-service"
 import type { AnalysisResult, Message } from "@/lib/types"
 import { LoadingScreen } from "./loading-screen"
+import { OCRDebugViewer } from "./ocr-debug-viewer"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 // Error types for better error handling
 type ErrorType = "api_key_missing" | "upload_failed" | "analysis_failed" | "ocr_failed" | "storage_failed" | "unknown"
@@ -23,12 +26,14 @@ interface ErrorDetails {
   action?: string
 }
 
-export function UploadForm() {
+function UploadForm() {
   const [files, setFiles] = useState<File[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<ErrorDetails | null>(null)
   const [statusMessage, setStatusMessage] = useState<string>("Preparing...")
+  const [debugMode, setDebugMode] = useState(false)
+  const [selectedDebugFile, setSelectedDebugFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
@@ -36,6 +41,11 @@ export function UploadForm() {
     if (e.target.files && e.target.files.length > 0) {
       setFiles(Array.from(e.target.files))
       setError(null) // Clear any previous errors
+
+      // Set the first file as the debug file
+      if (debugMode && e.target.files.length > 0) {
+        setSelectedDebugFile(e.target.files[0])
+      }
     }
   }
 
@@ -44,11 +54,29 @@ export function UploadForm() {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       setFiles(Array.from(e.dataTransfer.files))
       setError(null) // Clear any previous errors
+
+      // Set the first file as the debug file
+      if (debugMode && e.dataTransfer.files.length > 0) {
+        setSelectedDebugFile(e.dataTransfer.files[0])
+      }
     }
   }
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
+  }
+
+  const handleDebugModeChange = (checked: boolean) => {
+    setDebugMode(checked)
+    if (checked && files.length > 0) {
+      setSelectedDebugFile(files[0])
+    } else {
+      setSelectedDebugFile(null)
+    }
+  }
+
+  const handleSelectDebugFile = (file: File) => {
+    setSelectedDebugFile(file)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -215,6 +243,11 @@ export function UploadForm() {
         <Card className="w-full">
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit}>
+              <div className="flex items-center space-x-2 mb-4">
+                <Switch id="debug-mode" checked={debugMode} onCheckedChange={handleDebugModeChange} />
+                <Label htmlFor="debug-mode">Debug Mode</Label>
+              </div>
+
               <div
                 className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors"
                 onDrop={handleDrop}
@@ -254,7 +287,11 @@ export function UploadForm() {
                   <p className="text-sm font-medium text-gray-700">Selected files ({files.length}):</p>
                   <ul className="mt-2 text-sm text-gray-500 max-h-32 overflow-y-auto">
                     {files.map((file, index) => (
-                      <li key={index} className="truncate">
+                      <li
+                        key={index}
+                        className={`truncate p-1 rounded cursor-pointer ${debugMode && selectedDebugFile === file ? "bg-blue-100" : ""}`}
+                        onClick={() => debugMode && handleSelectDebugFile(file)}
+                      >
                         {file.name}
                       </li>
                     ))}
@@ -287,6 +324,14 @@ export function UploadForm() {
           </CardContent>
         </Card>
       )}
+
+      {debugMode && selectedDebugFile && (
+        <div className="mt-6">
+          <OCRDebugViewer imageFile={selectedDebugFile} />
+        </div>
+      )}
     </div>
   )
 }
+
+export default UploadForm

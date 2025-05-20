@@ -4,10 +4,10 @@ import type React from "react"
 
 import { useEffect, useState } from "react"
 import { initializeOpenAI } from "@/lib/api-config"
-import { ApiKeyForm } from "./api-key-form"
+import ApiKeyForm from "./api-key-form"
 import { LoadingScreen } from "./loading-screen"
 
-export function ApiInitializer({ children }: { children: React.ReactNode }) {
+function ApiInitializer({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false)
   const [loading, setLoading] = useState(true)
   const [apiAvailable, setApiAvailable] = useState(false)
@@ -71,3 +71,7 @@ export function ApiInitializer({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>
 }
+
+// Export both as default and named export for backward compatibility
+export { ApiInitializer }
+export default ApiInitializer

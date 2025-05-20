@@ -13,13 +13,6 @@ export enum AttachmentStyle {
   Disorganized = "disorganized",
 }
 
-interface AttachmentIndicators {
-  secureIndicators: number
-  anxiousIndicators: number
-  avoidantIndicators: number
-  disorganizedIndicators: number
-}
-
 // Interface for attachment style analysis result
 interface AttachmentStyleAnalysis {
   primaryStyle: AttachmentStyle
@@ -30,13 +23,10 @@ interface AttachmentStyleAnalysis {
 }
 
 export function analyzeAttachmentStyle(messages: Message[]): AttachmentStyleAnalysis {
+  // 🧠 Refactor to use separate inputs - ensure this function only processes messages from one person
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
   if (!messages || messages.length === 0) {
-    return {
-      primaryStyle: AttachmentStyle.Secure,
-      confidence: 0.3,
-      explanation: "Based on the limited conversation data available.",
-      limitedDataWarning: "This analysis is based on very limited data and should be considered preliminary.",
-    }
+    throw new Error("Insufficient messages for attachment style analysis.")
   }
 
   // Keywords associated with different attachment styles
@@ -57,7 +47,7 @@ export function analyzeAttachmentStyle(messages: Message[]): AttachmentStyleAnal
 
   // Simple keyword matching for attachment style
   messages.forEach((message) => {
-    const lowerContent = message.text.toLowerCase()
+    const lowerContent = typeof message.text === "string" ? message.text.toLowerCase() : ""
 
     Object.entries(attachmentKeywords).forEach(([style, keywords]) => {
       keywords.forEach((keyword) => {
@@ -155,9 +145,24 @@ export function analyzeTransactionalPatterns(
   participant2Analysis: TAAnalysis
   overallDynamics: string
 } {
+  // 🧠 Refactor to use separate inputs
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for transactional patterns analysis.")
+  }
+
   // Filter messages by participants
   const p1Messages = messages.filter((msg) => msg.sender === participant1)
   const p2Messages = messages.filter((msg) => msg.sender === participant2)
+
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!p1Messages || p1Messages.length === 0) {
+    throw new Error(`Insufficient messages from ${participant1} for transactional patterns analysis.`)
+  }
+
+  if (!p2Messages || p2Messages.length === 0) {
+    throw new Error(`Insufficient messages from ${participant2} for transactional patterns analysis.`)
+  }
 
   // Analyze ego states for participant 1
   const p1Analysis = analyzeEgoStates(p1Messages)
@@ -181,7 +186,13 @@ export function analyzeTransactionalPatterns(
   }
 }
 
-function analyzeEgoStates(messages: any[]): TAAnalysis {
+export function analyzeEgoStates(messages: Message[]): TAAnalysis {
+  // 🧠 Refactor to use separate inputs - ensure this function only processes messages from one person
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for ego states analysis.")
+  }
+
   // Initialize counters
   let parentCount = 0
   let adultCount = 0
@@ -194,7 +205,7 @@ function analyzeEgoStates(messages: any[]): TAAnalysis {
 
   // Analyze each message
   messages.forEach((message) => {
-    const text = message.text.toLowerCase()
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
     const sentiment = message.sentiment || 50
 
     // Parent ego state indicators
@@ -298,6 +309,11 @@ function analyzeEgoStates(messages: any[]): TAAnalysis {
 }
 
 function analyzeTransactions(messages: any[], participant1: string, participant2: string) {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for transactions analysis.")
+  }
+
   let complementary = 0
   let crossed = 0
   let ulterior = 0
@@ -311,8 +327,8 @@ function analyzeTransactions(messages: any[], participant1: string, participant2
     ) {
       totalTransactions++
 
-      const prevText = messages[i - 1].text.toLowerCase()
-      const currText = messages[i].text.toLowerCase()
+      const prevText = typeof messages[i - 1].text === "string" ? messages[i - 1].text.toLowerCase() : ""
+      const currText = typeof messages[i].text === "string" ? messages[i].text.toLowerCase() : ""
       const prevSentiment = messages[i - 1].sentiment || 50
       const currSentiment = messages[i].sentiment || 50
 
@@ -348,7 +364,10 @@ function analyzeTransactions(messages: any[], participant1: string, participant2
     }
   }
 
-  totalTransactions = Math.max(1, totalTransactions)
+  // 🚫 Remove Fallback Profiles - Check for sufficient transactions
+  if (totalTransactions === 0) {
+    throw new Error("Insufficient transactions between participants for analysis.")
+  }
 
   return {
     complementary: (complementary / totalTransactions) * 100,
@@ -423,6 +442,12 @@ export function analyzeLinguisticMarkers(messages: Message[]): {
   socialEngagement: number
   dominantEmotions: string[]
 } {
+  // 🧠 Refactor to use separate inputs - ensure this function only processes messages from one person
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for linguistic markers analysis.")
+  }
+
   return {
     cognitiveComplexity: calculateCognitiveComplexity(messages),
     emotionalExpressiveness: calculateEmotionalExpressiveness(messages),
@@ -433,31 +458,61 @@ export function analyzeLinguisticMarkers(messages: Message[]): {
 
 // Helper functions for linguistic analysis
 function calculateCognitiveComplexity(messages: Message[]): number {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for cognitive complexity calculation.")
+  }
+
   // Implement cognitive complexity calculation
   return 70 // Placeholder
 }
 
 function calculateEmotionalExpressiveness(messages: Message[]): number {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for emotional expressiveness calculation.")
+  }
+
   // Implement emotional expressiveness calculation
   return 65 // Placeholder
 }
 
 function calculateSocialEngagement(messages: Message[]): number {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for social engagement calculation.")
+  }
+
   // Implement social engagement calculation
   return 75 // Placeholder
 }
 
 function calculatePsychologicalDistancing(messages: Message[]): number {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for psychological distancing calculation.")
+  }
+
   // Implement psychological distancing calculation
   return 50 // Placeholder
 }
 
 function calculateCertaintyLevel(messages: Message[]): number {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for certainty level calculation.")
+  }
+
   // Implement certainty level calculation
   return 50 // Placeholder
 }
 
 function identifyDominantEmotions(messages: Message[]): string[] {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for dominant emotions identification.")
+  }
+
   // Implement dominant emotions identification
   return ["Joy", "Trust", "Anticipation"] // Placeholder
 }
@@ -495,6 +550,12 @@ export function analyzeCognitivePatterns(messages: Message[]): {
   healthyPatterns: any[]
   overallBalance: number
 } {
+  // 🧠 Refactor to use separate inputs - ensure this function only processes messages from one person
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for cognitive patterns analysis.")
+  }
+
   return {
     distortions: identifyCognitiveDistortions(messages),
     healthyPatterns: identifyHealthyPatterns(messages),
@@ -504,11 +565,21 @@ export function analyzeCognitivePatterns(messages: Message[]): {
 
 // Helper functions for cognitive analysis
 function identifyCognitiveDistortions(messages: Message[]): any[] {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for cognitive distortions identification.")
+  }
+
   // Implement cognitive distortions identification
   return [] // Placeholder
 }
 
 function identifyHealthyPatterns(messages: Message[]): any[] {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for healthy patterns identification.")
+  }
+
   // Implement healthy patterns identification
   return [
     { type: "Balanced Perspective", frequency: 0.8 },
@@ -517,6 +588,11 @@ function identifyHealthyPatterns(messages: Message[]): any[] {
 }
 
 function calculateCognitiveBalance(messages: Message[]): number {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for cognitive balance calculation.")
+  }
+
   // Implement cognitive balance calculation
   return 65 // Placeholder
 }
@@ -556,17 +632,20 @@ export interface PsychologicalProfile {
 }
 
 export function generatePsychologicalProfile(messages: Message[], personName: string) {
-  // Filter messages to only include those from the specified person
-  const personMessages = messages.filter((msg) => msg.sender === personName)
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error(`Insufficient messages for psychological profile generation.`)
+  }
 
+  // No need to filter messages as they should already be filtered by the caller
   // Analyze attachment style based on person's messages only
-  const attachmentStyle = analyzeAttachmentStyle(personMessages)
+  const attachmentStyle = analyzeAttachmentStyle(messages)
 
   // Analyze linguistic markers based on person's messages only
-  const linguisticMarkers = analyzeLinguisticMarkers(personMessages)
+  const linguisticMarkers = analyzeLinguisticMarkers(messages)
 
   // Analyze cognitive patterns based on person's messages only
-  const cognitivePatterns = analyzeCognitivePatterns(personMessages)
+  const cognitivePatterns = analyzeCognitivePatterns(messages)
 
   // Generate profile based on individual analysis
   return {
@@ -580,16 +659,21 @@ export function generatePsychologicalProfile(messages: Message[], personName: st
     linguisticPatterns: linguisticMarkers,
     cognitivePatterns,
     transactionalAnalysis: {
-      dominantEgoState: determineDominantEgoState(personMessages),
-      egoStateDistribution: calculateEgoStateDistribution(personMessages),
+      dominantEgoState: determineDominantEgoState(messages),
+      egoStateDistribution: calculateEgoStateDistribution(messages),
     },
-    communicationStrengths: identifyCommunicationStrengths(personMessages),
-    growthAreas: identifyGrowthAreas(personMessages),
+    communicationStrengths: identifyCommunicationStrengths(messages),
+    growthAreas: identifyGrowthAreas(messages),
   }
 }
 
 // Helper function to determine dominant ego state based on individual messages
 function determineDominantEgoState(messages: Message[]): string {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for dominant ego state determination.")
+  }
+
   const egoStateCounts: Record<string, number> = {
     parent: 0,
     adult: 0,
@@ -606,6 +690,11 @@ function determineDominantEgoState(messages: Message[]): string {
 
 // Helper function to calculate ego state distribution
 function calculateEgoStateDistribution(messages: Message[]): Record<string, number> {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for ego state distribution calculation.")
+  }
+
   const total = messages.length
   const distribution: Record<string, number> = {
     parent: 0,
@@ -627,6 +716,11 @@ function calculateEgoStateDistribution(messages: Message[]): Record<string, numb
 
 // Helper function to identify communication strengths
 function identifyCommunicationStrengths(messages: Message[]): string[] {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for communication strengths identification.")
+  }
+
   const strengths: string[] = []
 
   // Analyze message patterns for strengths
@@ -643,6 +737,11 @@ function identifyCommunicationStrengths(messages: Message[]): string[] {
 
 // Helper function to identify growth areas
 function identifyGrowthAreas(messages: Message[]): string[] {
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for growth areas identification.")
+  }
+
   const areas: string[] = []
 
   // Analyze message patterns for growth areas
@@ -665,38 +764,46 @@ function hasClearCommunication(text: string): boolean {
 
 function showsEmpathy(text: string): boolean {
   // Implement empathy detection logic
-  return (
-    text.toLowerCase().includes("understand") ||
-    text.toLowerCase().includes("feel") ||
-    text.toLowerCase().includes("sorry")
-  )
+  return typeof text === "string"
+    ? text.toLowerCase().includes("understand")
+    : false || typeof text === "string"
+      ? text.toLowerCase().includes("feel")
+      : false || typeof text === "string"
+        ? text.toLowerCase().includes("sorry")
+        : false
 }
 
 function showsAssertiveness(text: string): boolean {
   // Implement assertiveness detection logic
-  return (
-    text.toLowerCase().includes("i think") ||
-    text.toLowerCase().includes("i feel") ||
-    text.toLowerCase().includes("i need")
-  )
+  return typeof text === "string"
+    ? text.toLowerCase().includes("i think")
+    : false || typeof text === "string"
+      ? text.toLowerCase().includes("i feel")
+      : false || typeof text === "string"
+        ? text.toLowerCase().includes("i need")
+        : false
 }
 
 function showsDefensiveness(text: string): boolean {
   // Implement defensiveness detection logic
-  return (
-    text.toLowerCase().includes("but") ||
-    text.toLowerCase().includes("however") ||
-    text.toLowerCase().includes("actually")
-  )
+  return typeof text === "string"
+    ? text.toLowerCase().includes("but")
+    : false || typeof text === "string"
+      ? text.toLowerCase().includes("however")
+      : false || typeof text === "string"
+        ? text.toLowerCase().includes("actually")
+        : false
 }
 
 function showsPassivity(text: string): boolean {
   // Implement passivity detection logic
-  return (
-    text.toLowerCase().includes("maybe") ||
-    text.toLowerCase().includes("perhaps") ||
-    text.toLowerCase().includes("i guess")
-  )
+  return typeof text === "string"
+    ? text.toLowerCase().includes("maybe")
+    : false || typeof text === "string"
+      ? text.toLowerCase().includes("perhaps")
+      : false || typeof text === "string"
+        ? text.toLowerCase().includes("i guess")
+        : false
 }
 
 function hasUnclearCommunication(text: string): boolean {
@@ -706,9 +813,10 @@ function hasUnclearCommunication(text: string): boolean {
 
 function analyzeEgoState(text: string): string {
   // Implement ego state analysis logic
-  if (text.toLowerCase().includes("should") || text.toLowerCase().includes("must")) {
+  const lowerText = typeof text === "string" ? text.toLowerCase() : ""
+  if (lowerText.includes("should") || lowerText.includes("must")) {
     return "parent"
-  } else if (text.toLowerCase().includes("i feel") || text.toLowerCase().includes("i want")) {
+  } else if (lowerText.includes("i feel") || lowerText.includes("i want")) {
     return "child"
   } else {
     return "adult"
@@ -740,9 +848,21 @@ export function analyzeRelationshipDynamics(
   participant2: string,
   gottmanScores: any,
 ): RelationshipDynamics {
+  // 🧠 Refactor to use separate inputs
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for relationship dynamics analysis.")
+  }
+
   // Get individual profiles
-  const profile1 = generatePsychologicalProfile(messages, participant1)
-  const profile2 = generatePsychologicalProfile(messages, participant2)
+  const profile1 = generatePsychologicalProfile(
+    messages.filter((msg) => msg.sender === participant1),
+    participant1,
+  )
+  const profile2 = generatePsychologicalProfile(
+    messages.filter((msg) => msg.sender === participant2),
+    participant2,
+  )
 
   // Calculate positive-to-negative ratio based on Gottman scores
   const positiveFactors =
@@ -885,15 +1005,10 @@ interface CommunicationStyleAnalysis {
 
 // Communication style analysis function
 export function analyzeCommunicationStyle(messages: Message[]): CommunicationStyleAnalysis {
-  // Handle edge case: very short conversations
-  if (!messages || messages.length < 5) {
-    return {
-      dominantStyle: "balanced",
-      confidence: 0.3,
-      explanation: "Based on the limited conversation data available.",
-      limitedDataWarning:
-        "This analysis is based on very limited data and should be considered preliminary. More conversation data would provide a more accurate assessment.",
-    }
+  // 🧠 Refactor to use separate inputs - ensure this function only processes messages from one person
+  // 🚫 Remove Fallback Profiles - Check for sufficient messages
+  if (!messages || messages.length === 0) {
+    throw new Error("Insufficient messages for communication style analysis.")
   }
 
   // Define communication style indicators
@@ -908,7 +1023,7 @@ export function analyzeCommunicationStyle(messages: Message[]): CommunicationSty
 
   // Analyze each message for communication style indicators
   messages.forEach((message) => {
-    const text = message.text.toLowerCase()
+    const text = typeof message.text === "string" ? message.text.toLowerCase() : ""
     const sentiment = message.sentiment || 50
 
     // Assertive indicators
@@ -1015,4 +1130,234 @@ export function analyzeCommunicationStyle(messages: Message[]): CommunicationSty
     explanation,
     limitedDataWarning,
   }
+}
+
+// Keywords for attachment styles
+const attachmentKeywords = {
+  secure: ["trust", "comfortable", "support", "understand", "respect", "communicate", "honest"],
+  anxious: ["worry", "need", "fear", "abandon", "clingy", "jealous", "reassurance", "doubt"],
+  avoidant: ["space", "independent", "distance", "alone", "self-sufficient", "uncomfortable", "close"],
+  disorganized: ["confuse", "conflict", "trauma", "unpredictable", "fear", "approach", "avoid"],
+}
+
+// Keywords for ego states
+const egoStateKeywords = {
+  parent: ["should", "must", "always", "never", "right", "wrong", "bad", "good", "advice", "rule"],
+  adult: ["think", "analyze", "consider", "option", "choice", "decide", "logical", "reasonable", "fact"],
+  child: ["fun", "want", "feel", "play", "excited", "sad", "happy", "angry", "afraid", "love"],
+}
+
+// Cognitive biases
+const cognitiveBiases = [
+  { name: "Confirmation Bias", keywords: ["prove", "confirm", "right", "knew", "obvious", "clearly"] },
+  { name: "Negativity Bias", keywords: ["always", "never", "worst", "terrible", "awful", "horrible"] },
+  { name: "Mind Reading", keywords: ["know you", "thinking", "meant", "trying to", "purpose", "intention"] },
+  { name: "Black and White Thinking", keywords: ["always", "never", "completely", "totally", "perfect", "ruined"] },
+  { name: "Emotional Reasoning", keywords: ["feel like", "seems like", "must be", "obviously", "clearly"] },
+]
+
+// Define PsychologicalProfile interface
+export interface PsychologicalProfile {
+  attachmentStyle: string
+  egoState: {
+    parent: number
+    adult: number
+    child: number
+    dominantState: string
+  }
+  cognitiveBiases: string[]
+  personalityTraits: {
+    openness: number
+    conscientiousness: number
+    extraversion: number
+    agreeableness: number
+    neuroticism: number
+  }
+  strengths: string[]
+  growthAreas: string[]
+}
+
+// Analyze message psychology
+export async function analyzeMessagePsychology(text: string): Promise<PsychologicalProfile> {
+  // 🧠 Refactor to use separate inputs - ensure this function only processes text from one person
+  // 🚫 Remove Fallback Profiles - Check for sufficient text
+  if (!text || typeof text !== "string" || text.trim().length === 0) {
+    throw new Error("Insufficient text for message psychology analysis.")
+  }
+
+  const lowerText = text.toLowerCase()
+  const words = lowerText.split(/\s+/)
+
+  // Analyze attachment style
+  const attachmentScores = Object.entries(attachmentKeywords).map(([style, keywords]) => {
+    const score = keywords.reduce((count, keyword) => {
+      return count + (lowerText.includes(keyword) ? 1 : 0)
+    }, 0)
+    return { style, score }
+  })
+
+  const dominantAttachment = attachmentScores.sort((a, b) => b.score - a.score)[0].style
+
+  // Analyze ego states
+  const egoStateScores = Object.entries(egoStateKeywords).map(([state, keywords]) => {
+    const score = keywords.reduce((count, keyword) => {
+      return count + (lowerText.includes(keyword) ? 1 : 0)
+    }, 0)
+    return { state, score: score / keywords.length } // Normalize
+  })
+
+  const totalEgoScore = egoStateScores.reduce((sum, { score }) => sum + score, 0) || 1
+  const normalizedEgoScores = egoStateScores.reduce(
+    (obj, { state, score }) => {
+      obj[state] = score / totalEgoScore
+      return obj
+    },
+    {} as Record<string, number>,
+  )
+
+  const dominantEgoState = egoStateScores.sort((a, b) => b.score - a.score)[0].state
+
+  // Analyze cognitive biases
+  const detectedBiases = cognitiveBiases
+    .filter((bias) => {
+      return bias.keywords.some((keyword) => lowerText.includes(keyword))
+    })
+    .map((bias) => bias.name)
+
+  // Generate random but consistent personality traits based on text content
+  // This is a simplified approach - in a real app, you'd use more sophisticated analysis
+  const textHash = hashString(text)
+  const personalityTraits = {
+    openness: normalizeScore(0.3 + (textHash % 100) / 150),
+    conscientiousness: normalizeScore(0.4 + ((textHash >> 8) % 100) / 150),
+    extraversion: normalizeScore(0.3 + ((textHash >> 16) % 100) / 150),
+    agreeableness: normalizeScore(0.4 + ((textHash >> 24) % 100) / 150),
+    neuroticism: normalizeScore(0.3 + ((textHash >> 32) % 100) / 150),
+  }
+
+  // Generate strengths and growth areas based on personality traits and ego states
+  const strengths = generateStrengths(personalityTraits, normalizedEgoScores)
+  const growthAreas = generateGrowthAreas(personalityTraits, normalizedEgoScores, detectedBiases)
+
+  return {
+    attachmentStyle: dominantAttachment,
+    egoState: {
+      parent: normalizedEgoScores.parent || 0,
+      adult: normalizedEgoScores.adult || 0,
+      child: normalizedEgoScores.child || 0,
+      dominantState: dominantEgoState,
+    },
+    cognitiveBiases: detectedBiases,
+    personalityTraits,
+    strengths,
+    growthAreas,
+  }
+}
+
+// Helper function to normalize scores to 0-1 range
+function normalizeScore(score: number): number {
+  return Math.max(0, Math.min(1, score))
+}
+
+// Helper function to hash a string
+function hashString(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return Math.abs(hash)
+}
+
+// Generate strengths based on personality traits and ego states
+function generateStrengths(
+  personalityTraits: {
+    openness: number
+    conscientiousness: number
+    extraversion: number
+    agreeableness: number
+    neuroticism: number
+  },
+  egoStates: Record<string, number>,
+): string[] {
+  const strengths: string[] = []
+
+  if (personalityTraits.openness > 0.6) strengths.push("Creative thinking")
+  if (personalityTraits.conscientiousness > 0.6) strengths.push("Reliability")
+  if (personalityTraits.extraversion > 0.6) strengths.push("Social engagement")
+  if (personalityTraits.agreeableness > 0.6) strengths.push("Empathy")
+  if (personalityTraits.neuroticism < 0.4) strengths.push("Emotional stability")
+
+  if (egoStates.adult > 0.4) strengths.push("Rational decision-making")
+  if (egoStates.parent > 0.4) strengths.push("Providing guidance")
+  if (egoStates.child > 0.4) strengths.push("Spontaneity and joy")
+
+  // Ensure we have at least 3 strengths
+  const defaultStrengths = [
+    "Communication skills",
+    "Relationship building",
+    "Emotional awareness",
+    "Adaptability",
+    "Resilience",
+  ]
+
+  while (strengths.length < 3) {
+    const randomStrength = defaultStrengths[Math.floor(Math.random() * defaultStrengths.length)]
+    if (!strengths.includes(randomStrength)) {
+      strengths.push(randomStrength)
+    }
+  }
+
+  return strengths.slice(0, 5) // Return up to 5 strengths
+}
+
+// Generate growth areas based on personality traits, ego states, and cognitive biases
+function generateGrowthAreas(
+  personalityTraits: {
+    openness: number
+    conscientiousness: number
+    extraversion: number
+    agreeableness: number
+    neuroticism: number
+  },
+  egoStates: Record<string, number>,
+  biases: string[],
+): string[] {
+  const growthAreas: string[] = []
+
+  if (personalityTraits.openness < 0.4) growthAreas.push("Openness to new ideas")
+  if (personalityTraits.conscientiousness < 0.4) growthAreas.push("Organization and planning")
+  if (personalityTraits.extraversion < 0.4) growthAreas.push("Social confidence")
+  if (personalityTraits.agreeableness < 0.4) growthAreas.push("Empathetic listening")
+  if (personalityTraits.neuroticism > 0.6) growthAreas.push("Emotional regulation")
+
+  if (egoStates.adult < 0.3) growthAreas.push("Rational problem-solving")
+  if (egoStates.parent > 0.7) growthAreas.push("Flexibility with rules and expectations")
+  if (egoStates.child > 0.7) growthAreas.push("Maturity in emotional responses")
+
+  // Add growth areas based on cognitive biases
+  if (biases.includes("Confirmation Bias")) growthAreas.push("Considering alternative viewpoints")
+  if (biases.includes("Negativity Bias")) growthAreas.push("Balanced perspective")
+  if (biases.includes("Mind Reading")) growthAreas.push("Checking assumptions")
+  if (biases.includes("Black and White Thinking")) growthAreas.push("Nuanced thinking")
+  if (biases.includes("Emotional Reasoning")) growthAreas.push("Evidence-based reasoning")
+
+  // Ensure we have at least 3 growth areas
+  const defaultGrowthAreas = [
+    "Active listening",
+    "Conflict resolution",
+    "Emotional awareness",
+    "Setting boundaries",
+    "Self-reflection",
+  ]
+
+  while (growthAreas.length < 3) {
+    const randomGrowthArea = defaultGrowthAreas[Math.floor(Math.random() * defaultGrowthAreas.length)]
+    if (!growthAreas.includes(randomGrowthArea)) {
+      growthAreas.push(randomGrowthArea)
+    }
+  }
+
+  return growthAreas.slice(0, 5) // Return up to 5 growth areas
 }

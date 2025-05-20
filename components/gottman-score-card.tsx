@@ -9,7 +9,7 @@ interface GottmanScoreCardProps {
   positive?: boolean
 }
 
-export function GottmanScoreCard({ title, score, description, positive = false }: GottmanScoreCardProps) {
+function GottmanScoreCard({ title, score, description, positive = false }: GottmanScoreCardProps) {
   const getScoreColor = () => {
     if (positive) {
       // For positive indicators, higher is better
@@ -56,3 +56,7 @@ export function GottmanScoreCard({ title, score, description, positive = false }
     </Card>
   )
 }
+
+// Export both as named export and default export for backward compatibility
+export { GottmanScoreCard }
+export default GottmanScoreCard

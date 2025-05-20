@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { EmotionalRadarChart } from "@/components/emotional-radar-chart"
+import EmotionalRadarChart from "@/components/emotional-radar-chart"
 import { InfoIcon } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { EmotionalBreakdown } from "@/lib/types"
@@ -21,7 +21,7 @@ interface EmotionalIntelligenceBreakdownProps {
   recommendations: string[]
 }
 
-export function EmotionalIntelligenceBreakdown({
+function EmotionalIntelligenceBreakdown({
   participant1,
   participant2,
   insights,
@@ -255,3 +255,8 @@ function getScoreColor(score: number): string {
   if (score >= 40) return "#f59e0b" // Amber
   return "#ef4444" // Red
 }
+
+// Add named export for backward compatibility
+export { EmotionalIntelligenceBreakdown }
+
+export default EmotionalIntelligenceBreakdown
