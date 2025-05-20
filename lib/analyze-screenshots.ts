@@ -4,6 +4,7 @@ import { analyzeSentiment } from "./sentiment-analyzer"
 import { saveAnalysisResults, getAnalysisResults, storeTransformedAnalysisResult } from "./storage-utils"
 import { validateAnalysisResults } from "./result-validator"
 import { generatePsychologicalProfile } from "./psychological-frameworks"
+import { fetchGPTEmotionalAnalysis } from "./gpt-ei-service"
 
 // Main function to analyze screenshots
 export async function analyzeScreenshots(
@@ -71,6 +72,25 @@ export async function analyzeScreenshots(
     // ✅ Wrap Each Participant's Analysis in Conditional Blocks
     const participants: any[] = []
 
+    // 🆕 Fetch GPT-powered emotional analysis
+    console.log("Fetching GPT emotional analysis...")
+    const { analysis: emotionalInsights, error: gptError } = await fetchGPTEmotionalAnalysis(
+      extractedMessages,
+      firstPersonName,
+      secondPersonName,
+    )
+
+    if (gptError) {
+      console.warn("GPT analysis error:", gptError)
+      validationWarnings.push(`⚠️ GPT analysis error: ${gptError.error}`)
+
+      if (gptError.status === 429) {
+        validationWarnings.push(`⚠️ Rate limit exceeded. Try again in ${Math.ceil((gptError.reset || 0) / 60)} minutes.`)
+      }
+    }
+
+    console.log("GPT emotional analysis complete")
+
     // Analyze first person if they have messages
     if (messagesA && messagesA.length > 0) {
       console.log(`Analyzing sentiment for ${firstPersonName}...`)
@@ -108,6 +128,10 @@ export async function analyzeScreenshots(
         linguisticPatterns: linguisticA,
         insights: sentimentA.insights || [],
         recommendations: sentimentA.recommendations || [],
+        // 🆕 Add GPT emotional insights with null safety
+        gptEmotionalInsights: emotionalInsights?.forPersonA || null,
+        // 🆕 Add analysis metadata
+        gptAnalysisMetadata: emotionalInsights?._metadata || null,
       })
     } else {
       // Add placeholder for first person
@@ -125,6 +149,10 @@ export async function analyzeScreenshots(
         linguisticPatterns: {},
         insights: [],
         recommendations: [],
+        // 🆕 Add placeholder GPT emotional insights
+        gptEmotionalInsights: emotionalInsights?.forPersonA || null,
+        // 🆕 Add analysis metadata
+        gptAnalysisMetadata: emotionalInsights?._metadata || null,
       })
     }
 
@@ -165,6 +193,10 @@ export async function analyzeScreenshots(
         linguisticPatterns: linguisticB,
         insights: sentimentB.insights || [],
         recommendations: sentimentB.recommendations || [],
+        // 🆕 Add GPT emotional insights
+        gptEmotionalInsights: emotionalInsights?.forPersonB || null,
+        // 🆕 Add analysis metadata
+        gptAnalysisMetadata: emotionalInsights?._metadata || null,
       })
     } else {
       // Add placeholder for second person
@@ -182,6 +214,10 @@ export async function analyzeScreenshots(
         linguisticPatterns: {},
         insights: [],
         recommendations: [],
+        // 🆕 Add placeholder GPT emotional insights
+        gptEmotionalInsights: emotionalInsights?.forPersonB || null,
+        // 🆕 Add analysis metadata
+        gptAnalysisMetadata: emotionalInsights?._metadata || null,
       })
     }
 
@@ -226,6 +262,10 @@ export async function analyzeScreenshots(
         finalScore: finalCompatibilityScore,
         gottmanScores: sentimentA.gottmanScores,
         relationshipDynamics: sentimentA.relationshipDynamics,
+        // 🆕 Add GPT relationship dynamics
+        gptRelationshipDynamics: emotionalInsights?.relationshipDynamics,
+        // 🆕 Add analysis metadata
+        gptAnalysisMetadata: emotionalInsights?._metadata || null,
       }
     } else {
       // Create a placeholder compatibility object with null values
@@ -244,6 +284,10 @@ export async function analyzeScreenshots(
         gottmanScores: {},
         relationshipDynamics: {},
         note: "Compatibility analysis requires messages from both participants.",
+        // 🆕 Add placeholder GPT relationship dynamics
+        gptRelationshipDynamics: emotionalInsights?.relationshipDynamics,
+        // 🆕 Add analysis metadata
+        gptAnalysisMetadata: emotionalInsights?._metadata || null,
       }
       validationWarnings.push("⚠️ Compatibility analysis skipped due to missing messages from one or both participants.")
     }
@@ -278,7 +322,7 @@ export async function analyzeScreenshots(
       keyMoments: [...(sentimentA.keyMoments || []), ...(sentimentB.keyMoments || [])],
       gottmanSummary: sentimentA.gottmanSummary || "Analysis incomplete due to insufficient data.",
       gottmanRecommendations: sentimentA.gottmanRecommendations || [],
-      analysisMethod: "partial-if-available",
+      analysisMethod: "gpt-enhanced", // 🆕 Update analysis method
       validationWarnings,
     }
 
@@ -328,6 +372,8 @@ export async function analyzeScreenshots(
           linguisticPatterns: {},
           insights: [],
           recommendations: [],
+          gptEmotionalInsights: null, // 🆕 Add null GPT emotional insights
+          gptAnalysisMetadata: null,
         },
         {
           name: secondPersonName,
@@ -343,6 +389,8 @@ export async function analyzeScreenshots(
           linguisticPatterns: {},
           insights: [],
           recommendations: [],
+          gptEmotionalInsights: null, // 🆕 Add null GPT emotional insights
+          gptAnalysisMetadata: null,
         },
       ],
       compatibility: null,

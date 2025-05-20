@@ -17,9 +17,12 @@ import PsychologicalProfileCard from "@/components/psychological-profile-card"
 import RelationshipDynamicsCard from "@/components/relationship-dynamics-card"
 import { GottmanScoreCard } from "@/components/gottman-score-card"
 import { EmotionalIntelligenceBreakdown } from "@/components/emotional-intelligence-breakdown"
+import { GPTEmotionalInsights } from "@/components/gpt-emotional-insights"
+import { GPTRelationshipDynamics } from "@/components/gpt-relationship-dynamics"
 
 // Add the DebugDataViewer to the results page
 import DebugDataViewer from "@/components/debug-data-viewer"
+import { GPTAnalysisDebugViewer } from "@/components/gpt-analysis-debug-viewer"
 
 export default function ResultsPage() {
   const router = useRouter()
@@ -216,6 +219,28 @@ export default function ResultsPage() {
           />
         </section>
 
+        {personA.gptEmotionalInsights && (
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mb-4 text-center">AI-Powered Emotional Insights for {personA.name}</h2>
+            <GPTEmotionalInsights
+              insights={personA.gptEmotionalInsights}
+              name={personA.name || "You"}
+              analysisId={results.id}
+            />
+          </div>
+        )}
+
+        {personB.gptEmotionalInsights && (
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mb-4 text-center">AI-Powered Emotional Insights for {personB.name}</h2>
+            <GPTEmotionalInsights
+              insights={personB.gptEmotionalInsights}
+              name={personB.name || "Partner"}
+              analysisId={results.id}
+            />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div>
             <h2 className="text-xl font-semibold mb-4 text-center">You</h2>
@@ -324,6 +349,13 @@ export default function ResultsPage() {
             </div>
           )}
         </div>
+
+        {results.compatibility?.gptRelationshipDynamics && (
+          <div className="mb-8">
+            <h2 className="text-xl font-semibold mb-4 text-center">AI-Powered Relationship Dynamics</h2>
+            <GPTRelationshipDynamics dynamics={results.compatibility.gptRelationshipDynamics} analysisId={results.id} />
+          </div>
+        )}
 
         <div className="mb-8">
           <h2 className="text-2xl font-semibold mb-4 text-center">Gottman Method Assessment</h2>
@@ -440,6 +472,13 @@ export default function ResultsPage() {
       </section>
       {/* Add Debug Data Viewer */}
       <DebugDataViewer data={results} title="Analysis Results Data Structure" initialCollapsed={true} />
+      {/* Add GPT Analysis Debug Viewer (development only) */}
+      {process.env.NODE_ENV === "development" && (
+        <GPTAnalysisDebugViewer
+          analysis={results.participants?.[0]?.gptEmotionalInsights || null}
+          error={results.gptAnalysisError || null}
+        />
+      )}
     </div>
   )
 }
