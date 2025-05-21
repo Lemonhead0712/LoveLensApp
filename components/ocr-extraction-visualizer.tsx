@@ -16,11 +16,12 @@ import {
   MessageSquare,
   Layers,
   AlertTriangle,
-  CheckCircle,
-  RefreshCw,
   Download,
+  BarChart3,
 } from "lucide-react"
 import type { Message } from "@/lib/types"
+import { OCRPerformanceMetrics } from "./ocr-performance-metrics"
+import { getHistoricalMetrics } from "@/lib/ocr-metrics"
 
 interface BoundingBox {
   x: number
@@ -52,6 +53,7 @@ interface OcrExtractionVisualizerProps {
   ocrConfidence: number
   processingTime: number
   errors: string[]
+  metrics?: any
   onReprocess?: (options: any) => void
 }
 
@@ -64,14 +66,18 @@ export function OcrExtractionVisualizer({
   ocrConfidence,
   processingTime,
   errors,
+  metrics,
   onReprocess,
 }: OcrExtractionVisualizerProps) {
   const [activeTab, setActiveTab] = useState("original")
+  const [activeDataTab, setActiveDataTab] = useState("extracted")
   const [showBoundingBoxes, setShowBoundingBoxes] = useState(true)
   const [highlightMessages, setHighlightMessages] = useState(true)
   const [selectedBlock, setSelectedBlock] = useState<TextBlock | null>(null)
   const [zoomLevel, setZoomLevel] = useState(100)
+  const [showMetrics, setShowMetrics] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const historicalMetrics = getHistoricalMetrics()
 
   // Draw the image and bounding boxes on the canvas
   useEffect(() => {
@@ -184,6 +190,7 @@ export function OcrExtractionVisualizer({
       textBlocks,
       extractedMessages,
       errors,
+      metrics,
     }
 
     const dataStr = JSON.stringify(debugData, null, 2)
@@ -207,6 +214,10 @@ export function OcrExtractionVisualizer({
               {ocrConfidence.toFixed(1)}% Confidence
             </Badge>
             <Badge variant="outline">{processingTime}ms</Badge>
+            <Button size="sm" variant="outline" onClick={() => setShowMetrics(!showMetrics)}>
+              <BarChart3 className="h-4 w-4 mr-1" />
+              {showMetrics ? "Hide Metrics" : "Show Metrics"}
+            </Button>
             <Button size="sm" variant="outline" onClick={downloadDebugData}>
               <Download className="h-4 w-4 mr-1" />
               Export Debug Data
@@ -230,6 +241,15 @@ export function OcrExtractionVisualizer({
               </div>
             </div>
           </div>
+        )}
+
+        {/* Performance Metrics */}
+        {showMetrics && metrics && (
+          <OCRPerformanceMetrics 
+            metrics={metrics} 
+            historicalMetrics={historicalMetrics}
+            onExport={downloadDebugData} 
+          />
         )}
 
         <div className="flex flex-col md:flex-row gap-4">
@@ -353,7 +373,7 @@ export function OcrExtractionVisualizer({
 
           {/* Right panel - Text and messages */}
           <div className="w-full md:w-2/5 space-y-3">
-            <Tabs defaultValue="extracted">
+            <Tabs defaultValue={activeDataTab} onValueChange={setActiveDataTab}>
               <TabsList className="grid grid-cols-3 w-full">
                 <TabsTrigger value="extracted">
                   <MessageSquare className="h-4 w-4 mr-1" />
@@ -423,82 +443,4 @@ export function OcrExtractionVisualizer({
 
                   {onReprocess && (
                     <Button size="sm" onClick={() => onReprocess({ forceExtraction: true })}>
-                      <RefreshCw className="h-4 w-4 mr-1" />
-                      Reprocess
-                    </Button>
-                  )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="raw" className="mt-2">
-                <div className="border rounded-md h-[400px] overflow-y-auto p-3 bg-white">
-                  {rawText ? (
-                    <pre className="text-xs whitespace-pre-wrap font-mono">{rawText}</pre>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                      <FileText className="h-12 w-12 mb-2" />
-                      <p>No raw text available</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-2">
-                  <Badge variant={rawText.length > 100 ? "success" : "warning"}>{rawText.length} Characters</Badge>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="blocks" className="mt-2">
-                <div className="border rounded-md h-[400px] overflow-y-auto p-3 bg-white">
-                  {textBlocks.length > 0 ? (
-                    <div className="space-y-2">
-                      {textBlocks.map((block, index) => (
-                        <div
-                          key={index}
-                          className={`p-2 border rounded text-xs ${
-                            selectedBlock === block
-                              ? "border-pink-300 bg-pink-50"
-                              : block.isMessage
-                                ? "border-green-200 bg-green-50"
-                                : "border-gray-200"
-                          }`}
-                          onClick={() => setSelectedBlock(block)}
-                        >
-                          <div className="flex justify-between items-start">
-                            <span className="font-medium">Block #{index}</span>
-                            <Badge
-                              variant={
-                                block.confidence >= 80 ? "success" : block.confidence >= 50 ? "warning" : "destructive"
-                              }
-                            >
-                              {block.confidence.toFixed(1)}%
-                            </Badge>
-                          </div>
-                          <p className="mt-1 font-mono">{block.text}</p>
-                          <div className="mt-1 text-[10px] text-gray-500">
-                            x:{block.boundingBox.x}, y:{block.boundingBox.y}, w:{block.boundingBox.width}, h:
-                            {block.boundingBox.height}
-                          </div>
-                          {block.isMessage && (
-                            <div className="mt-1 flex items-center">
-                              <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
-                              <span className="text-green-700">Message from {block.sender}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                      <Layers className="h-12 w-12 mb-2" />
-                      <p>No text blocks detected</p>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+                      <RefreshC\
