@@ -2,14 +2,6 @@ import type React from "react"
 import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
-import { GradientBackground } from "@/components/gradient-background"
-import { SparkleEffect } from "@/components/sparkle"
-import { Header } from "@/components/header"
-import { ApiInitializer } from "@/components/api-initializer"
-import { Suspense } from "react"
-import { LoadingScreen } from "@/components/loading-screen"
-import { ErrorBoundary } from "@/components/error-boundary"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -35,26 +27,28 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="overflow-x-hidden">
-      <head>
-        {/* Preload critical assets */}
-        <link rel="preload" href="/LoveLensLogo.png" as="image" />
-      </head>
-      <body className={`${inter.className} overflow-x-hidden`}>
-        <ThemeProvider attribute="class" defaultTheme="light">
-          <GradientBackground>
-            <SparkleEffect />
-            <div className="min-h-screen flex flex-col relative">
-              <Header />
-              <main className="flex-1 pt-16">
-                <ApiInitializer />
-                <ErrorBoundary>
-                  <Suspense fallback={<LoadingScreen />}>{children}</Suspense>
-                </ErrorBoundary>
-              </main>
+    <html lang="en">
+      <body className={`${inter.className}`}>
+        <div className="min-h-screen flex flex-col">
+          <header className="bg-white shadow-sm py-4">
+            <div className="container mx-auto px-4">
+              <div className="flex justify-between items-center">
+                <a href="/" className="text-xl font-bold text-pink-500">
+                  LoveLens
+                </a>
+                <nav className="hidden md:flex space-x-4">
+                  <a href="/upload" className="text-gray-600 hover:text-pink-500">
+                    Analyze
+                  </a>
+                  <a href="/about" className="text-gray-600 hover:text-pink-500">
+                    About
+                  </a>
+                </nav>
+              </div>
             </div>
-          </GradientBackground>
-        </ThemeProvider>
+          </header>
+          <main className="flex-1">{children}</main>
+        </div>
       </body>
     </html>
   )
