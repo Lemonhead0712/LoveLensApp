@@ -3,156 +3,145 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { analyzeConversation } from "@/app/actions"
-import AnalysisResults from "./analysis-results"
-import { UploadCloud } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Upload, Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-export default function UploadForm() {
+export function UploadForm() {
   const [files, setFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
-  const [analysisResults, setAnalysisResults] = useState<any>(null)
-  const [dragActive, setDragActive] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const router = useRouter()
 
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFiles(Array.from(e.target.files))
     }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
+    setIsDragging(false)
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const newFiles = Array.from(e.dataTransfer.files).filter((file) => file.type.includes("image"))
-      setFiles((prevFiles) => [...prevFiles, ...newFiles])
-    }
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files)
-      setFiles((prevFiles) => [...prevFiles, ...newFiles])
+      setFiles(Array.from(e.dataTransfer.files))
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     if (files.length === 0) return
 
     setIsUploading(true)
+
     try {
-      // In a real app, we would upload the files to the server
-      // For this demo, we'll simulate the analysis with a delay
       const formData = new FormData()
-      files.forEach((file, index) => {
-        formData.append(`file-${index}`, file)
+      files.forEach((file) => {
+        formData.append("screenshots", file)
       })
 
-      const results = await analyzeConversation(formData)
-      setAnalysisResults(results)
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (response.ok) {
+        const { analysisId } = await response.json()
+        router.push(`/analysis/${analysisId}`)
+      } else {
+        throw new Error("Failed to upload images")
+      }
     } catch (error) {
-      console.error("Error analyzing conversation:", error)
+      console.error("Error uploading images:", error)
+      alert("Failed to upload images. Please try again.")
     } finally {
       setIsUploading(false)
     }
   }
 
-  const removeFile = (index: number) => {
-    setFiles((prevFiles) => prevFiles.filter((_, i) => i !== index))
-  }
-
-  const resetForm = () => {
-    setFiles([])
-    setAnalysisResults(null)
-  }
-
-  if (analysisResults) {
-    return (
-      <div>
-        <AnalysisResults results={analysisResults} />
-        <div className="mt-8 text-center">
-          <Button onClick={resetForm} variant="outline" className="mr-4">
-            Analyze Another Conversation
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <Card className="p-6 shadow-lg">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div
-          className={`border-2 border-dashed rounded-lg p-10 text-center ${
-            dragActive ? "border-rose-500 bg-rose-50" : "border-gray-300"
-          }`}
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-        >
-          <UploadCloud className="mx-auto h-12 w-12 text-gray-400" />
-          <div className="mt-4 flex text-sm leading-6 text-gray-600">
-            <label
-              htmlFor="file-upload"
-              className="relative cursor-pointer rounded-md font-semibold text-rose-600 hover:text-rose-500"
-            >
-              <span>Upload conversation screenshots</span>
+    <Card className="w-full max-w-2xl mx-auto">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit}>
+          <div
+            className={cn(
+              "border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors",
+              isDragging ? "border-rose-400 bg-rose-50" : "border-gray-300 hover:border-rose-300",
+              "focus-within:border-rose-400",
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <Upload className="h-10 w-10 text-gray-400" />
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium">Upload conversation screenshots</h3>
+                <p className="text-sm text-gray-500">Drag and drop your screenshots here, or click to browse</p>
+              </div>
               <input
                 id="file-upload"
                 name="file-upload"
                 type="file"
                 className="sr-only"
+                onChange={handleFileChange}
                 multiple
                 accept="image/*"
-                onChange={handleFileChange}
               />
-            </label>
-            <p className="pl-1">or drag and drop</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => document.getElementById("file-upload")?.click()}
+                className="mt-2"
+              >
+                Select Files
+              </Button>
+            </div>
           </div>
-          <p className="text-xs leading-5 text-gray-600 mt-2">PNG, JPG, GIF up to 10MB each</p>
-        </div>
 
-        {files.length > 0 && (
-          <div className="mt-4">
-            <h3 className="font-medium text-gray-900 mb-2">Selected files:</h3>
-            <ul className="space-y-2">
-              {files.map((file, index) => (
-                <li key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                  <span className="truncate max-w-xs">{file.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeFile(index)}
-                    className="text-gray-500 hover:text-red-500"
-                  >
-                    Remove
-                  </Button>
-                </li>
-              ))}
-            </ul>
+          {files.length > 0 && (
+            <div className="mt-4">
+              <h4 className="font-medium mb-2">Selected files:</h4>
+              <ul className="space-y-1">
+                {files.map((file, index) => (
+                  <li key={index} className="text-sm text-gray-600">
+                    {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-6 flex justify-center">
+            <Button
+              type="submit"
+              disabled={files.length === 0 || isUploading}
+              className="bg-rose-500 hover:bg-rose-600 text-white"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Analyze Conversation"
+              )}
+            </Button>
           </div>
-        )}
-
-        <div className="flex justify-center">
-          <Button
-            type="submit"
-            disabled={isUploading || files.length === 0}
-            className="bg-rose-600 hover:bg-rose-700 text-white"
-          >
-            {isUploading ? "Analyzing..." : "Analyze Conversation"}
-          </Button>
-        </div>
-      </form>
+        </form>
+      </CardContent>
     </Card>
   )
 }
