@@ -6,12 +6,14 @@ import { useEffect, useState } from "react"
 import { initializeOpenAI } from "@/lib/api-config"
 import ApiKeyForm from "./api-key-form"
 import { LoadingScreen } from "./loading-screen"
+import { ApiConnectionError } from "./api-connection-error"
 
 function ApiInitializer({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false)
   const [loading, setLoading] = useState(true)
   const [apiAvailable, setApiAvailable] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [connectionError, setConnectionError] = useState(false)
 
   useEffect(() => {
     async function init() {
@@ -26,9 +28,10 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
         const result = await Promise.race([initializeOpenAI(), timeoutPromise])
 
         setApiAvailable(!!result)
+        setConnectionError(false)
       } catch (error) {
         console.error("Error initializing API:", error)
-        // Continue with the app even if API initialization fails
+        setConnectionError(true)
         setApiAvailable(false)
       } finally {
         setLoading(false)
@@ -40,8 +43,23 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
     init()
   }, [])
 
+  const handleRetrySuccess = () => {
+    setApiAvailable(true)
+    setConnectionError(false)
+  }
+
+  const handleContinueWithoutApi = () => {
+    // Allow the user to continue with limited functionality
+    setConnectionError(false)
+    // We'll keep apiAvailable as false to indicate limited functionality
+  }
+
   if (isLoading) {
     return <LoadingScreen fullScreen={false} message="Initializing API..." />
+  }
+
+  if (connectionError) {
+    return <ApiConnectionError onRetrySuccess={handleRetrySuccess} onContinueWithoutApi={handleContinueWithoutApi} />
   }
 
   if (!initialized || loading) {
