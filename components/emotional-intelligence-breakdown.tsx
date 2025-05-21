@@ -7,18 +7,19 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import type { EmotionalBreakdown } from "@/lib/types"
 
 interface EmotionalIntelligenceBreakdownProps {
-  participant1: {
+  participant1?: {
     name: string
     emotionalBreakdown: EmotionalBreakdown
     score: number
   }
-  participant2: {
+  participant2?: {
     name: string
     emotionalBreakdown: EmotionalBreakdown
     score: number
   }
-  insights: string[]
-  recommendations: string[]
+  insights?: string[]
+  recommendations?: string[]
+  emotionalIntelligence?: EmotionalBreakdown
 }
 
 function EmotionalIntelligenceBreakdown({
@@ -26,6 +27,7 @@ function EmotionalIntelligenceBreakdown({
   participant2,
   insights,
   recommendations,
+  emotionalIntelligence,
 }: EmotionalIntelligenceBreakdownProps) {
   const eiCategories = [
     {
@@ -60,7 +62,73 @@ function EmotionalIntelligenceBreakdown({
     },
   ]
 
-  // Verify that we have valid data
+  // Handle the case where emotionalIntelligence is provided directly
+  if (emotionalIntelligence) {
+    // Check if emotionalIntelligence has the required properties
+    const hasValidData = eiCategories.every(
+      (category) => typeof emotionalIntelligence[category.key as keyof EmotionalBreakdown] === "number",
+    )
+
+    if (!hasValidData) {
+      return (
+        <div className="p-6 text-center">
+          <p className="text-gray-500">Emotional intelligence data is incomplete or invalid.</p>
+        </div>
+      )
+    }
+
+    return (
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-4 pt-6 px-6">
+          <CardTitle className="text-xl">Emotional Intelligence Breakdown</CardTitle>
+          <CardDescription className="text-base">
+            Detailed analysis of emotional intelligence dimensions
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-6 pb-6">
+          <div className="space-y-6">
+            {eiCategories.map((category, index) => {
+              const score = emotionalIntelligence[category.key as keyof EmotionalBreakdown]
+              if (typeof score !== "number") return null
+
+              return (
+                <div key={index}>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center">
+                      <span className="font-medium">{category.name}</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <InfoIcon className="h-4 w-4 text-gray-400 ml-1.5 cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="max-w-xs">{category.description}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <span className="font-semibold">{score}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                    <div
+                      className="h-2.5 rounded-full"
+                      style={{
+                        width: `${score}%`,
+                        backgroundColor: getScoreColor(score),
+                      }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-600">{category.description}</p>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Verify that we have valid data for the comparison view
   const hasValidData =
     participant1 &&
     participant2 &&

@@ -1,7 +1,26 @@
-/**
- * Image preprocessing utilities to enhance OCR accuracy
- * These functions apply various image processing techniques to make text more readable
- */
+import sharp from "sharp"
+
+export interface PreprocessingOptions {
+  grayscale: boolean
+  normalize: boolean
+  threshold: boolean
+  thresholdValue: number
+  adaptiveThreshold: boolean
+  sharpen: boolean
+  invert: boolean
+}
+
+export const defaultOptions: PreprocessingOptions = {
+  grayscale: true,
+  normalize: true,
+  threshold: false,
+  thresholdValue: 128,
+  adaptiveThreshold: true,
+  sharpen: false,
+  invert: false,
+}
+
+type PreprocessingOption = "default" | "highContrast" | "binarize" | "sharpen" | "despeckle" | "normalize" | "invert"
 
 /**
  * Convert a base64 image to an HTMLImageElement
@@ -19,7 +38,7 @@ export function base64ToImage(base64: string): Promise<HTMLImageElement> {
 /**
  * Convert a File to base64
  */
-export function fileToBase64(file: File): Promise<string> {
+function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
@@ -29,116 +48,358 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Interface for preprocessing options
+ * Preprocess an image to improve OCR results
+ * @param imageInput File object, base64 string, or path to image
+ * @param options Preprocessing options
+ * @returns Base64 encoded image data
  */
-export interface PreprocessingOptions {
-  grayscale: boolean
-  normalize: boolean
-  threshold: boolean
-  thresholdValue: number
-  sharpen: boolean
-  resize: boolean
-  targetWidth?: number
-  targetHeight?: number
-  adaptiveThreshold: boolean
-  despeckle: boolean
-  invert: boolean
-}
+// export async function preprocessImage(
+//   imageInput: File | string,
+//   options: Partial<PreprocessingOptions> = {},
+// ): Promise<string> {
+//   // Merge default options with provided options
+//   const mergedOptions = { ...defaultOptions, ...options }
+
+//   try {
+//     // Convert input to base64 if it's a File
+//     let base64Data: string
+
+//     if (typeof imageInput === "string") {
+//       // Already a base64 string or URL
+//       if (imageInput.startsWith("data:")) {
+//         base64Data = imageInput
+//       } else {
+//         // Assume it's a URL, load it
+//         try {
+//           const response = await fetch(imageInput)
+//           const blob = await response.blob()
+//           base64Data = await fileToBase64(new File([blob], "image.jpg"))
+//         } catch (fetchError) {
+//           console.error("Error fetching image URL:", fetchError)
+//           // Return original input as fallback
+//           return imageInput
+//         }
+//       }
+//     } else {
+//       // It's a File object
+//       base64Data = await fileToBase64(imageInput)
+//     }
+
+//     // If we're on the server, return the base64 data without processing
+//     // Server-side image processing would require additional libraries like Sharp
+//     if (!isClient()) {
+//       console.log("Server-side preprocessing - returning original image")
+//       return base64Data
+//     }
+
+//     // Client-side image processing with additional error handling
+//     try {
+//       return await clientSidePreprocessImage(base64Data, mergedOptions)
+//     } catch (clientSideError) {
+//       console.error("Client-side preprocessing failed:", clientSideError)
+//       // If client-side processing fails, return the original base64 data
+//       return base64Data
+//     }
+//   } catch (error) {
+//     console.error("Error in preprocessImage:", error)
+
+//     // If it's a File, try to return the original file as base64
+//     if (imageInput instanceof File) {
+//       try {
+//         return await fileToBase64(imageInput)
+//       } catch (fallbackError) {
+//         console.error("Fallback to original file failed:", fallbackError)
+//         throw error // Re-throw if even the fallback fails
+//       }
+//     }
+
+//     // If it's already a string, return it as is
+//     if (typeof imageInput === "string") {
+//       return imageInput
+//     }
+
+//     throw error
+//   }
+// }
 
 /**
- * Default preprocessing options optimized for chat screenshots
+ * Preprocesses an image to improve OCR accuracy
+ * @param imageData The image data as base64 string or Blob
+ * @param option The preprocessing option to apply
+ * @returns The processed image data
  */
-export const defaultOptions: PreprocessingOptions = {
-  grayscale: true,
-  normalize: true,
-  threshold: false, // Simple threshold can be too aggressive
-  thresholdValue: 128,
-  sharpen: true,
-  resize: true,
-  targetWidth: 1200, // Resize to reasonable dimensions if smaller
-  adaptiveThreshold: true, // Better than simple threshold for varying backgrounds
-  despeckle: true, // Remove noise
-  invert: false, // Only use for dark mode screenshots
-}
+export async function preprocessImage(
+  imageData: string | Blob,
+  option: PreprocessingOption = "default",
+): Promise<Buffer> {
+  try {
+    // Convert input to buffer
+    let buffer: Buffer
 
-/**
- * Apply grayscale to image data
- */
-function applyGrayscale(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
+    if (typeof imageData === "string") {
+      // Handle base64 string
+      if (imageData.startsWith("data:")) {
+        // Extract base64 data from data URL
+        const base64Data = imageData.split(",")[1]
+        buffer = Buffer.from(base64Data, "base64")
+      } else {
+        // Assume it's already base64
+        buffer = Buffer.from(imageData, "base64")
+      }
+    } else {
+      // Handle Blob
+      const arrayBuffer = await imageData.arrayBuffer()
+      buffer = Buffer.from(arrayBuffer)
+    }
 
-  for (let i = 0; i < data.length; i += 4) {
-    // Convert to grayscale using luminance formula
-    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
-    data[i] = gray // Red
-    data[i + 1] = gray // Green
-    data[i + 2] = gray // Blue
-    // Alpha remains unchanged
+    // Create sharp instance
+    let image = sharp(buffer)
+
+    // Apply preprocessing based on option
+    switch (option) {
+      case "highContrast":
+        image = image.gamma(2.2).linear(1.5, -0.3).normalize()
+        break
+
+      case "binarize":
+        image = image.grayscale().threshold(128)
+        break
+
+      case "sharpen":
+        image = image.sharpen({
+          sigma: 1.5,
+          m1: 1.5,
+          m2: 0.7,
+          x1: 2.5,
+          y2: 20,
+          y3: 50,
+        })
+        break
+
+      case "despeckle":
+        image = image.median(3).blur(0.5)
+        break
+
+      case "normalize":
+        image = image.normalize().modulate({
+          brightness: 1.1,
+          saturation: 0.9,
+        })
+        break
+
+      case "invert":
+        image = image.grayscale().negate()
+        break
+
+      case "default":
+      default:
+        // Default preprocessing
+        image = image.grayscale().normalize().sharpen(1)
+        break
+    }
+
+    // Convert to PNG format for best OCR results
+    const processedBuffer = await image.png().toBuffer()
+    return processedBuffer
+  } catch (error) {
+    console.error("Image preprocessing failed:", error)
+
+    // If preprocessing fails, return original image data as buffer
+    if (typeof imageData === "string") {
+      if (imageData.startsWith("data:")) {
+        const base64Data = imageData.split(",")[1]
+        return Buffer.from(base64Data, "base64")
+      }
+      return Buffer.from(imageData, "base64")
+    } else {
+      const arrayBuffer = await imageData.arrayBuffer()
+      return Buffer.from(arrayBuffer)
+    }
   }
-
-  ctx.putImageData(imageData, 0, 0)
 }
 
 /**
- * Normalize contrast in the image
+ * Client-side image processing using Canvas API
  */
-function normalizeContrast(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
+async function clientSidePreprocessImage(base64Data: string, options: PreprocessingOptions): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
 
+    // Set a timeout to prevent hanging if image loading takes too long
+    const timeout = setTimeout(() => {
+      reject(new Error("Image loading timed out"))
+    }, 30000) // 30 second timeout
+
+    img.onload = () => {
+      clearTimeout(timeout)
+
+      try {
+        if (img.width === 0 || img.height === 0) {
+          console.warn("Loaded image has zero dimensions, returning original")
+          resolve(base64Data)
+          return
+        }
+
+        // Limit dimensions to prevent canvas size errors
+        const maxDimension = 4000 // Most browsers can handle this size
+        let width = img.width
+        let height = img.height
+
+        if (width > maxDimension || height > maxDimension) {
+          const scale = Math.min(maxDimension / width, maxDimension / height)
+          width = Math.floor(width * scale)
+          height = Math.floor(height * scale)
+          console.warn(`Image resized due to large dimensions: ${img.width}x${img.height} -> ${width}x${height}`)
+        }
+
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+
+        if (!ctx) {
+          reject(new Error("Could not get canvas context"))
+          return
+        }
+
+        // Draw original image
+        ctx.drawImage(img, 0, 0, width, height)
+
+        // Get image data
+        let imageData: ImageData
+        try {
+          imageData = ctx.getImageData(0, 0, width, height)
+        } catch (e) {
+          console.error("Failed to get image data:", e)
+          // If we can't get image data, return original image
+          resolve(base64Data)
+          return
+        }
+
+        let data = imageData.data
+
+        // Apply preprocessing steps
+        try {
+          if (options.grayscale) {
+            data = applyGrayscale(data)
+          }
+
+          if (options.normalize) {
+            data = applyNormalize(data)
+          }
+
+          if (options.threshold) {
+            data = applyThreshold(data, options.thresholdValue)
+          }
+
+          if (options.adaptiveThreshold) {
+            data = applyAdaptiveThreshold(data, width, height)
+          }
+
+          if (options.sharpen) {
+            data = applySharpen(data, width, height)
+          }
+
+          if (options.invert) {
+            data = applyInvert(data)
+          }
+        } catch (processingError) {
+          console.error("Image processing error:", processingError)
+          // If processing fails, return original image
+          resolve(base64Data)
+          return
+        }
+
+        // Put processed image data back to canvas
+        try {
+          ctx.putImageData(imageData, 0, 0)
+        } catch (e) {
+          console.error("Failed to put image data back to canvas:", e)
+          resolve(base64Data)
+          return
+        }
+
+        // Convert canvas to base64
+        try {
+          const processedBase64 = canvas.toDataURL("image/png")
+          resolve(processedBase64)
+        } catch (conversionError) {
+          console.error("Failed to convert canvas to base64:", conversionError)
+          resolve(base64Data)
+        }
+      } catch (error) {
+        console.error("Error in client-side preprocessing:", error)
+        resolve(base64Data) // Resolve with original image as fallback
+      }
+    }
+
+    img.onerror = (error) => {
+      clearTimeout(timeout)
+      console.error("Error loading image:", error)
+      // Resolve with original image on error
+      resolve(base64Data)
+    }
+
+    // Set crossOrigin to anonymous to avoid CORS issues
+    img.crossOrigin = "anonymous"
+    img.src = base64Data
+  })
+}
+
+// Image processing functions
+function applyGrayscale(data: Uint8ClampedArray): Uint8ClampedArray {
+  for (let i = 0; i < data.length; i += 4) {
+    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3
+    data[i] = avg // R
+    data[i + 1] = avg // G
+    data[i + 2] = avg // B
+  }
+  return data
+}
+
+function applyNormalize(data: Uint8ClampedArray): Uint8ClampedArray {
   // Find min and max values
   let min = 255
   let max = 0
-
   for (let i = 0; i < data.length; i += 4) {
-    const val = data[i] // We assume the image is already grayscale
+    const val = data[i] // Since it's grayscale, R=G=B
     if (val < min) min = val
     if (val > max) max = val
   }
 
-  // Apply contrast stretching
+  // Normalize
   const range = max - min
   if (range > 0) {
     for (let i = 0; i < data.length; i += 4) {
-      for (let j = 0; j < 3; j++) {
-        data[i + j] = ((data[i + j] - min) / range) * 255
-      }
+      const normalized = ((data[i] - min) / range) * 255
+      data[i] = normalized // R
+      data[i + 1] = normalized // G
+      data[i + 2] = normalized // B
     }
   }
-
-  ctx.putImageData(imageData, 0, 0)
+  return data
 }
 
-/**
- * Apply simple thresholding
- */
-function applyThreshold(ctx: CanvasRenderingContext2D, width: number, height: number, threshold: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
-
+function applyThreshold(data: Uint8ClampedArray, threshold: number): Uint8ClampedArray {
   for (let i = 0; i < data.length; i += 4) {
-    const val = data[i] // We assume the image is already grayscale
-    const newVal = val > threshold ? 255 : 0
-    data[i] = newVal // Red
-    data[i + 1] = newVal // Green
-    data[i + 2] = newVal // Blue
+    const val = data[i] >= threshold ? 255 : 0
+    data[i] = val // R
+    data[i + 1] = val // G
+    data[i + 2] = val // B
   }
-
-  ctx.putImageData(imageData, 0, 0)
+  return data
 }
 
-/**
- * Apply adaptive thresholding - better for varying backgrounds
- */
-function applyAdaptiveThreshold(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
-  const blockSize = 11 // Size of the local neighborhood for adaptive threshold
-  const C = 2 // Constant subtracted from the mean
+function applyAdaptiveThreshold(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  // Simple adaptive threshold - use local neighborhood
+  const blockSize = 11 // Must be odd
+  const C = 5 // Constant subtracted from mean
 
-  // Create a copy of the image data for calculating local means
-  const tempData = new Uint8ClampedArray(data)
+  // Create a copy of the data for the mean calculation
+  const tempData = new Uint8ClampedArray(data.length)
+  for (let i = 0; i < data.length; i++) {
+    tempData[i] = data[i]
+  }
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -147,15 +408,15 @@ function applyAdaptiveThreshold(ctx: CanvasRenderingContext2D, width: number, he
       // Calculate local mean
       let sum = 0
       let count = 0
+      const halfBlock = Math.floor(blockSize / 2)
 
-      for (let dy = -blockSize; dy <= blockSize; dy++) {
-        for (let dx = -blockSize; dx <= blockSize; dx++) {
-          const nx = x + dx
-          const ny = y + dy
+      for (let j = -halfBlock; j <= halfBlock; j++) {
+        for (let i = -halfBlock; i <= halfBlock; i++) {
+          const ny = y + j
+          const nx = x + i
 
-          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-            const nidx = (ny * width + nx) * 4
-            sum += tempData[nidx]
+          if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+            sum += tempData[(ny * width + nx) * 4]
             count++
           }
         }
@@ -165,125 +426,64 @@ function applyAdaptiveThreshold(ctx: CanvasRenderingContext2D, width: number, he
       const threshold = mean - C
 
       // Apply threshold
-      const val = data[idx]
-      const newVal = val > threshold ? 255 : 0
-
-      data[idx] = newVal // Red
-      data[idx + 1] = newVal // Green
-      data[idx + 2] = newVal // Blue
+      const val = data[idx] >= threshold ? 255 : 0
+      data[idx] = val // R
+      data[idx + 1] = val // G
+      data[idx + 2] = val // B
     }
   }
 
-  ctx.putImageData(imageData, 0, 0)
+  return data
 }
 
-/**
- * Apply sharpening filter
- */
-function applySharpen(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
-  const tempData = new Uint8ClampedArray(data)
+function applySharpen(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
+  // Sharpen kernel
+  const kernel = [-1, -1, -1, -1, 9, -1, -1, -1, -1]
+  const tempData = new Uint8ClampedArray(data.length)
 
-  // Sharpening kernel
-  const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0]
-
-  const kernelSize = 3
-  const kernelHalfSize = Math.floor(kernelSize / 2)
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+  // Apply convolution
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
       const idx = (y * width + x) * 4
 
       let r = 0,
         g = 0,
         b = 0
 
-      // Apply convolution
-      for (let ky = 0; ky < kernelSize; ky++) {
-        for (let kx = 0; kx < kernelSize; kx++) {
-          const nx = x + kx - kernelHalfSize
-          const ny = y + ky - kernelHalfSize
-
-          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-            const nidx = (ny * width + nx) * 4
-            const kernelIdx = ky * kernelSize + kx
-
-            r += tempData[nidx] * kernel[kernelIdx]
-            g += tempData[nidx + 1] * kernel[kernelIdx]
-            b += tempData[nidx + 2] * kernel[kernelIdx]
-          }
+      // Apply kernel
+      for (let j = -1; j <= 1; j++) {
+        for (let i = -1; i <= 1; i++) {
+          const kernelIdx = (j + 1) * 3 + (i + 1)
+          const pixelIdx = ((y + j) * width + (x + i)) * 4
+          r += data[pixelIdx] * kernel[kernelIdx]
+          g += data[pixelIdx + 1] * kernel[kernelIdx]
+          b += data[pixelIdx + 2] * kernel[kernelIdx]
         }
       }
 
       // Clamp values
-      data[idx] = Math.max(0, Math.min(255, r))
-      data[idx + 1] = Math.max(0, Math.min(255, g))
-      data[idx + 2] = Math.max(0, Math.min(255, b))
+      tempData[idx] = Math.min(255, Math.max(0, r))
+      tempData[idx + 1] = Math.min(255, Math.max(0, g))
+      tempData[idx + 2] = Math.min(255, Math.max(0, b))
+      tempData[idx + 3] = data[idx + 3] // Keep alpha
     }
   }
 
-  ctx.putImageData(imageData, 0, 0)
-}
-
-/**
- * Apply despeckle filter to remove noise
- */
-function applyDespeckle(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
-  const tempData = new Uint8ClampedArray(data)
-
-  // Apply median filter to remove noise
-  const filterSize = 3
-  const filterHalfSize = Math.floor(filterSize / 2)
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4
-
-      // For each color channel
-      for (let c = 0; c < 3; c++) {
-        const values = []
-
-        // Gather values in the neighborhood
-        for (let dy = -filterHalfSize; dy <= filterHalfSize; dy++) {
-          for (let dx = -filterHalfSize; dx <= filterHalfSize; dx++) {
-            const nx = x + dx
-            const ny = y + dy
-
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              const nidx = (ny * width + nx) * 4 + c
-              values.push(tempData[nidx])
-            }
-          }
-        }
-
-        // Sort values and take the median
-        values.sort((a, b) => a - b)
-        data[idx + c] = values[Math.floor(values.length / 2)]
-      }
-    }
+  // Copy back to original data
+  for (let i = 0; i < data.length; i++) {
+    data[i] = tempData[i]
   }
 
-  ctx.putImageData(imageData, 0, 0)
+  return data
 }
 
-/**
- * Invert image colors (useful for dark mode screenshots)
- */
-function invertColors(ctx: CanvasRenderingContext2D, width: number, height: number): void {
-  const imageData = ctx.getImageData(0, 0, width, height)
-  const data = imageData.data
-
+function applyInvert(data: Uint8ClampedArray): Uint8ClampedArray {
   for (let i = 0; i < data.length; i += 4) {
-    data[i] = 255 - data[i] // Red
-    data[i + 1] = 255 - data[i + 1] // Green
-    data[i + 2] = 255 - data[i + 2] // Blue
-    // Alpha remains unchanged
+    data[i] = 255 - data[i] // R
+    data[i + 1] = 255 - data[i + 1] // G
+    data[i + 2] = 255 - data[i + 2] // B
   }
-
-  ctx.putImageData(imageData, 0, 0)
+  return data
 }
 
 /**
@@ -323,95 +523,6 @@ export function detectBestOptions(ctx: CanvasRenderingContext2D, width: number, 
   }
 
   return options
-}
-
-/**
- * Main preprocessing function that applies all selected techniques
- */
-export async function preprocessImage(
-  imageData: string | File,
-  customOptions?: Partial<PreprocessingOptions>,
-): Promise<string> {
-  // Convert File to base64 if needed
-  let base64Data: string
-  if (typeof imageData === "string") {
-    base64Data = imageData
-  } else {
-    base64Data = await fileToBase64(imageData)
-  }
-
-  // Load image
-  const img = await base64ToImage(base64Data)
-
-  // Create canvas
-  const canvas = document.createElement("canvas")
-  let width = img.width
-  let height = img.height
-
-  // Apply options
-  const options = { ...defaultOptions, ...customOptions }
-
-  // Resize if needed
-  if (options.resize && options.targetWidth) {
-    const scaleFactor = options.targetWidth / width
-    width = options.targetWidth
-    height = Math.floor(height * scaleFactor)
-  }
-
-  canvas.width = width
-  canvas.height = height
-
-  // Get context and draw image
-  const ctx = canvas.getContext("2d")
-  if (!ctx) {
-    throw new Error("Could not get canvas context")
-  }
-
-  // Draw original image
-  ctx.drawImage(img, 0, 0, width, height)
-
-  // Auto-detect options if not explicitly provided
-  if (!customOptions) {
-    const detectedOptions = detectBestOptions(ctx, width, height)
-    Object.assign(options, detectedOptions)
-  }
-
-  // Apply preprocessing steps in optimal order
-
-  // 1. Invert colors if needed (for dark mode)
-  if (options.invert) {
-    invertColors(ctx, width, height)
-  }
-
-  // 2. Convert to grayscale
-  if (options.grayscale) {
-    applyGrayscale(ctx, width, height)
-  }
-
-  // 3. Normalize contrast
-  if (options.normalize) {
-    normalizeContrast(ctx, width, height)
-  }
-
-  // 4. Apply sharpening
-  if (options.sharpen) {
-    applySharpen(ctx, width, height)
-  }
-
-  // 5. Remove noise
-  if (options.despeckle) {
-    applyDespeckle(ctx, width, height)
-  }
-
-  // 6. Apply thresholding (last because it reduces to binary)
-  if (options.threshold) {
-    applyThreshold(ctx, width, height, options.thresholdValue)
-  } else if (options.adaptiveThreshold) {
-    applyAdaptiveThreshold(ctx, width, height)
-  }
-
-  // Return processed image as base64
-  return canvas.toDataURL("image/png")
 }
 
 /**

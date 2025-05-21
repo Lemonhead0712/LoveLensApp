@@ -1,6 +1,7 @@
 import type { Message } from "./types"
 import { createWorker } from "tesseract.js"
 import { preprocessImage, defaultOptions, type PreprocessingOptions } from "./image-preprocessing"
+import { isClient } from "./utils"
 
 // Interface for OCR result with bounding box
 interface OCRWord {
@@ -34,6 +35,14 @@ interface PositionedMessage {
 }
 
 /**
+ * Handles OCR failures by throwing an error instead of generating mock data
+ */
+function fallbackToMockData(reason: string): never {
+  console.error("OCR failed:", reason)
+  throw new Error(`OCR failed: ${reason}`)
+}
+
+/**
  * Helper function to check if a date string is valid
  */
 function isValidDate(input: any): boolean {
@@ -41,7 +50,7 @@ function isValidDate(input: any): boolean {
 }
 
 /**
- * Convert File to base64
+ * Convert a File to base64
  */
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -102,6 +111,8 @@ function filterSystemMessages(content: string): string {
     /^Missed call$/i,
     /^Missed video call$/i,
     /^Call ended$/i,
+    /^New messages$/i,
+    /^\d+ unread messages?$/i,
   ]
 
   // Check if the content matches any system pattern
@@ -111,7 +122,14 @@ function filterSystemMessages(content: string): string {
     }
   }
 
-  return content
+  return content.trim()
+}
+
+/**
+ * Determine sender based on x-position in the screenshot
+ */
+function determineSenderFromX(x: number, threshold = 100): "left" | "right" {
+  return x > threshold ? "right" : "left"
 }
 
 /**
@@ -286,6 +304,101 @@ function groupLinesIntoMessages(lines: MessageLine[]): PositionedMessage[] {
 }
 
 /**
+ * Fallback text parsing when bounding boxes aren't available
+ * This function attempts to parse the raw OCR text into messages
+ */
+function parseFallbackText(text: string, firstPersonName: string, secondPersonName: string): Message[] {
+  if (!text || typeof text !== "string") {
+    throw new Error("No text provided for parsing")
+  }
+
+  console.log("Using fallback text parsing method")
+
+  // Split text by line breaks
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
+
+  if (lines.length === 0) {
+    throw new Error("No content found in text")
+  }
+
+  const messages: Message[] = []
+  let currentSender: string | null = null
+  let currentMessageLines: string[] = []
+  let currentTimestamp: string | null = null
+
+  // Try to detect message patterns
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+
+    // Skip very short lines as they're likely not content
+    if (line.length < 2) continue
+
+    // Check for timestamp
+    const timestampMatch = line.match(/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/)
+    if (timestampMatch) {
+      currentTimestamp = timestampMatch[0]
+
+      // If this is just a timestamp, skip to next line
+      if (line.length < 10) continue
+    }
+
+    // Check for common message indicators
+    const isLeftAligned = line.startsWith(" ") || line.startsWith("\t")
+
+    // If this looks like a new message
+    if (
+      i === 0 ||
+      (timestampMatch && line.length > 10) ||
+      (i > 0 && lines[i - 1].trim().length === 0 && line.trim().length > 0)
+    ) {
+      // Save previous message if we have one
+      if (currentMessageLines.length > 0) {
+        const messageText = currentMessageLines.join("\n")
+        messages.push({
+          sender: currentSender || (isLeftAligned ? secondPersonName : firstPersonName),
+          text: messageText,
+          timestamp: currentTimestamp ? new Date().toISOString() : new Date().toISOString(),
+        })
+
+        // Reset for new message
+        currentMessageLines = []
+      }
+
+      // Set the new sender based on indentation
+      currentSender = isLeftAligned ? secondPersonName : firstPersonName
+      currentMessageLines.push(line.trim())
+    } else {
+      // Continue with current message
+      currentMessageLines.push(line.trim())
+    }
+  }
+
+  // Add final message if there is one
+  if (currentMessageLines.length > 0) {
+    messages.push({
+      sender: currentSender || firstPersonName,
+      text: currentMessageLines.join("\n"),
+      timestamp: currentTimestamp ? new Date().toISOString() : new Date().toISOString(),
+    })
+  }
+
+  // Ensure there are messages from both participants
+  const foundFirstPerson = messages.some((m) => m.sender === firstPersonName)
+  const foundSecondPerson = messages.some((m) => m.sender === secondPersonName)
+
+  // If we don't have messages from both people, that's an error
+  if (!foundFirstPerson || !foundSecondPerson) {
+    throw new Error("Could not detect messages from both participants")
+  }
+
+  if (messages.length < 2) {
+    throw new Error("Not enough messages extracted")
+  }
+
+  return messages
+}
+
+/**
  * Process OCR results to extract messages with accurate sender attribution
  */
 async function processOCRWithBoundingBoxes(
@@ -296,6 +409,11 @@ async function processOCRWithBoundingBoxes(
 ): Promise<Message[]> {
   try {
     console.log(`Processing image with bounding box detection for ${firstPersonName} and ${secondPersonName}`)
+
+    // Check if we're in a client environment
+    if (!isClient()) {
+      throw new Error("Server-side OCR processing is not supported")
+    }
 
     // Create a worker - simplified initialization for compatibility
     const worker = await createWorker()
@@ -325,17 +443,18 @@ async function processOCRWithBoundingBoxes(
 
     await worker.terminate()
 
-    // Check if result has the expected structure
-    if (!result || !result.data || !result.data.words || !Array.isArray(result.data.words)) {
-      console.warn("OCR result does not have the expected structure:", result)
-      // Return empty array, the calling function will handle fallback
-      return []
+    // First try the structured approach with bounding boxes
+    if (!result.data || !Array.isArray(result.data.words)) {
+      console.warn("OCR result does not contain expected word structure")
+      // Try fallback if text is available
+      if (result.data && result.data.text) {
+        console.log("Attempting fallback text parsing")
+        return parseFallbackText(result.data.text, firstPersonName, secondPersonName)
+      }
+      throw new Error("OCR result does not contain expected word structure.")
     }
 
-    // Log the raw OCR text for debugging
-    console.log("Raw OCR text:", result.data.text)
-
-    // Extract words with bounding boxes - with null checks
+    // Extract words with bounding boxes
     const words: OCRWord[] = result.data.words
       .map((word) => ({
         text: word.text || "",
@@ -344,64 +463,67 @@ async function processOCRWithBoundingBoxes(
       }))
       .filter((word) => word.text.trim() !== "")
 
-    // If no words were extracted, return empty array
+    // If no valid words were extracted, throw an error
     if (words.length === 0) {
-      console.warn("No words extracted from OCR result")
-      return []
+      throw new Error("No valid words extracted from the image")
     }
 
-    // Group words into lines
-    const lines = groupWordsIntoLines(words)
+    // If words were extracted, proceed with the structured approach
+    if (words.length > 0) {
+      // Group words into lines
+      const lines = groupWordsIntoLines(words)
 
-    // If no lines were created, return empty array
-    if (lines.length === 0) {
-      console.warn("No lines created from words")
-      return []
-    }
+      if (lines.length > 0) {
+        // Group lines into messages
+        const positionedMessages = groupLinesIntoMessages(lines)
 
-    // Group lines into messages
-    const positionedMessages = groupLinesIntoMessages(lines)
+        if (positionedMessages.length > 0) {
+          // Convert positioned messages to the Message format
+          const messages: Message[] = positionedMessages.map((message, index) => {
+            // Try to extract timestamp from the message content
+            const { content, timestamp } = extractTimestamp(message.content)
 
-    // If no messages were created, return empty array
-    if (positionedMessages.length === 0) {
-      console.warn("No messages created from lines")
-      return []
-    }
+            // Create a timestamp if none was extracted
+            const messageTimestamp = isValidDate(timestamp)
+              ? new Date(timestamp).toISOString()
+              : new Date(Date.now() - (positionedMessages.length - index) * 60000).toISOString()
 
-    // Count messages on each side to verify we have both participants
-    const leftCount = positionedMessages.filter((m) => m.position === "left").length
-    const rightCount = positionedMessages.filter((m) => m.position === "right").length
+            // Determine sender based on position
+            // In both Android and iPhone, left messages are typically from the other person
+            const sender = message.position === "left" ? secondPersonName : firstPersonName
 
-    console.log(
-      `Detected ${leftCount} messages on left (${secondPersonName}) and ${rightCount} messages on right (${firstPersonName})`,
-    )
+            return {
+              sender,
+              text: content.trim(), // Use text property to match Message interface
+              timestamp: messageTimestamp,
+            }
+          })
 
-    // Convert positioned messages to the Message format
-    const messages: Message[] = positionedMessages.map((message, index) => {
-      // Try to extract timestamp from the message content
-      const { content, timestamp } = extractTimestamp(message.content)
-
-      // Create a timestamp if none was extracted
-      const messageTimestamp = isValidDate(timestamp)
-        ? new Date(timestamp).toISOString()
-        : new Date(Date.now() - (positionedMessages.length - index) * 60000).toISOString()
-
-      // Determine sender based on position
-      // In both Android and iPhone, left messages are typically from the other person
-      const sender = message.position === "left" ? secondPersonName : firstPersonName
-
-      return {
-        sender,
-        text: content.trim(), // Use text property to match Message interface
-        timestamp: messageTimestamp,
+          if (messages.length > 0) {
+            console.log(`Extracted ${messages.length} messages using bounding box method`)
+            return messages
+          }
+        }
       }
-    })
+    }
 
-    return messages
+    // If we get here, the structured approach failed
+    // Let's try the fallback text parsing approach
+    if (result && result.data && result.data.text) {
+      console.log("Structured approach failed, using fallback text parsing")
+      const fallbackMessages = parseFallbackText(result.data.text, firstPersonName, secondPersonName)
+
+      if (fallbackMessages.length > 0) {
+        console.log(`Extracted ${fallbackMessages.length} messages using fallback text parsing`)
+        return fallbackMessages
+      }
+    }
+
+    // If both methods failed, throw an error
+    throw new Error("OCR failed: Could not extract messages from the image")
   } catch (error) {
     console.error("Error processing OCR with bounding boxes:", error)
-    // Return empty array instead of throwing, the calling function will handle fallback
-    return []
+    throw error // Propagate the error
   }
 }
 
@@ -419,6 +541,11 @@ export async function extractMessagesFromScreenshots(
 
     if (!screenshots || screenshots.length === 0) {
       throw new Error("No screenshots provided. Please upload at least one screenshot.")
+    }
+
+    // If we're on the server, throw an error
+    if (!isClient()) {
+      throw new Error("Server-side extraction is not supported")
     }
 
     // Process each screenshot and combine the results
@@ -500,15 +627,9 @@ export async function extractMessagesFromScreenshots(
       }
     }
 
-    // If no messages were extracted, throw a detailed error
+    // If no messages were extracted at all, throw an error
     if (allMessages.length === 0) {
-      if (failedScreenshots.length === screenshots.length) {
-        throw new Error(
-          `OCR failed: No messages could be extracted from any of the screenshots. Please check that your screenshots clearly show text messages.`,
-        )
-      } else {
-        throw new Error(`OCR failed: No messages could be extracted from the screenshots.`)
-      }
+      fallbackToMockData("No messages could be extracted from any screenshot")
     }
 
     // Sort messages by timestamp
@@ -518,8 +639,8 @@ export async function extractMessagesFromScreenshots(
 
     // Verify we have messages from both participants
     const senders = new Set(sortedMessages.map((m) => m.sender))
-    if (senders.size < 2) {
-      console.warn("Could not detect messages from both participants, check screenshot format")
+    if (senders.size < 2 || !senders.has(firstPersonName) || !senders.has(secondPersonName)) {
+      throw new Error("Could not detect messages from both participants")
     }
 
     console.log(`Extracted ${sortedMessages.length} messages (${senders.size} participants)`)
@@ -575,6 +696,11 @@ export async function extractTextFromImage(
   progressCallback?: (progress: number) => void,
 ): Promise<Message[]> {
   try {
+    // Check if we're in a client environment
+    if (!isClient()) {
+      throw new Error("Server-side text extraction is not supported")
+    }
+
     // Create a dummy file object from the base64 data
     const byteString = atob(imageData.split(",")[1])
     const mimeString = imageData.split(",")[0].split(":")[1].split(";")[0]
@@ -598,6 +724,6 @@ export async function extractTextFromImage(
     return messages
   } catch (error) {
     console.error("Error extracting text from image:", error)
-    return []
+    throw error // Propagate the error
   }
 }

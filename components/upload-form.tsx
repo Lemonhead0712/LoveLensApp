@@ -133,45 +133,50 @@ function UploadForm() {
         })
       })
 
-      const extractedMessagesArrays = await Promise.all(messagesPromises)
+      try {
+        const extractedMessagesArrays = await Promise.all(messagesPromises)
 
-      // Combine and deduplicate messages from all images
-      let allMessages: Message[] = []
-      extractedMessagesArrays.forEach((messages) => {
-        allMessages = [...allMessages, ...messages]
-      })
+        // Combine and deduplicate messages from all images
+        let allMessages: Message[] = []
+        extractedMessagesArrays.forEach((messages) => {
+          allMessages = [...allMessages, ...messages]
+        })
 
-      // Validate extracted messages
-      if (!validateExtractedMessages(allMessages)) {
+        // Validate extracted messages
+        if (!validateExtractedMessages(allMessages)) {
+          throw new Error("OCR_FAILED")
+        }
+
+        setProgress(70)
+        setStatusMessage("Analyzing conversation...")
+
+        // Analyze screenshots
+        let analysisResult: AnalysisResult
+        try {
+          // Pass the extracted messages directly to the analysis function
+          analysisResult = await analyzeScreenshots(base64Files, allMessages)
+          setProgress(90)
+          setStatusMessage("Saving results...")
+        } catch (analysisError) {
+          console.error("Analysis error:", analysisError)
+          throw new Error("ANALYSIS_FAILED")
+        }
+
+        // Store analysis result
+        try {
+          await storeAnalysisResult(analysisResult)
+          setProgress(100)
+          setStatusMessage("Complete!")
+        } catch (storageError) {
+          throw new Error("STORAGE_FAILED")
+        }
+
+        // Navigate to results page
+        router.push("/results")
+      } catch (ocrError) {
+        console.error("OCR error:", ocrError)
         throw new Error("OCR_FAILED")
       }
-
-      setProgress(70)
-      setStatusMessage("Analyzing conversation...")
-
-      // Analyze screenshots
-      let analysisResult: AnalysisResult
-      try {
-        // Pass the extracted messages directly to the analysis function
-        analysisResult = await analyzeScreenshots(base64Files, allMessages)
-        setProgress(90)
-        setStatusMessage("Saving results...")
-      } catch (analysisError) {
-        console.error("Analysis error:", analysisError)
-        throw new Error("ANALYSIS_FAILED")
-      }
-
-      // Store analysis result
-      try {
-        await storeAnalysisResult(analysisResult)
-        setProgress(100)
-        setStatusMessage("Complete!")
-      } catch (storageError) {
-        throw new Error("STORAGE_FAILED")
-      }
-
-      // Navigate to results page
-      router.push("/results")
     } catch (error) {
       console.error("Error processing screenshots:", error)
 
@@ -208,6 +213,7 @@ function UploadForm() {
             break
           default:
             // Use default error details
+            errorDetails.message = `Error: ${error.message}`
             break
         }
       }

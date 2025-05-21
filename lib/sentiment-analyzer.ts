@@ -1229,3 +1229,6 @@ function generateNegativeInsights(messages: Message[], gottmanScores: any, relat
     personInsights,
   }
 }
+
+// Export the analyzeSentimentText function to fix the missing export error
+export { analyzeSentimentText }

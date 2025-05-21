@@ -6,6 +6,14 @@ import { validateAnalysisResults } from "./result-validator"
 import { generatePsychologicalProfile } from "./psychological-frameworks"
 import { fetchGPTEmotionalAnalysis } from "./gpt-ei-service"
 
+// Import the data validation utility
+import { ensureValidEmotionalIntelligenceData } from "./data-validation"
+
+// Import enhanced OCR and single screenshot analysis
+import { performOcr } from "./ocr-service-enhanced"
+import { analyzeText as analyzeSentimentText } from "./sentiment-analyzer"
+import { extractEmotionalInsights } from "./gpt-ei-service"
+
 // Main function to analyze screenshots
 export async function analyzeScreenshots(
   screenshots: File[],
@@ -17,8 +25,19 @@ export async function analyzeScreenshots(
     console.log(`First person: ${firstPersonName}, Second person: ${secondPersonName}`)
 
     // Extract messages from screenshots
-    const extractedMessages = await extractMessagesFromScreenshots(screenshots, firstPersonName, secondPersonName)
-    console.log(`Extracted ${extractedMessages.length} messages`)
+    let extractedMessages: Message[] = []
+    try {
+      extractedMessages = await extractMessagesFromScreenshots(screenshots, firstPersonName, secondPersonName)
+      console.log(`Extracted ${extractedMessages.length} messages`)
+
+      // Ensure we have real extracted messages, not synthetic ones
+      if (!extractedMessages || extractedMessages.length === 0) {
+        throw new Error("OCR failed: No messages could be extracted from the screenshots.")
+      }
+    } catch (ocrError) {
+      console.error("OCR extraction failed:", ocrError)
+      throw new Error(`OCR extraction failed: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`)
+    }
 
     // 🔁 Re-Establish Two-Way Separation - Clearly separate messages by sender
     const messagesA = extractedMessages.filter((msg) => msg.sender === firstPersonName)
@@ -106,7 +125,9 @@ export async function analyzeScreenshots(
       profileA = generatePsychologicalProfile(messagesA, firstPersonName)
 
       console.log(`Calculating emotional intelligence for ${firstPersonName}...`)
-      emotionalBreakdownA = calculateEmotionalBreakdown(messagesA, sentimentA.overallScore)
+      emotionalBreakdownA = ensureValidEmotionalIntelligenceData(
+        calculateEmotionalBreakdown(messagesA, sentimentA.overallScore),
+      )
       emotionalIntelligenceA = calculateEmotionalIntelligence(
         emotionalBreakdownA,
         sentimentA.firstPersonProfile,
@@ -134,26 +155,7 @@ export async function analyzeScreenshots(
         gptAnalysisMetadata: emotionalInsights?._metadata || null,
       })
     } else {
-      // Add placeholder for first person
-      participants.push({
-        name: firstPersonName,
-        note: "No messages found from this participant. Analysis skipped.",
-        communicationStyle: "Unknown",
-        emotionalIntelligence: 0,
-        attachmentStyle: "Unknown",
-        egoState: "Unknown",
-        cognitivePatterns: {},
-        emotionalBreakdown: {},
-        psychologicalProfile: {},
-        sentiment: 0,
-        linguisticPatterns: {},
-        insights: [],
-        recommendations: [],
-        // 🆕 Add placeholder GPT emotional insights
-        gptEmotionalInsights: emotionalInsights?.forPersonA || null,
-        // 🆕 Add analysis metadata
-        gptAnalysisMetadata: emotionalInsights?._metadata || null,
-      })
+      throw new Error(`No messages found from ${firstPersonName}. Analysis cannot proceed.`)
     }
 
     // Analyze second person if they have messages
@@ -171,7 +173,9 @@ export async function analyzeScreenshots(
       profileB = generatePsychologicalProfile(messagesB, secondPersonName)
 
       console.log(`Calculating emotional intelligence for ${secondPersonName}...`)
-      emotionalBreakdownB = calculateEmotionalBreakdown(messagesB, sentimentB.overallScore)
+      emotionalBreakdownB = ensureValidEmotionalIntelligenceData(
+        calculateEmotionalBreakdown(messagesB, sentimentB.overallScore),
+      )
       emotionalIntelligenceB = calculateEmotionalIntelligence(
         emotionalBreakdownB,
         sentimentB.firstPersonProfile,
@@ -199,26 +203,7 @@ export async function analyzeScreenshots(
         gptAnalysisMetadata: emotionalInsights?._metadata || null,
       })
     } else {
-      // Add placeholder for second person
-      participants.push({
-        name: secondPersonName,
-        note: "No messages found from this participant. Analysis skipped.",
-        communicationStyle: "Unknown",
-        emotionalIntelligence: 0,
-        attachmentStyle: "Unknown",
-        egoState: "Unknown",
-        cognitivePatterns: {},
-        emotionalBreakdown: {},
-        psychologicalProfile: {},
-        sentiment: 0,
-        linguisticPatterns: {},
-        insights: [],
-        recommendations: [],
-        // 🆕 Add placeholder GPT emotional insights
-        gptEmotionalInsights: emotionalInsights?.forPersonB || null,
-        // 🆕 Add analysis metadata
-        gptAnalysisMetadata: emotionalInsights?._metadata || null,
-      })
+      throw new Error(`No messages found from ${secondPersonName}. Analysis cannot proceed.`)
     }
 
     // Calculate compatibility only if both participants have messages
@@ -268,28 +253,7 @@ export async function analyzeScreenshots(
         gptAnalysisMetadata: emotionalInsights?._metadata || null,
       }
     } else {
-      // Create a placeholder compatibility object with null values
-      compatibility = {
-        attachment: null,
-        communication: null,
-        emotionalSync: null,
-        categoryScores: {
-          emotionalIntelligence: null,
-          communicationStyles: null,
-          compatibility: null,
-          psychology: null,
-          relationshipDynamics: null,
-        },
-        finalScore: null,
-        gottmanScores: {},
-        relationshipDynamics: {},
-        note: "Compatibility analysis requires messages from both participants.",
-        // 🆕 Add placeholder GPT relationship dynamics
-        gptRelationshipDynamics: emotionalInsights?.relationshipDynamics,
-        // 🆕 Add analysis metadata
-        gptAnalysisMetadata: emotionalInsights?._metadata || null,
-      }
-      validationWarnings.push("⚠️ Compatibility analysis skipped due to missing messages from one or both participants.")
+      throw new Error("Compatibility analysis requires messages from both participants.")
     }
 
     // Enhance the messagesWithSentiment handling in analyzeScreenshots
@@ -353,55 +317,7 @@ export async function analyzeScreenshots(
     return results
   } catch (error) {
     console.error("Error analyzing screenshots:", error)
-    // Create a minimal valid result object even in case of error
-    const errorResults: AnalysisResults = {
-      id: generateAnalysisId(),
-      timestamp: new Date().toISOString(),
-      participants: [
-        {
-          name: firstPersonName,
-          note: "Analysis failed due to an error.",
-          communicationStyle: "Unknown",
-          emotionalIntelligence: 0,
-          attachmentStyle: "Unknown",
-          egoState: "Unknown",
-          cognitivePatterns: {},
-          emotionalBreakdown: {},
-          psychologicalProfile: {},
-          sentiment: 0,
-          linguisticPatterns: {},
-          insights: [],
-          recommendations: [],
-          gptEmotionalInsights: null, // 🆕 Add null GPT emotional insights
-          gptAnalysisMetadata: null,
-        },
-        {
-          name: secondPersonName,
-          note: "Analysis failed due to an error.",
-          communicationStyle: "Unknown",
-          emotionalIntelligence: 0,
-          attachmentStyle: "Unknown",
-          egoState: "Unknown",
-          cognitivePatterns: {},
-          emotionalBreakdown: {},
-          psychologicalProfile: {},
-          sentiment: 0,
-          linguisticPatterns: {},
-          insights: [],
-          recommendations: [],
-          gptEmotionalInsights: null, // 🆕 Add null GPT emotional insights
-          gptAnalysisMetadata: null,
-        },
-      ],
-      compatibility: null,
-      messagesWithSentiment: [],
-      keyMoments: [],
-      gottmanSummary: "Analysis failed due to an error.",
-      gottmanRecommendations: [],
-      analysisMethod: "error-fallback",
-      validationWarnings: [`Error analyzing screenshots: ${error instanceof Error ? error.message : String(error)}`],
-    }
-    return errorResults
+    throw error // Propagate the error instead of returning a fallback result
   }
 }
 
@@ -815,14 +731,14 @@ function calculateEmotionalBreakdown(messages: Message[], sentiment: number): an
     }, 0) || 1)
   const adaptability = Math.min(100, Math.max(30, 40 + uniqueWordsRatio * 100))
 
-  return {
+  return ensureValidEmotionalIntelligenceData({
     empathy,
     selfAwareness,
     socialSkills,
     emotionalRegulation,
     motivation,
     adaptability,
-  }
+  })
 }
 
 // Calculate emotional synchrony between two people's emotional breakdowns
@@ -1061,4 +977,73 @@ function getCommunicationStyleLabel(style1: string, style2: string): string {
   }
 
   return `${style1} - ${style2}`
+}
+
+export async function analyzeScreenshot(imageData: string | Blob) {
+  try {
+    console.log("Starting screenshot analysis...")
+
+    // Step 1: Perform OCR on the image
+    const ocrResult = await performOcr(imageData)
+
+    if (!ocrResult.success) {
+      console.error("OCR processing failed:", ocrResult.error)
+      return {
+        success: false,
+        error: ocrResult.error || "OCR processing failed",
+        debugInfo: {
+          ocrError: ocrResult.error,
+          stage: "OCR",
+        },
+      }
+    }
+
+    // Step 2: Extract the text from the OCR result
+    const text = ocrResult.text || ""
+
+    if (!text || text.trim().length === 0) {
+      console.error("No text extracted from image")
+      return {
+        success: false,
+        error: "No text could be extracted from the image",
+        debugInfo: {
+          ocrResult,
+          stage: "Text Extraction",
+        },
+      }
+    }
+
+    console.log("Text extracted successfully, length:", text.length)
+
+    // Step 3: Analyze the text for sentiment and emotional content
+    const sentimentResult = await analyzeSentimentText(text)
+
+    // Step 4: Extract emotional insights using GPT
+    const emotionalInsights = await extractEmotionalInsights(text)
+
+    return {
+      success: true,
+      text,
+      words: ocrResult.words || [],
+      messages: ocrResult.messages || [],
+      sentiment: sentimentResult,
+      emotionalInsights,
+      debugInfo: {
+        ocrConfidence: ocrResult.confidence,
+        textLength: text.length,
+        messageCount: (ocrResult.messages || []).length,
+      },
+    }
+  } catch (error) {
+    console.error("Screenshot analysis failed:", error)
+    return {
+      success: false,
+      error: "Screenshot analysis failed: " + (error.message || error),
+      debugInfo: {
+        errorMessage: error.message,
+        errorStack: error.stack,
+        stage: "Analysis",
+      },
+    }
+  }
 }

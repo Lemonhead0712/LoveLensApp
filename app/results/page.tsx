@@ -156,6 +156,24 @@ export default function ResultsPage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold text-center mb-8">Your Relationship Insights</h1>
 
+        {(!personA?.insights?.length || !personB?.insights?.length) && (
+          <div className="max-w-2xl mx-auto mb-8 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <h3 className="font-semibold text-amber-800 flex items-center">
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              Incomplete Analysis Detected
+            </h3>
+            <p className="text-amber-700 mt-2">Some parts of the analysis appear incomplete. This may be due to:</p>
+            <ul className="list-disc pl-5 mt-2 text-amber-700">
+              <li>Low quality or cropped screenshots</li>
+              <li>Message bubbles not fully visible</li>
+              <li>Insufficient conversation context</li>
+            </ul>
+            <p className="text-amber-700 mt-2">
+              For better results, try uploading clearer screenshots with more context.
+            </p>
+          </div>
+        )}
+
         {/* Individual Profiles Section */}
         <section className="mb-8">
           <h2 className="text-2xl font-semibold mb-6 text-center">Individual Profiles</h2>
@@ -244,21 +262,23 @@ export default function ResultsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div>
             <h2 className="text-xl font-semibold mb-4 text-center">You</h2>
-            {personA.emotionalIntelligence ? (
+            {personA.emotionalIntelligence && Object.keys(personA.emotionalIntelligence).length > 0 ? (
               <EmotionalRadarChart data={personA.emotionalIntelligence} />
             ) : (
-              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
-                No emotional intelligence data available.
+              <div className="text-sm p-8 text-center bg-red-50 rounded-lg border border-red-200">
+                ⚠️ Analysis appears incomplete. Try re-uploading clearer screenshots or ensure message bubbles are fully
+                visible.
               </div>
             )}
           </div>
           <div>
             <h2 className="text-xl font-semibold mb-4 text-center">Your Partner</h2>
-            {personB.emotionalIntelligence ? (
+            {personB.emotionalIntelligence && Object.keys(personB.emotionalIntelligence).length > 0 ? (
               <EmotionalRadarChart data={personB.emotionalIntelligence} />
             ) : (
-              <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
-                No emotional intelligence data available.
+              <div className="text-sm p-8 text-center bg-red-50 rounded-lg border border-red-200">
+                ⚠️ Analysis appears incomplete. Try re-uploading clearer screenshots or ensure message bubbles are fully
+                visible.
               </div>
             )}
           </div>
@@ -319,7 +339,7 @@ export default function ResultsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div>
             <h2 className="text-xl font-semibold mb-4 text-center">Your Emotional Intelligence</h2>
-            {personA.emotionalIntelligence ? (
+            {personA.emotionalIntelligence && Object.keys(personA.emotionalIntelligence).length > 0 ? (
               <EmotionalIntelligenceBreakdown emotionalIntelligence={personA.emotionalIntelligence} />
             ) : (
               <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">
@@ -329,7 +349,7 @@ export default function ResultsPage() {
           </div>
           <div>
             <h2 className="text-xl font-semibold mb-4 text-center">Your Partner's Emotional Intelligence</h2>
-            {personB.emotionalIntelligence ? (
+            {personB.emotionalIntelligence && Object.keys(personB.emotionalIntelligence).length > 0 ? (
               <EmotionalIntelligenceBreakdown emotionalIntelligence={personB.emotionalIntelligence} />
             ) : (
               <div className="text-muted text-sm p-8 text-center bg-gray-50 rounded-lg">

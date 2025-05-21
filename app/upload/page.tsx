@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useDropzone } from "react-dropzone"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,53 @@ import { SparkleEffect } from "@/components/sparkle-effect"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { saveAnalysisResults, generateResultId } from "@/lib/storage-utils"
 import { Logo } from "@/components/logo"
+import { isClient } from "@/lib/utils"
+
+function UploadForm() {
+  const [files, setFiles] = useState<File[]>([])
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: {
+      "image/*": [".jpeg", ".png", ".jpg"],
+    },
+    onDrop: (acceptedFiles) => {
+      setFiles(acceptedFiles)
+    },
+  })
+
+  return (
+    <div className="flex flex-col items-center justify-center">
+      <div {...getRootProps()} className="border-2 border-dashed rounded-md p-4 w-full text-center cursor-pointer">
+        <input {...getInputProps()} />
+        <p>Drag 'n' drop some files here, or click to select files</p>
+      </div>
+      <aside className="mt-4">
+        <h4>Files</h4>
+        <ul>
+          {files.map((file) => (
+            <li key={file.name}>
+              {file.name} - {file.size} bytes
+            </li>
+          ))}
+        </ul>
+      </aside>
+    </div>
+  )
+}
+
+function OCRInfoSection() {
+  return (
+    <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
+      <h3 className="font-medium text-blue-800">Having trouble with text extraction?</h3>
+      <ul className="mt-2 text-sm text-blue-700 list-disc list-inside space-y-1">
+        <li>Use screenshots with clear, readable text</li>
+        <li>Ensure good contrast between text and background</li>
+        <li>PNG format works best for text recognition</li>
+        <li>Try enabling debug mode to see preprocessing options</li>
+        <li>Crop screenshots to focus on just the conversation</li>
+      </ul>
+    </div>
+  )
+}
 
 export default function UploadPage() {
   const router = useRouter()
@@ -24,6 +71,12 @@ export default function UploadPage() {
   const [validationError, setValidationError] = useState<string | null>(null)
   const [processingStage, setProcessingStage] = useState<string | null>(null)
   const [showGuidelines, setShowGuidelines] = useState(false)
+  const [isClientSide, setIsClientSide] = useState(false)
+
+  // Check if we're on the client side
+  useEffect(() => {
+    setIsClientSide(isClient())
+  }, [])
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     // Filter out non-image files
@@ -62,6 +115,12 @@ export default function UploadPage() {
 
     if (!firstPersonName.trim() || !secondPersonName.trim()) {
       setValidationError("Please enter names for both participants.")
+      return
+    }
+
+    // Check if we're on the client side
+    if (!isClientSide) {
+      setValidationError("This feature requires client-side processing. Please try again in the browser.")
       return
     }
 
@@ -165,6 +224,17 @@ export default function UploadPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Client-side check warning */}
+              {!isClientSide && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Client-side processing required</AlertTitle>
+                  <AlertDescription>
+                    This feature requires client-side processing. Please ensure JavaScript is enabled in your browser.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Screenshot Guidelines Button */}
               <div className="flex justify-end">
                 <Button
@@ -273,7 +343,7 @@ export default function UploadPage() {
               <Button
                 onClick={handleSubmit}
                 className="w-full py-6 text-base"
-                disabled={isSubmitting || files.length === 0}
+                disabled={isSubmitting || files.length === 0 || !isClientSide}
               >
                 {isSubmitting ? (
                   <>

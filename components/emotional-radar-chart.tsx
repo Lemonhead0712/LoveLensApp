@@ -25,6 +25,14 @@ function EmotionalRadarChart({
   useEffect(() => {
     if (!data) {
       setError("No data provided")
+      console.error("EmotionalRadarChart received no data")
+      return
+    }
+
+    // Check if data is empty object
+    if (Object.keys(data).length === 0) {
+      setError("Empty data object provided")
+      console.error("EmotionalRadarChart received empty data object")
       return
     }
 
@@ -48,10 +56,10 @@ function EmotionalRadarChart({
   }, [data])
 
   useEffect(() => {
-    if (!canvasRef.current) return
+    if (!canvasRef.current || error) return
 
     // Verify data is available
-    if (!data) {
+    if (!data || Object.keys(data).length === 0) {
       console.error("No data provided to EmotionalRadarChart")
       return
     }
@@ -84,7 +92,7 @@ function EmotionalRadarChart({
     if (showLabels) {
       drawLabels(ctx, centerX, centerY, radius, data, showValues)
     }
-  }, [data, color, showLabels, showValues, dimensions])
+  }, [data, color, showLabels, showValues, dimensions, error])
 
   const drawRadarBackground = (ctx: CanvasRenderingContext2D, centerX: number, centerY: number, radius: number) => {
     const categories = [
