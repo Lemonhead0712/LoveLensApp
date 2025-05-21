@@ -12,6 +12,8 @@ import { ApiInitializer } from "@/components/api-initializer"
 import { Suspense } from "react"
 import { LoadingScreen } from "@/components/loading-screen"
 import { LimitedModeBanner } from "@/components/limited-mode-banner"
+import { ErrorBoundary } from "@/components/error-boundary"
+import { RouteDebugger } from "@/components/route-debugger"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -50,12 +52,19 @@ export default function RootLayout({
               <Header />
               <main className="flex-1 pt-16">
                 <ApiInitializer />
-                <Suspense fallback={<LoadingScreen />}>{children}</Suspense>
+                <ErrorBoundary
+                  fallback={
+                    <div className="p-8 text-center">Something went wrong. Please try refreshing the page.</div>
+                  }
+                >
+                  <Suspense fallback={<LoadingScreen />}>{children}</Suspense>
+                </ErrorBoundary>
               </main>
               <LimitedModeBanner />
             </div>
           </GradientBackground>
         </ThemeProvider>
+        <RouteDebugger />
       </body>
     </html>
   )

@@ -3,50 +3,12 @@
 import { useCallback, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useDropzone } from "react-dropzone"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ShieldAlert, AlertTriangle, Upload, ImageIcon, Loader2, CheckCircle2, Info, Bug } from "lucide-react"
-import { SparkleEffect } from "@/components/sparkle-effect"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { saveAnalysisResults, generateResultId } from "@/lib/storage-utils"
-import { Logo } from "@/components/logo"
 import { isClient } from "@/lib/utils"
-import { DebugModeToggle } from "@/components/debug-mode-toggle"
-import { OcrExtractionVisualizer } from "@/components/ocr-extraction-visualizer"
-
-function UploadForm() {
-  const [files, setFiles] = useState<File[]>([])
-  const { getRootProps, getInputProps } = useDropzone({
-    accept: {
-      "image/*": [".jpeg", ".png", ".jpg"],
-    },
-    onDrop: (acceptedFiles) => {
-      setFiles(acceptedFiles)
-    },
-  })
-
-  return (
-    <div className="flex flex-col items-center justify-center">
-      <div {...getRootProps()} className="border-2 border-dashed rounded-md p-4 w-full text-center cursor-pointer">
-        <input {...getInputProps()} />
-        <p>Drag 'n' drop some files here, or click to select files</p>
-      </div>
-      <aside className="mt-4">
-        <h4>Files</h4>
-        <ul>
-          {files.map((file) => (
-            <li key={file.name}>
-              {file.name} - {file.size} bytes
-            </li>
-          ))}
-        </ul>
-      </aside>
-    </div>
-  )
-}
+import { UploadForm } from "@/components/upload-form"
+import { ScreenshotGuidelines } from "@/components/screenshot-guidelines"
+import { Steps } from "@/components/steps"
 
 function OCRInfoSection() {
   return (
@@ -246,255 +208,22 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-love-gradient">
-      <SparkleEffect count={20} className="absolute inset-0 pointer-events-none" />
+    <div className="container mx-auto px-4 py-8 max-w-5xl">
+      <h1 className="text-3xl font-bold text-center mb-8 text-gradient">Upload Your Conversation</h1>
 
-      <main className="flex-1 container px-4 py-12 sm:py-20 relative z-10">
-        <div className="text-center mb-8 sm:mb-12">
-          <div className="mb-6 inline-block pulse-animation">
-            <Logo size="large" withText={true} />
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-bold mb-3 text-gradient">Upload Conversation Screenshots</h1>
-          <p className="text-gray-600 max-w-xl mx-auto">
-            Upload screenshots of your text conversations to analyze emotional intelligence, communication styles, and
-            compatibility.
-          </p>
+      <div className="mb-8">
+        <Steps currentStep={1} />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="order-2 md:order-1">
+          <UploadForm />
         </div>
 
-        <div className="grid gap-8 md:grid-cols-5">
-          <Card className="bg-love-card shadow-lg border-pink-100 md:col-span-3">
-            <CardHeader className="pb-2">
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Upload Your Conversation</CardTitle>
-                  <CardDescription>
-                    We accept PNG, JPG, or WEBP screenshots of conversations. Your uploads are private and secure.
-                  </CardDescription>
-                </div>
-                <DebugModeToggle onChange={setDebugMode} />
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Client-side check warning */}
-              {!isClientSide && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Client-side processing required</AlertTitle>
-                  <AlertDescription>
-                    This feature requires client-side processing. Please ensure JavaScript is enabled in your browser.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Screenshot Guidelines Button */}
-              <div className="flex justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-pink-600 flex items-center gap-1"
-                  onClick={() => setShowGuidelines(!showGuidelines)}
-                >
-                  <Info className="h-4 w-4" />
-                  {showGuidelines ? "Hide Guidelines" : "Screenshot Tips"}
-                </Button>
-              </div>
-
-              {/* Screenshot Guidelines */}
-              {showGuidelines && (
-                <Alert className="bg-pink-50 border-pink-200 mb-4">
-                  <div className="space-y-2">
-                    <h3 className="font-medium text-pink-800">Screenshot Guidelines for Best Results:</h3>
-                    <ul className="list-disc pl-5 text-sm text-pink-700 space-y-1">
-                      <li>Use native resolution screenshots (not screenshots-of-screenshots)</li>
-                      <li>Ensure both sides of the conversation are clearly visible</li>
-                      <li>Include sender names and timestamps when possible</li>
-                      <li>Avoid cropping important parts of the conversation</li>
-                      <li>Use screenshots from common chat apps (WhatsApp, iMessage, etc.)</li>
-                      <li>Make sure text is clear and readable</li>
-                    </ul>
-                  </div>
-                </Alert>
-              )}
-
-              {/* Dropzone */}
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-8 ${
-                  isDragActive ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:border-pink-300"
-                } transition-all flex flex-col items-center justify-center cursor-pointer`}
-              >
-                <input {...getInputProps()} />
-                <Upload
-                  className={`h-14 w-14 mb-4 ${isDragActive ? "text-pink-500" : "text-gray-400"}`}
-                  strokeWidth={1.5}
-                />
-                {isDragActive ? (
-                  <p className="text-center text-pink-500 font-medium">Drop your screenshots here...</p>
-                ) : (
-                  <div className="text-center text-gray-500">
-                    <p className="font-medium mb-1">Drag & drop screenshots here or click to browse</p>
-                    <p className="text-sm">We recommend uploading 10-20 screenshots for best results</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Files preview */}
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="font-medium">{files.length} File(s) Selected</h3>
-                  <div className="max-h-60 overflow-y-auto border rounded-md divide-y">
-                    {files.map((file, index) => (
-                      <div key={index} className="py-2 px-3 flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="h-10 w-10 bg-gray-100 rounded-md overflow-hidden relative flex-shrink-0">
-                            <ImageIcon className="h-6 w-6 text-gray-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                          </div>
-                          <div className="truncate">
-                            <p className="text-sm font-medium truncate">{file.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {(file.size / 1024 / 1024).toFixed(2)} MB • {file.type.split("/")[1].toUpperCase()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {debugMode && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setCurrentFileIndex(index)
-                                processFileForDebug(index)
-                              }}
-                              className="text-blue-500 hover:text-blue-700"
-                              disabled={isSubmitting}
-                            >
-                              <Bug className="h-4 w-4 mr-1" />
-                              Debug
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              removeFile(index)
-                            }}
-                            className="text-gray-500 hover:text-gray-700"
-                          >
-                            Remove
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Validation error */}
-              {validationError && (
-                <Alert variant="destructive">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{validationError}</AlertDescription>
-                </Alert>
-              )}
-
-              {/* Error message */}
-              {error && (
-                <Alert variant="destructive">
-                  <ShieldAlert className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              <Button
-                onClick={handleSubmit}
-                className="w-full py-6 text-base"
-                disabled={isSubmitting || files.length === 0 || !isClientSide}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    {processingStage || "Analyzing..."}
-                  </>
-                ) : (
-                  <>Analyze Conversation</>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-love-card shadow-lg border-pink-100 md:col-span-2">
-            <CardHeader className="pb-2">
-              <CardTitle>Conversation Participants</CardTitle>
-              <CardDescription>
-                Help us identify who's who in the conversation for more personalized analysis.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="first-person">You (First Person)</Label>
-                  <Input
-                    id="first-person"
-                    placeholder="Your name in the conversation"
-                    value={firstPersonName}
-                    onChange={(e) => setFirstPersonName(e.target.value)}
-                  />
-                  <p className="text-sm text-gray-500">This is you or the person's perspective you're analyzing from</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="second-person">Other Person</Label>
-                  <Input
-                    id="second-person"
-                    placeholder="The other person's name"
-                    value={secondPersonName}
-                    onChange={(e) => setSecondPersonName(e.target.value)}
-                  />
-                  <p className="text-sm text-gray-500">The person you're conversing with</p>
-                </div>
-              </div>
-
-              <Alert className="bg-pink-50 border-pink-200">
-                <CheckCircle2 className="h-4 w-4 text-pink-600" />
-                <AlertTitle className="text-pink-800">Private & Confidential</AlertTitle>
-                <AlertDescription className="text-pink-700 text-sm">
-                  Your conversations are analyzed locally and never stored on our servers. Your privacy is our priority.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
+        <div className="order-1 md:order-2">
+          <ScreenshotGuidelines />
         </div>
-
-        {/* Debug Visualization */}
-        {debugMode && debugData && (
-          <div className="mt-8">
-            <OcrExtractionVisualizer
-              originalImage={debugData.originalImageDataUrl || null}
-              preprocessingSteps={debugData.preprocessingSteps || []}
-              rawText={debugData.rawText || ""}
-              textBlocks={debugData.textBlocks || []}
-              extractedMessages={debugData.extractedMessages || []}
-              ocrConfidence={debugData.ocrConfidence || 0}
-              processingTime={debugData.processingTime || 0}
-              errors={debugData.errors || []}
-              onReprocess={(options) => processFileForDebug(currentFileIndex)}
-            />
-          </div>
-        )}
-
-        {/* OCR Info Section */}
-        {(error || debugMode) && <OCRInfoSection />}
-      </main>
-
-      <footer className="py-6 border-t border-pink-100 bg-white bg-opacity-80 backdrop-blur-sm relative z-10">
-        <div className="container text-center">
-          <p className="text-sm text-gray-500">© {new Date().getFullYear()} LoveLens. All rights reserved.</p>
-        </div>
-      </footer>
+      </div>
     </div>
   )
 }
