@@ -1,8 +1,16 @@
+/**
+ * OCR FALLBACK FUNCTIONALITY IS DISABLED
+ *
+ * This file contains disabled fallback functionality that was previously used
+ * to generate synthetic content when OCR failed. It has been disabled to ensure
+ * only real OCR results are used in the application.
+ */
 import { analyzeSentimentText } from "./sentiment-analyzer"
 import type { Message } from "./types"
 import { isClient } from "./utils"
 
 /**
+ * UNUSED: This function is kept for reference but is no longer used in the application.
  * Local OCR fallback that uses a simplified approach to extract text from images
  * This is used when the primary OCR service fails
  */
@@ -102,6 +110,7 @@ export async function localOcrFallback(imageData: string): Promise<string> {
 }
 
 /**
+ * UNUSED: This function is kept for reference but is no longer used in the application.
  * Simple function to detect potential text regions in an image
  * This is a very basic implementation that looks for clusters of dark pixels
  */
@@ -137,6 +146,7 @@ function detectTextRegions(ctx: CanvasRenderingContext2D, width: number, height:
 }
 
 /**
+ * UNUSED: This function is kept for reference but is no longer used in the application.
  * Merge adjacent text regions to form larger blocks
  */
 function mergeAdjacentRegions(regions: Array<{ x: number; y: number; width: number; height: number }>) {
@@ -179,6 +189,7 @@ function mergeAdjacentRegions(regions: Array<{ x: number; y: number; width: numb
 }
 
 /**
+ * UNUSED: This function is kept for reference but is no longer used in the application.
  * Extracts messages from raw text when OCR bounding box detection fails.
  * This function parses text into a structured message format based on
  * common patterns found in chat conversations.
@@ -336,6 +347,7 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
 }
 
 /**
+ * UNUSED: This function is kept for reference but is no longer used in the application.
  * Create synthetic messages when OCR completely fails
  */
 export function createSyntheticMessages(firstPersonName: string, secondPersonName: string): Message[] {
@@ -358,6 +370,7 @@ export function createSyntheticMessages(firstPersonName: string, secondPersonNam
 }
 
 /**
+ * UNUSED: This function is kept for reference but is no longer used in the application.
  * Analyze sentiment for each message
  */
 async function analyzeSentimentForMessages(messages: Message[]): Promise<Message[]> {
@@ -401,36 +414,13 @@ async function analyzeSentimentForMessages(messages: Message[]): Promise<Message
 }
 
 /**
- * Integrate the local OCR fallback with the main OCR pipeline
- * This function should be called from the main OCR service when the primary method fails
+ * This function has been disabled to enforce real OCR-only results.
+ * It will throw an error instead of generating synthetic content.
  */
 export async function performLocalOcrFallback(
   imageData: string,
   firstPersonName: string,
   secondPersonName: string,
 ): Promise<Message[]> {
-  try {
-    console.log("Performing local OCR fallback...")
-
-    // Extract text using the local OCR fallback
-    const extractedText = await localOcrFallback(imageData)
-
-    if (!extractedText || extractedText.length < 10) {
-      throw new Error("Local OCR fallback failed to extract meaningful text")
-    }
-
-    // Extract messages from the text
-    const messages = extractMessagesFromText(extractedText, firstPersonName, secondPersonName)
-
-    if (messages.length === 0) {
-      throw new Error("Failed to extract messages from OCR text")
-    }
-
-    console.log(`Local OCR fallback extracted ${messages.length} messages`)
-    return messages
-  } catch (error) {
-    console.error("Local OCR fallback failed:", error)
-    // Return synthetic messages as a last resort
-    return createSyntheticMessages(firstPersonName, secondPersonName)
-  }
+  throw new Error("OCR failed: No messages could be extracted and fallback is disabled.")
 }
