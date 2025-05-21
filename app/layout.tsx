@@ -14,7 +14,8 @@ import { LoadingScreen } from "@/components/loading-screen"
 import { LimitedModeBanner } from "@/components/limited-mode-banner"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { RouteDebugger } from "@/components/route-debugger"
-import { NetworkStatusIndicator } from "@/components/network-status-indicator"
+// Removing the problematic import
+// import { NetworkStatusIndicator } from "@/components/network-status-indicator"
 import { OfflineSyncManager } from "@/components/offline-sync-manager"
 import Script from "next/script"
 
@@ -75,7 +76,8 @@ export default function RootLayout({
             <SparkleEffect />
             <div className="min-h-screen flex flex-col relative">
               <Header />
-              <NetworkStatusIndicator />
+              {/* Removing the NetworkStatusIndicator component */}
+              {/* <NetworkStatusIndicator /> */}
               <main className="flex-1 pt-16">
                 <ApiInitializer />
                 <ErrorBoundary

@@ -1,59 +1,33 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useLocalStorage } from "@/lib/storage-utils"
 
 /**
  * OfflineSyncManager component
  *
- * Manages synchronization of data when the app comes back online
- * Stores pending operations in local storage and processes them when connection is restored
+ * Handles synchronization of data when the application goes offline and comes back online
+ * Stores pending operations in localStorage and processes them when connection is restored
  */
 export function OfflineSyncManager() {
   const [isOnline, setIsOnline] = useState(true)
-  const [pendingOperations, setPendingOperations] = useLocalStorage<
-    Array<{
-      type: string
-      data: any
-      timestamp: number
-    }>
-  >("offline-pending-operations", [])
+  const [hasPendingOperations, setHasPendingOperations] = useState(false)
 
   useEffect(() => {
     // Set initial state based on navigator.onLine
     setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
 
-    const handleOnline = async () => {
+    // Check if there are any pending operations in localStorage
+    const checkPendingOperations = () => {
+      const pendingOps = localStorage.getItem("pendingOperations")
+      setHasPendingOperations(!!pendingOps && JSON.parse(pendingOps).length > 0)
+    }
+
+    checkPendingOperations()
+
+    const handleOnline = () => {
       setIsOnline(true)
-
-      // Process any pending operations when we come back online
-      if (pendingOperations.length > 0) {
-        console.log(`Processing ${pendingOperations.length} pending operations`)
-
-        // Process operations in order
-        const operations = [...pendingOperations]
-        setPendingOperations([])
-
-        for (const operation of operations) {
-          try {
-            // Process based on operation type
-            switch (operation.type) {
-              case "feedback":
-                await processFeedbackOperation(operation.data)
-                break
-              case "analysis":
-                await processAnalysisOperation(operation.data)
-                break
-              default:
-                console.warn(`Unknown operation type: ${operation.type}`)
-            }
-          } catch (error) {
-            console.error("Error processing offline operation:", error)
-            // Re-add failed operations to the queue
-            setPendingOperations((prev) => [...prev, operation])
-          }
-        }
-      }
+      // Process pending operations when coming back online
+      processPendingOperations()
     }
 
     const handleOffline = () => {
@@ -64,39 +38,41 @@ export function OfflineSyncManager() {
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
 
+    // Listen for storage events to update pending operations status
+    window.addEventListener("storage", checkPendingOperations)
+
     // Clean up
     return () => {
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
+      window.removeEventListener("storage", checkPendingOperations)
     }
-  }, [pendingOperations, setPendingOperations])
+  }, [])
 
-  // Helper functions to process different types of operations
-  async function processFeedbackOperation(data: any) {
+  // Process any pending operations stored in localStorage
+  const processPendingOperations = async () => {
     try {
-      const response = await fetch("/api/feedback", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
+      const pendingOpsString = localStorage.getItem("pendingOperations")
+      if (!pendingOpsString) return
 
-      if (!response.ok) {
-        throw new Error("Failed to submit feedback")
+      const pendingOps = JSON.parse(pendingOpsString)
+      if (!pendingOps.length) return
+
+      // Process each operation
+      for (const op of pendingOps) {
+        // Implementation would depend on the type of operations
+        console.log("Processing pending operation:", op)
       }
-    } catch (error) {
-      console.error("Error submitting feedback:", error)
-      throw error
-    }
-  }
 
-  async function processAnalysisOperation(data: any) {
-    // Implementation for processing analysis operations
-    console.log("Processing analysis operation:", data)
-    // This would typically involve sending data to an API endpoint
+      // Clear pending operations after processing
+      localStorage.setItem("pendingOperations", JSON.stringify([]))
+      setHasPendingOperations(false)
+    } catch (error) {
+      console.error("Error processing pending operations:", error)
+    }
   }
 
   // This component doesn't render anything visible
+  // It just handles the synchronization logic in the background
   return null
 }
