@@ -24,6 +24,10 @@ const nextConfig = {
 
     return config;
   },
+  // Add environment variables that can be used on the client
+  env: {
+    NEXT_PUBLIC_NODE_ENV: process.env.NODE_ENV,
+  },
 };
 
 export default nextConfig;

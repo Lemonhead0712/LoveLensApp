@@ -7,6 +7,7 @@ import { initializeOpenAI } from "@/lib/api-config"
 import ApiKeyForm from "./api-key-form"
 import { LoadingScreen } from "./loading-screen"
 import { ApiFailureScreen } from "./api-failure-screen"
+import { isDevelopment } from "@/lib/env-utils"
 
 function ApiInitializer({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false)
@@ -71,7 +72,7 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
       <ApiFailureScreen
         onRetrySuccess={handleRetrySuccess}
         onContinueWithoutApi={handleContinueWithoutApi}
-        errorDetails={errorDetails}
+        errorDetails={isDevelopment() ? errorDetails : undefined}
       />
     )
   }
