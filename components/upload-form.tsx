@@ -2,18 +2,20 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { storeAnalysisResult } from "@/lib/storage-utils"
-import { extractTextFromImage, validateExtractedMessages } from "@/lib/ocr-service"
+import { validateExtractedMessages } from "@/lib/ocr-service"
+import { extractTextFromImageWithWorker } from "@/lib/ocr-service-enhanced"
 import type { AnalysisResult, Message } from "@/lib/types"
 import { LoadingScreen } from "./loading-screen"
 import { OCRDebugViewer } from "./ocr-debug-viewer"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import workerManager from "@/lib/workers/worker-manager"
 
 // Error types for better error handling
 type ErrorType = "api_key_missing" | "upload_failed" | "analysis_failed" | "ocr_failed" | "storage_failed" | "unknown"
@@ -34,8 +36,24 @@ function UploadForm() {
   const [statusMessage, setStatusMessage] = useState<string>("Preparing...")
   const [debugMode, setDebugMode] = useState(false)
   const [selectedDebugFile, setSelectedDebugFile] = useState<File | null>(null)
+  const [useWorkers, setUseWorkers] = useState(true)
+  const [workersSupported, setWorkersSupported] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+
+  // Check if Web Workers are supported
+  useEffect(() => {
+    const supported = workerManager.supportsWorkers()
+    setWorkersSupported(supported)
+    setUseWorkers(supported)
+  }, [])
+
+  // Clean up workers when component unmounts
+  useEffect(() => {
+    return () => {
+      workerManager.terminateAll()
+    }
+  }, [])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -73,6 +91,10 @@ function UploadForm() {
     } else {
       setSelectedDebugFile(null)
     }
+  }
+
+  const handleUseWorkersChange = (checked: boolean) => {
+    setUseWorkers(checked)
   }
 
   const handleSelectDebugFile = (file: File) => {
@@ -123,14 +145,27 @@ function UploadForm() {
       }
 
       // Process each image with OCR
-      setStatusMessage("Extracting text from images...")
+      setStatusMessage(`Extracting text from images${useWorkers ? " (using Web Workers)" : ""}...`)
+
       const messagesPromises = base64Files.map((base64File, index) => {
-        return extractTextFromImage(base64File, (ocrProgress) => {
-          // Calculate overall progress (10-70% range for OCR)
-          const fileWeight = 60 / base64Files.length
-          const overallProgress = 10 + index * fileWeight + (ocrProgress * fileWeight) / 100
-          setProgress(Math.round(overallProgress))
-        })
+        // Use the enhanced OCR service with Web Workers if enabled
+        if (useWorkers && workersSupported) {
+          return extractTextFromImageWithWorker(base64File, (ocrProgress) => {
+            // Calculate overall progress (10-70% range for OCR)
+            const fileWeight = 60 / base64Files.length
+            const overallProgress = 10 + index * fileWeight + (ocrProgress * fileWeight) / 100
+            setProgress(Math.round(overallProgress))
+          })
+        } else {
+          // Use the original OCR service
+          const { extractTextFromImage } = require("@/lib/ocr-service")
+          return extractTextFromImage(base64File, (ocrProgress) => {
+            // Calculate overall progress (10-70% range for OCR)
+            const fileWeight = 60 / base64Files.length
+            const overallProgress = 10 + index * fileWeight + (ocrProgress * fileWeight) / 100
+            setProgress(Math.round(overallProgress))
+          })
+        }
       })
 
       try {
@@ -249,9 +284,29 @@ function UploadForm() {
         <Card className="w-full">
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit}>
-              <div className="flex items-center space-x-2 mb-4">
-                <Switch id="debug-mode" checked={debugMode} onCheckedChange={handleDebugModeChange} />
-                <Label htmlFor="debug-mode">Debug Mode</Label>
+              <div className="flex flex-col space-y-4 mb-4">
+                <div className="flex items-center space-x-2">
+                  <Switch id="debug-mode" checked={debugMode} onCheckedChange={handleDebugModeChange} />
+                  <Label htmlFor="debug-mode">Debug Mode</Label>
+                </div>
+
+                {workersSupported && (
+                  <div className="flex items-center space-x-2">
+                    <Switch id="use-workers" checked={useWorkers} onCheckedChange={handleUseWorkersChange} />
+                    <Label htmlFor="use-workers">
+                      Use Web Workers
+                      <span className="ml-2 text-xs text-green-600 font-medium">
+                        (Recommended for better performance)
+                      </span>
+                    </Label>
+                  </div>
+                )}
+
+                {!workersSupported && (
+                  <div className="text-xs text-amber-600">
+                    Web Workers are not supported in your browser. Processing will happen on the main thread.
+                  </div>
+                )}
               </div>
 
               <div
