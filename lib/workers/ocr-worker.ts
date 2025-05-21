@@ -1,96 +1,179 @@
 /**
- * OCR Web Worker
+ * OCR Worker
  *
- * This worker handles CPU-intensive OCR operations off the main thread.
- * It uses Tesseract.js to perform OCR on images and returns the results.
+ * Web Worker for performing OCR operations off the main thread.
+ * This worker uses Tesseract.js to extract text from images.
  */
 
 import { createWorker } from "tesseract.js"
+import { preprocessImage } from "../image-preprocessing"
 
-// Define message types for type safety
-type WorkerMessage = {
-  type: "PROCESS_IMAGE"
-  imageData: string
-  options?: {
-    preprocessingOption?: string
-    firstPersonName?: string
-    secondPersonName?: string
-  }
-}
-
-type WorkerResponse = {
-  type: "RESULT" | "ERROR" | "PROGRESS"
-  data: any
-  error?: string
-  progress?: number
-}
-
-// Initialize Tesseract worker
-let tesseractWorker: any = null
-
-// Handle messages from the main thread
-self.addEventListener("message", async (event: MessageEvent<WorkerMessage>) => {
-  const { type, imageData, options } = event.data
-
-  if (type === "PROCESS_IMAGE") {
-    try {
-      // Send progress update
-      self.postMessage({
-        type: "PROGRESS",
-        progress: 10,
-        data: null,
-      } as WorkerResponse)
-
-      // Initialize Tesseract worker if not already initialized
-      if (!tesseractWorker) {
-        tesseractWorker = await createWorker()
-
-        // Configure Tesseract for chat message detection
-        await tesseractWorker.setParameters({
-          tessedit_pageseg_mode: "11", // PSM.SPARSE_TEXT_OSD for better chat message detection
-          tessedit_char_whitelist:
-            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,?!:;'\"()-_+=@#$%^&*<>{}[]|\\/ ",
-          tessjs_create_hocr: "1",
-          tessjs_create_tsv: "1",
-        })
-
-        self.postMessage({
-          type: "PROGRESS",
-          progress: 30,
-          data: null,
-        } as WorkerResponse)
-      }
-
-      // Process the image with Tesseract
-      const result = await tesseractWorker.recognize(imageData)
-
-      self.postMessage({
-        type: "PROGRESS",
-        progress: 80,
-        data: null,
-      } as WorkerResponse)
-
-      // Post the result back to the main thread
-      self.postMessage({
-        type: "RESULT",
-        data: result.data,
-        progress: 100,
-      } as WorkerResponse)
-    } catch (error) {
-      console.error("OCR Worker Error:", error)
-      self.postMessage({
-        type: "ERROR",
-        data: null,
-        error: error instanceof Error ? error.message : "Unknown error in OCR worker",
-      } as WorkerResponse)
+// Define the structure of incoming messages
+interface WorkerMessage {
+  taskId: string
+  type: string
+  data: {
+    imageData: string
+    options?: {
+      lang?: string
+      firstPersonName?: string
+      secondPersonName?: string
+      enhanceImage?: boolean
+      [key: string]: any
     }
   }
-})
+}
 
-// Clean up when the worker is terminated
-self.addEventListener("close", async () => {
-  if (tesseractWorker) {
-    await tesseractWorker.terminate()
-    tesseractWorker = null
+// Initialize worker state
+let tesseractWorker: any = null
+
+/**
+ * Process an image using OCR
+ * @param imageData The image data as a base64 string
+ * @param options Processing options
+ * @returns The OCR result
+ */
+async function processImage(imageData: string, options: any = {}) {
+  try {
+    // Report progress
+    self.postMessage({
+      type: "progress",
+      progress: 10,
+      taskId: options.taskId,
+    })
+
+    // Initialize Tesseract worker if not already done
+    if (!tesseractWorker) {
+      tesseractWorker = await createWorker()
+      await tesseractWorker.setParameters({
+        tessedit_pageseg_mode: "SPARSE_TEXT",
+      })
+    }
+
+    // Report progress
+    self.postMessage({
+      type: "progress",
+      progress: 30,
+      taskId: options.taskId,
+    })
+
+    // Preprocess the image if requested
+    let processedImage = imageData
+    if (options.enhanceImage !== false) {
+      processedImage = await preprocessImage(imageData)
+    }
+
+    // Report progress
+    self.postMessage({
+      type: "progress",
+      progress: 50,
+      taskId: options.taskId,
+    })
+
+    // Perform OCR
+    const result = await tesseractWorker.recognize(processedImage)
+
+    // Report progress
+    self.postMessage({
+      type: "progress",
+      progress: 80,
+      taskId: options.taskId,
+    })
+
+    // Extract messages from the OCR result
+    // This is a simplified version - in a real implementation,
+    // you would import and use your message extraction logic
+    const messages = extractMessagesFromText(
+      result.data.text,
+      options.firstPersonName || "User",
+      options.secondPersonName || "Friend",
+    )
+
+    // Report progress
+    self.postMessage({
+      type: "progress",
+      progress: 100,
+      taskId: options.taskId,
+    })
+
+    // Return the result
+    return {
+      success: true,
+      text: result.data.text,
+      words: result.data.words || [],
+      messages,
+      confidence: result.data.confidence,
+      debugInfo: {
+        processingTime: Date.now() - (options.startTime || 0),
+        enhancedImage: options.enhanceImage !== false,
+        parameters: tesseractWorker.getParameters(),
+      },
+    }
+  } catch (error) {
+    console.error("OCR processing error in worker:", error)
+    throw error
   }
-})
+}
+
+/**
+ * Extract messages from OCR text
+ * This is a placeholder - you would import your actual extraction logic
+ */
+function extractMessagesFromText(text: string, firstPersonName: string, secondPersonName: string) {
+  // Simplified placeholder implementation
+  // In a real implementation, you would import and use your message extraction logic
+  const lines = text.split("\n").filter((line) => line.trim().length > 0)
+  const messages = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+    const isFromMe = i % 2 === 0 // Alternate for demo purposes
+
+    messages.push({
+      text: line,
+      timestamp: new Date().toISOString(),
+      sender: isFromMe ? firstPersonName : secondPersonName,
+      isFromMe,
+      sentiment: 0,
+    })
+  }
+
+  return messages
+}
+
+// Set up message handler
+self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+  const { taskId, type, data } = event.data
+
+  try {
+    if (type === "PROCESS_IMAGE") {
+      const startTime = Date.now()
+      const result = await processImage(data.imageData, {
+        ...data.options,
+        taskId,
+        startTime,
+      })
+
+      self.postMessage({
+        type: "complete",
+        taskId,
+        data: result,
+      })
+    } else {
+      throw new Error(`Unknown task type: ${type}`)
+    }
+  } catch (error) {
+    console.error("Worker error:", error)
+
+    self.postMessage({
+      type: "error",
+      taskId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+// Handle errors
+self.onerror = (error) => {
+  console.error("Worker global error:", error)
+}

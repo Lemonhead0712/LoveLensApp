@@ -1,14 +1,14 @@
 /**
- * Enhanced OCR Service with Web Worker Support
+ * Enhanced OCR Service with Worker Pool Support
  *
  * This module provides OCR functionality with performance optimizations
- * by offloading heavy processing to Web Workers when available.
+ * by offloading heavy processing to a pool of Web Workers when available.
  */
 
 import type { Message } from "./types"
 import { isClient } from "./utils"
 import { performLocalOcrFallback } from "./ocr-fallback"
-import workerManager from "./workers/worker-manager"
+import workerPoolManager from "./workers/worker-pool-manager"
 
 // Cache for OCR results to avoid redundant processing
 const ocrCache = new Map<string, Message[]>()
@@ -25,13 +25,13 @@ function generateCacheKey(imageData: string): string {
 }
 
 /**
- * Extracts text from an image using OCR with Web Worker optimization
- * @param imageData Base64 image data
+ * Extracts text from multiple images using a pool of workers
+ * @param imageDataArray Array of base64 image data
  * @param progressCallback Optional callback for progress updates
- * @returns Array of extracted messages
+ * @returns Array of extracted messages from all images
  */
-export async function extractTextFromImageWithWorker(
-  imageData: string,
+export async function extractTextFromImagesWithWorkerPool(
+  imageDataArray: string[],
   progressCallback?: (progress: number) => void,
 ): Promise<Message[]> {
   try {
@@ -40,114 +40,125 @@ export async function extractTextFromImageWithWorker(
       throw new Error("Server-side text extraction is not supported")
     }
 
-    // Check cache first
-    const cacheKey = generateCacheKey(imageData)
-    if (ocrCache.has(cacheKey)) {
-      console.log("Using cached OCR result")
-      const cachedResult = ocrCache.get(cacheKey)
+    // Check if any images are already in cache
+    const uncachedImages: string[] = []
+    const cachedMessages: Message[] = []
+
+    imageDataArray.forEach((imageData) => {
+      const cacheKey = generateCacheKey(imageData)
+      if (ocrCache.has(cacheKey)) {
+        console.log("Using cached OCR result")
+        const cachedResult = ocrCache.get(cacheKey)
+        if (cachedResult) {
+          cachedMessages.push(...cachedResult)
+        }
+      } else {
+        uncachedImages.push(imageData)
+      }
+    })
+
+    // If all images were cached, return immediately
+    if (uncachedImages.length === 0) {
       if (progressCallback) progressCallback(100)
-      return cachedResult || []
+      return cachedMessages
     }
 
-    // Check if Web Workers are supported
-    if (workerManager.supportsWorkers()) {
+    // Check if worker pools are supported
+    if (workerPoolManager.supportsWorkers()) {
       try {
-        console.log("Processing image with Web Worker")
+        console.log(`Processing ${uncachedImages.length} images with worker pool`)
 
-        // Process the image with the worker
-        const result = await workerManager.processImageWithWorker(
-          imageData,
+        // Process all images in parallel with the worker pool
+        const results = await workerPoolManager.processImagesInParallel(
+          uncachedImages,
           {
             firstPersonName: "User",
             secondPersonName: "Friend",
+            enhanceImage: true,
+            poolOptions: {
+              maxWorkers: Math.max(2, navigator.hardwareConcurrency - 1),
+              taskTimeout: 120000, // 2 minutes per image
+              retryCount: 2,
+            },
           },
           progressCallback,
         )
 
-        // Convert the result to messages
-        let messages: Message[] = []
+        // Combine all messages from all images
+        let allMessages: Message[] = [...cachedMessages]
 
-        if (result && result.words && Array.isArray(result.words)) {
-          // Process the OCR result to extract messages
-          // This would call the same processing functions as in ocr-service.ts
-          // For brevity, we're just creating placeholder messages here
-          messages = [
-            {
-              text: "This is a message processed by the Web Worker",
-              timestamp: new Date().toISOString(),
-              sender: "User",
-              isFromMe: true,
-              sentiment: 0,
-            },
-            {
-              text: "The worker successfully extracted text from the image",
-              timestamp: new Date(Date.now() + 60000).toISOString(),
-              sender: "Friend",
-              isFromMe: false,
-              sentiment: 0,
-            },
-          ]
-        }
+        results.forEach((result, index) => {
+          if (result && result.success && result.messages) {
+            // Cache the result for this image
+            const cacheKey = generateCacheKey(uncachedImages[index])
+            ocrCache.set(cacheKey, result.messages)
+
+            // Add to combined messages
+            allMessages = [...allMessages, ...result.messages]
+          }
+        })
+
+        return allMessages
+      } catch (workerError) {
+        console.warn("Worker pool OCR failed, falling back to sequential processing:", workerError)
+        // Fall through to sequential processing
+      }
+    }
+
+    // If worker pools aren't supported or failed, process images sequentially
+    console.log("Processing images sequentially")
+
+    let allMessages: Message[] = [...cachedMessages]
+    let overallProgress = (cachedMessages.length / imageDataArray.length) * 100
+
+    // Import the main thread implementation dynamically
+    const { extractTextFromImage } = await import("./ocr-service")
+
+    // Process each uncached image sequentially
+    for (let i = 0; i < uncachedImages.length; i++) {
+      const imageData = uncachedImages[i]
+
+      try {
+        const messages = await extractTextFromImage(imageData, (progress) => {
+          if (progressCallback) {
+            // Calculate overall progress
+            const imageWeight = 1 / imageDataArray.length
+            const imageProgress = progress * imageWeight
+            const newOverallProgress = overallProgress + imageProgress
+            progressCallback(Math.min(99, newOverallProgress)) // Cap at 99% until complete
+          }
+        })
 
         // Cache the result
+        const cacheKey = generateCacheKey(imageData)
         ocrCache.set(cacheKey, messages)
 
-        return messages
-      } catch (workerError) {
-        console.warn("Web Worker OCR failed, falling back to main thread:", workerError)
-        // Fall through to main thread processing
+        // Add to combined messages
+        allMessages = [...allMessages, ...messages]
+
+        // Update overall progress
+        overallProgress += (1 / imageDataArray.length) * 100
+      } catch (error) {
+        console.warn(`Error processing image ${i}:`, error)
+
+        // Try fallback for this image
+        try {
+          const fallbackMessages = await performLocalOcrFallback(imageData, "User", "Friend")
+          allMessages = [...allMessages, ...fallbackMessages]
+        } catch (fallbackError) {
+          console.error(`Fallback also failed for image ${i}:`, fallbackError)
+        }
       }
     }
 
-    // If Web Workers aren't supported or failed, use the main thread implementation
-    console.log("Processing image on main thread")
-
-    // Create a dummy file object from the base64 data
-    const byteString = atob(imageData.split(",")[1])
-    const mimeString = imageData.split(",")[0].split(":")[1].split(";")[0]
-    const ab = new ArrayBuffer(byteString.length)
-    const ia = new Uint8Array(ab)
-
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i)
+    if (progressCallback) {
+      progressCallback(100)
     }
 
-    const blob = new Blob([ab], { type: mimeString })
-    const file = new File([blob], "screenshot.png", { type: mimeString })
-
-    // Import the main thread implementation dynamically to avoid circular dependencies
-    const { processOCRWithBoundingBoxes } = await import("./ocr-service")
-
-    try {
-      // Use the main thread implementation
-      const messages = await processOCRWithBoundingBoxes(file, "User", "Friend")
-
-      // Cache the result
-      ocrCache.set(cacheKey, messages)
-
-      if (progressCallback) {
-        progressCallback(100)
-      }
-
-      return messages
-    } catch (mainThreadError) {
-      console.warn("Main thread OCR failed, trying local fallback:", mainThreadError)
-
-      // Use the local OCR fallback
-      const fallbackMessages = await performLocalOcrFallback(imageData, "User", "Friend")
-
-      // Cache the fallback result
-      ocrCache.set(cacheKey, fallbackMessages)
-
-      if (progressCallback) {
-        progressCallback(100)
-      }
-
-      return fallbackMessages
-    }
+    return allMessages
   } catch (error) {
-    console.error("Error extracting text from image:", error)
-    throw error // Propagate the error
+    console.error("Error extracting text from images:", error)
+    throw error
   }
 }
 

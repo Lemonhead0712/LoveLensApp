@@ -9,13 +9,13 @@ import { useRouter } from "next/navigation"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { storeAnalysisResult } from "@/lib/storage-utils"
 import { validateExtractedMessages } from "@/lib/ocr-service"
-import { extractTextFromImageWithWorker } from "@/lib/ocr-service-enhanced"
+import { extractTextFromImagesWithWorkerPool } from "@/lib/ocr-service-enhanced"
 import type { AnalysisResult, Message } from "@/lib/types"
 import { LoadingScreen } from "./loading-screen"
 import { OCRDebugViewer } from "./ocr-debug-viewer"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import workerManager from "@/lib/workers/worker-manager"
+import workerPoolManager from "@/lib/workers/worker-pool-manager"
 
 // Error types for better error handling
 type ErrorType = "api_key_missing" | "upload_failed" | "analysis_failed" | "ocr_failed" | "storage_failed" | "unknown"
@@ -36,24 +36,38 @@ function UploadForm() {
   const [statusMessage, setStatusMessage] = useState<string>("Preparing...")
   const [debugMode, setDebugMode] = useState(false)
   const [selectedDebugFile, setSelectedDebugFile] = useState<File | null>(null)
-  const [useWorkers, setUseWorkers] = useState(true)
+  const [useWorkerPool, setUseWorkerPool] = useState(true)
   const [workersSupported, setWorkersSupported] = useState(false)
+  const [poolStats, setPoolStats] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
   // Check if Web Workers are supported
   useEffect(() => {
-    const supported = workerManager.supportsWorkers()
+    const supported = workerPoolManager.supportsWorkers()
     setWorkersSupported(supported)
-    setUseWorkers(supported)
+    setUseWorkerPool(supported)
   }, [])
 
   // Clean up workers when component unmounts
   useEffect(() => {
     return () => {
-      workerManager.terminateAll()
+      workerPoolManager.terminateAll()
     }
   }, [])
+
+  // Update pool stats periodically when in debug mode
+  useEffect(() => {
+    if (!debugMode) return
+
+    const interval = setInterval(() => {
+      if (isLoading) {
+        setPoolStats(workerPoolManager.getStats())
+      }
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [debugMode, isLoading])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -93,8 +107,8 @@ function UploadForm() {
     }
   }
 
-  const handleUseWorkersChange = (checked: boolean) => {
-    setUseWorkers(checked)
+  const handleUseWorkerPoolChange = (checked: boolean) => {
+    setUseWorkerPool(checked)
   }
 
   const handleSelectDebugFile = (file: File) => {
@@ -144,38 +158,37 @@ function UploadForm() {
         return
       }
 
-      // Process each image with OCR
-      setStatusMessage(`Extracting text from images${useWorkers ? " (using Web Workers)" : ""}...`)
+      // Process images with OCR
+      setStatusMessage(
+        `Extracting text from ${files.length} image${files.length > 1 ? "s" : ""}${useWorkerPool && workersSupported ? " (using Worker Pool)" : ""}...`,
+      )
 
-      const messagesPromises = base64Files.map((base64File, index) => {
-        // Use the enhanced OCR service with Web Workers if enabled
-        if (useWorkers && workersSupported) {
-          return extractTextFromImageWithWorker(base64File, (ocrProgress) => {
-            // Calculate overall progress (10-70% range for OCR)
-            const fileWeight = 60 / base64Files.length
-            const overallProgress = 10 + index * fileWeight + (ocrProgress * fileWeight) / 100
-            setProgress(Math.round(overallProgress))
-          })
-        } else {
-          // Use the original OCR service
-          const { extractTextFromImage } = require("@/lib/ocr-service")
-          return extractTextFromImage(base64File, (ocrProgress) => {
-            // Calculate overall progress (10-70% range for OCR)
-            const fileWeight = 60 / base64Files.length
-            const overallProgress = 10 + index * fileWeight + (ocrProgress * fileWeight) / 100
-            setProgress(Math.round(overallProgress))
-          })
-        }
-      })
+      let allMessages: Message[] = []
 
       try {
-        const extractedMessagesArrays = await Promise.all(messagesPromises)
+        if (useWorkerPool && workersSupported) {
+          // Use the worker pool for parallel processing
+          allMessages = await extractTextFromImagesWithWorkerPool(base64Files, (ocrProgress) => {
+            setProgress(10 + Math.round(ocrProgress * 0.6)) // 10-70% range for OCR
+          })
+        } else {
+          // Use sequential processing
+          const { extractTextFromImage } = await import("@/lib/ocr-service")
 
-        // Combine and deduplicate messages from all images
-        let allMessages: Message[] = []
-        extractedMessagesArrays.forEach((messages) => {
-          allMessages = [...allMessages, ...messages]
-        })
+          // Process each image sequentially
+          for (let i = 0; i < base64Files.length; i++) {
+            setStatusMessage(`Processing image ${i + 1} of ${base64Files.length}...`)
+
+            const messages = await extractTextFromImage(base64Files[i], (ocrProgress) => {
+              // Calculate overall progress (10-70% range for OCR)
+              const fileWeight = 60 / base64Files.length
+              const overallProgress = 10 + i * fileWeight + (ocrProgress * fileWeight) / 100
+              setProgress(Math.round(overallProgress))
+            })
+
+            allMessages = [...allMessages, ...messages]
+          }
+        }
 
         // Validate extracted messages
         if (!validateExtractedMessages(allMessages)) {
@@ -256,6 +269,15 @@ function UploadForm() {
       setError(errorDetails)
     } finally {
       setIsLoading(false)
+      // Clean up worker pool if we're done
+      if (useWorkerPool && workersSupported) {
+        // Keep the pool alive for a bit in case the user wants to process more images
+        setTimeout(() => {
+          if (!isLoading) {
+            workerPoolManager.terminateAll()
+          }
+        }, 30000) // Clean up after 30 seconds of inactivity
+      }
     }
   }
 
@@ -292,19 +314,17 @@ function UploadForm() {
 
                 {workersSupported && (
                   <div className="flex items-center space-x-2">
-                    <Switch id="use-workers" checked={useWorkers} onCheckedChange={handleUseWorkersChange} />
-                    <Label htmlFor="use-workers">
-                      Use Web Workers
-                      <span className="ml-2 text-xs text-green-600 font-medium">
-                        (Recommended for better performance)
-                      </span>
+                    <Switch id="use-worker-pool" checked={useWorkerPool} onCheckedChange={handleUseWorkerPoolChange} />
+                    <Label htmlFor="use-worker-pool">
+                      Use Worker Pool
+                      <span className="ml-2 text-xs text-green-600 font-medium">(Recommended for multiple images)</span>
                     </Label>
                   </div>
                 )}
 
                 {!workersSupported && (
                   <div className="text-xs text-amber-600">
-                    Web Workers are not supported in your browser. Processing will happen on the main thread.
+                    Web Workers are not supported in your browser. Processing will happen sequentially.
                   </div>
                 )}
               </div>
@@ -386,9 +406,31 @@ function UploadForm() {
         </Card>
       )}
 
-      {debugMode && selectedDebugFile && (
+      {debugMode && (
         <div className="mt-6">
-          <OCRDebugViewer imageFile={selectedDebugFile} />
+          {selectedDebugFile && <OCRDebugViewer imageFile={selectedDebugFile} />}
+
+          {poolStats && (
+            <Card className="mt-4">
+              <CardContent className="pt-4">
+                <h3 className="text-sm font-medium mb-2">Worker Pool Stats</h3>
+                {Object.entries(poolStats).map(([poolName, stats]: [string, any]) => (
+                  <div key={poolName} className="mb-3">
+                    <h4 className="text-xs font-medium text-gray-700">{poolName} Pool</h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        Workers: {stats.busyWorkers}/{stats.totalWorkers}
+                      </div>
+                      <div>Queued: {stats.queuedTasks}</div>
+                      <div>Active: {stats.activeTasks}</div>
+                      <div>Completed: {stats.completedTasks}</div>
+                      <div>Failed: {stats.failedTasks}</div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
     </div>
