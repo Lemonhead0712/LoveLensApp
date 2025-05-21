@@ -14,9 +14,6 @@ import { LoadingScreen } from "@/components/loading-screen"
 import { LimitedModeBanner } from "@/components/limited-mode-banner"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { RouteDebugger } from "@/components/route-debugger"
-import { NetworkStatusIndicator } from "@/components/network-status-indicator"
-import { OfflineSyncManager } from "@/components/offline-sync-manager"
-import Script from "next/script"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -34,7 +31,6 @@ export const metadata: Metadata = {
     icon: "/favicon.ico",
     apple: "/apple-icon.png",
   },
-  manifest: "/manifest.json",
 }
 
 export default function RootLayout({
@@ -47,27 +43,6 @@ export default function RootLayout({
       <head>
         {/* Preload critical assets */}
         <link rel="preload" href="/LoveLensLogo.png" as="image" />
-
-        {/* Service Worker Registration */}
-        <Script
-          id="service-worker-registration"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/service-worker.js')
-                    .then(function(registration) {
-                      console.log('Service Worker registered with scope:', registration.scope);
-                    })
-                    .catch(function(error) {
-                      console.log('Service Worker registration failed:', error);
-                    });
-                });
-              }
-            `,
-          }}
-        />
       </head>
       <body className={`${inter.className} overflow-x-hidden`}>
         <ThemeProvider attribute="class" defaultTheme="light">
@@ -75,7 +50,6 @@ export default function RootLayout({
             <SparkleEffect />
             <div className="min-h-screen flex flex-col relative">
               <Header />
-              <NetworkStatusIndicator />
               <main className="flex-1 pt-16">
                 <ApiInitializer />
                 <ErrorBoundary
@@ -87,7 +61,6 @@ export default function RootLayout({
                 </ErrorBoundary>
               </main>
               <LimitedModeBanner />
-              <OfflineSyncManager />
             </div>
           </GradientBackground>
         </ThemeProvider>

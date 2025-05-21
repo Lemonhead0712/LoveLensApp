@@ -13,6 +13,48 @@ import workerPoolManager from "./workers/worker-pool-manager"
 // Cache for OCR results to avoid redundant processing
 const ocrCache = new Map<string, Message[]>()
 
+// Subscribers for partial results
+type PartialResultsSubscriber = (results: {
+  messages?: Message[]
+  processedImages?: number
+  complete?: boolean
+}) => void
+
+const subscribers: PartialResultsSubscriber[] = []
+
+/**
+ * Subscribe to partial OCR results
+ * @param callback Function to call when partial results are available
+ * @returns Unsubscribe function
+ */
+export function subscribeToPartialResults(callback: PartialResultsSubscriber): () => void {
+  subscribers.push(callback)
+  return () => {
+    const index = subscribers.indexOf(callback)
+    if (index !== -1) {
+      subscribers.splice(index, 1)
+    }
+  }
+}
+
+/**
+ * Publish partial results to subscribers
+ * @param results Partial results to publish
+ */
+function publishPartialResults(results: {
+  messages?: Message[]
+  processedImages?: number
+  complete?: boolean
+}): void {
+  subscribers.forEach((subscriber) => {
+    try {
+      subscriber(results)
+    } catch (error) {
+      console.error("Error in partial results subscriber:", error)
+    }
+  })
+}
+
 /**
  * Generates a cache key for an image
  * @param imageData The image data
@@ -28,11 +70,18 @@ function generateCacheKey(imageData: string): string {
  * Extracts text from multiple images using a pool of workers
  * @param imageDataArray Array of base64 image data
  * @param progressCallback Optional callback for progress updates
+ * @param options Processing options
  * @returns Array of extracted messages from all images
  */
 export async function extractTextFromImagesWithWorkerPool(
   imageDataArray: string[],
   progressCallback?: (progress: number) => void,
+  options?: {
+    enableProgressiveResults?: boolean
+    preprocessingStrategy?: string
+    firstPersonName?: string
+    secondPersonName?: string
+  },
 ): Promise<Message[]> {
   try {
     // Check if we're in a client environment
@@ -60,6 +109,16 @@ export async function extractTextFromImagesWithWorkerPool(
     // If all images were cached, return immediately
     if (uncachedImages.length === 0) {
       if (progressCallback) progressCallback(100)
+
+      // Publish complete results
+      if (options?.enableProgressiveResults) {
+        publishPartialResults({
+          messages: cachedMessages,
+          processedImages: imageDataArray.length,
+          complete: true,
+        })
+      }
+
       return cachedMessages
     }
 
@@ -72,16 +131,39 @@ export async function extractTextFromImagesWithWorkerPool(
         const results = await workerPoolManager.processImagesInParallel(
           uncachedImages,
           {
-            firstPersonName: "User",
-            secondPersonName: "Friend",
+            firstPersonName: options?.firstPersonName || "User",
+            secondPersonName: options?.secondPersonName || "Friend",
             enhanceImage: true,
+            preprocessingStrategy: options?.preprocessingStrategy || "default",
             poolOptions: {
               maxWorkers: Math.max(2, navigator.hardwareConcurrency - 1),
               taskTimeout: 120000, // 2 minutes per image
               retryCount: 2,
             },
           },
-          progressCallback,
+          (progress, processedCount) => {
+            if (progressCallback) {
+              progressCallback(progress)
+            }
+
+            // Publish partial results if enabled
+            if (options?.enableProgressiveResults && processedCount > 0) {
+              const allProcessedMessages = [...cachedMessages]
+
+              // Collect messages from processed results
+              for (let i = 0; i < processedCount; i++) {
+                if (results[i] && results[i].success && results[i].messages) {
+                  allProcessedMessages.push(...results[i].messages)
+                }
+              }
+
+              publishPartialResults({
+                messages: allProcessedMessages,
+                processedImages: cachedMessages.length + processedCount,
+                complete: processedCount === uncachedImages.length,
+              })
+            }
+          },
         )
 
         // Combine all messages from all images
@@ -97,6 +179,15 @@ export async function extractTextFromImagesWithWorkerPool(
             allMessages = [...allMessages, ...result.messages]
           }
         })
+
+        // Publish final results
+        if (options?.enableProgressiveResults) {
+          publishPartialResults({
+            messages: allMessages,
+            processedImages: imageDataArray.length,
+            complete: true,
+          })
+        }
 
         return allMessages
       } catch (workerError) {
@@ -138,6 +229,15 @@ export async function extractTextFromImagesWithWorkerPool(
 
         // Update overall progress
         overallProgress += (1 / imageDataArray.length) * 100
+
+        // Publish partial results if enabled
+        if (options?.enableProgressiveResults) {
+          publishPartialResults({
+            messages: allMessages,
+            processedImages: cachedMessages.length + i + 1,
+            complete: i === uncachedImages.length - 1,
+          })
+        }
       } catch (error) {
         console.warn(`Error processing image ${i}:`, error)
 
@@ -145,6 +245,15 @@ export async function extractTextFromImagesWithWorkerPool(
         try {
           const fallbackMessages = await performLocalOcrFallback(imageData, "User", "Friend")
           allMessages = [...allMessages, ...fallbackMessages]
+
+          // Publish partial results with fallback data if enabled
+          if (options?.enableProgressiveResults) {
+            publishPartialResults({
+              messages: allMessages,
+              processedImages: cachedMessages.length + i + 1,
+              complete: i === uncachedImages.length - 1,
+            })
+          }
         } catch (fallbackError) {
           console.error(`Fallback also failed for image ${i}:`, fallbackError)
         }

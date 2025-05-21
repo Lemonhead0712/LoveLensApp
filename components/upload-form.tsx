@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { storeAnalysisResult } from "@/lib/storage-utils"
 import { validateExtractedMessages } from "@/lib/ocr-service"
-import { extractTextFromImagesWithWorkerPool, subscribeToPartialResults } from "@/lib/ocr-service-enhanced"
 import type { AnalysisResult, Message } from "@/lib/types"
 import { LoadingScreen } from "./loading-screen"
 import { OCRDebugViewer } from "./ocr-debug-viewer"
@@ -83,16 +82,32 @@ function UploadForm() {
 
   // Subscribe to partial results
   useEffect(() => {
-    const unsubscribe = subscribeToPartialResults((results) => {
-      if (results.messages) {
-        setPartialMessages(results.messages)
+    // Import the function dynamically to avoid issues with missing exports
+    const subscribeToPartialResults = async () => {
+      try {
+        const { subscribeToPartialResults } = await import("@/lib/ocr-service-enhanced")
+
+        return subscribeToPartialResults((results) => {
+          if (results.messages) {
+            setPartialMessages(results.messages)
+          }
+          if (results.processedImages !== undefined) {
+            setProcessedImages(results.processedImages)
+          }
+          if (results.complete !== undefined) {
+            setProcessingComplete(results.complete)
+          }
+        })
+      } catch (error) {
+        console.error("Failed to subscribe to partial results:", error)
+        return () => {}
       }
-      if (results.processedImages !== undefined) {
-        setProcessedImages(results.processedImages)
-      }
-      if (results.complete !== undefined) {
-        setProcessingComplete(results.complete)
-      }
+    }
+
+    // Call the function and store the unsubscribe function
+    let unsubscribe = () => {}
+    subscribeToPartialResults().then((unsub) => {
+      if (unsub) unsubscribe = unsub
     })
 
     return () => {
@@ -233,6 +248,9 @@ function UploadForm() {
       try {
         if (useWorkerPool && workersSupported) {
           // Use the worker pool for parallel processing with progressive results
+          // Import the function dynamically to avoid issues with missing exports
+          const { extractTextFromImagesWithWorkerPool } = await import("@/lib/ocr-service-enhanced")
+
           allMessages = await extractTextFromImagesWithWorkerPool(
             base64Files,
             (ocrProgress) => {
