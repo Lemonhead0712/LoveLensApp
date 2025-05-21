@@ -1,3 +1,11 @@
+/**
+ * OCR Service
+ *
+ * This module provides functions for extracting text from images using OCR (Optical Character Recognition).
+ * It includes methods for preprocessing images, extracting text, and parsing messages from the extracted text.
+ *
+ * @module ocr-service
+ */
 import type { Message } from "./types"
 import { createWorker } from "tesseract.js"
 import { preprocessImage, defaultOptions, type PreprocessingOptions } from "./image-preprocessing"
@@ -401,7 +409,14 @@ function parseFallbackText(text: string, firstPersonName: string, secondPersonNa
 }
 
 /**
- * Process OCR results to extract messages with accurate sender attribution
+ * Processes an image with OCR and extracts text with bounding box information.
+ *
+ * @param file - The image file to process
+ * @param firstPersonName - Name of the first person in the conversation
+ * @param secondPersonName - Name of the second person in the conversation
+ * @param options - Optional configuration for OCR processing
+ * @returns A promise that resolves to an array of extracted messages
+ * @throws Will throw an error if OCR processing fails
  */
 async function processOCRWithBoundingBoxes(
   imageFile: File,
@@ -687,6 +702,14 @@ export function validateExtractedMessages(messages: Message[]): boolean {
   return true
 }
 
+/**
+ * Extracts text from an image file using OCR.
+ *
+ * @param file - The image file to process
+ * @param options - Optional configuration for OCR processing
+ * @returns A promise that resolves to the extracted text
+ * @throws Will throw an error if OCR processing fails
+ */
 /**
  * Extract text from a single image
  * @param imageData Base64 image data

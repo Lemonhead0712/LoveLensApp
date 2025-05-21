@@ -1,3 +1,10 @@
+/**
+ * Image Preprocessing Utilities
+ *
+ * This module provides functions for preprocessing images before OCR processing.
+ * It includes methods for adjusting contrast, brightness, and other image properties.
+ */
+
 import sharp from "sharp"
 
 export interface PreprocessingOptions {
