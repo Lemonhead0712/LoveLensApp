@@ -1,11 +1,24 @@
-// Message interface
 export interface Message {
+  id: string
   text: string
-  timestamp: string
-  sender: string
+  timestamp?: string
+  sender?: string
   position?: "left" | "right" // Add position property
-  sentiment?: number
-  confidence?: number // Add confidence property for OCR quality
+  confidence?: number // Add confidence score for OCR quality
+  bbox?: { x0: number; y0: number; x1: number; y1: number } // Store bounding box for debugging
+}
+
+export interface OcrResult {
+  text: string
+  confidence: number
+  bbox: {
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+  }
+  imageWidth?: number // Add image width for position detection
+  imageHeight?: number // Add image height for completeness
 }
 
 // Add a new interface for OCR processing results
@@ -172,4 +185,12 @@ export interface AnalysisResult {
   }
   messagesWithSentiment: Message[]
   validationWarnings?: string[]
+}
+
+export interface ExtractedConversation {
+  messages: Message[]
+  imageMetadata?: {
+    width: number
+    height: number
+  }
 }

@@ -718,44 +718,206 @@ export function validateExtractedMessages(messages: Message[]): boolean {
  * @param progressCallback Optional callback for progress updates
  * @returns Array of extracted messages
  */
+// export async function extractTextFromImage(
+//   imageData: string,
+//   progressCallback?: (progress: number) => void,
+// ): Promise<Message[]> {
+//   try {
+//     // Check if we're in a client environment
+//     if (!isClient()) {
+//       throw new Error("Server-side text extraction is not supported")
+//     }
+
+//     // Create a dummy file object from the base64 data
+//     const byteString = atob(imageData.split(",")[1])
+//     const mimeString = imageData.split(",")[0].split(":")[1].split(";")[0]
+//     const ab = new ArrayBuffer(byteString.length)
+//     const ia = new Uint8Array(ab)
+
+//     for (let i = 0; i < byteString.length; i++) {
+//       ia[i] = byteString.charCodeAt(i)
+//     }
+
+//     const blob = new Blob([ab], { type: mimeString })
+//     const file = new File([blob], "screenshot.png", { type: mimeString })
+
+//     try {
+//       // Use default names for testing - these will be replaced later
+//       const result = await processOCRWithBoundingBoxes(file, "User", "Friend")
+
+//       if (progressCallback) {
+//         progressCallback(100)
+//       }
+
+//       return result.messages
+//     } catch (primaryOcrError) {
+//       console.error("OCR processing failed:", primaryOcrError)
+//       throw new Error("OCR processing failed: " + primaryOcrError.message)
+//     }
+//   } catch (error) {
+//     console.error("Error extracting text from image:", error)
+//     throw error // Propagate the error
+//   }
+// }
+
+import { v4 as uuidv4 } from "uuid"
+import { OEM, PSM } from "tesseract.js"
+import type { OcrResult, ExtractedConversation } from "./types"
+import { enhancedPositionDetection } from "./ocr/position-detection"
+import { isDebugMode } from "./env-utils"
+
+/**
+ * Extracts text from an image using OCR
+ * @param imageData The image data as a base64 string
+ * @param options Configuration options for OCR
+ * @returns Extracted text and debug information
+ */
 export async function extractTextFromImage(
   imageData: string,
-  progressCallback?: (progress: number) => void,
-): Promise<Message[]> {
+  options = { lang: "eng", oem: OEM.LSTM_ONLY, psm: PSM.AUTO },
+): Promise<{ text: string; debugInfo?: any }> {
   try {
-    // Check if we're in a client environment
-    if (!isClient()) {
-      throw new Error("Server-side text extraction is not supported")
-    }
+    const worker = await createWorker({
+      logger: isDebugMode() ? (m) => console.log(m) : undefined,
+    })
 
-    // Create a dummy file object from the base64 data
-    const byteString = atob(imageData.split(",")[1])
-    const mimeString = imageData.split(",")[0].split(":")[1].split(";")[0]
-    const ab = new ArrayBuffer(byteString.length)
-    const ia = new Uint8Array(ab)
+    await worker.loadLanguage(options.lang)
+    await worker.initialize(options.lang)
+    await worker.setParameters({
+      tessedit_ocr_engine_mode: options.oem,
+      tessedit_pageseg_mode: options.psm,
+    })
 
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i)
-    }
+    // Process the image
+    const preprocessedImage = await preprocessImage(imageData)
+    const result = await worker.recognize(preprocessedImage || imageData)
 
-    const blob = new Blob([ab], { type: mimeString })
-    const file = new File([blob], "screenshot.png", { type: mimeString })
+    // Get image dimensions for position detection
+    const img = new Image()
+    img.src = imageData
+    const imageWidth = img.width
+    const imageHeight = img.height
 
-    try {
-      // Use default names for testing - these will be replaced later
-      const result = await processOCRWithBoundingBoxes(file, "User", "Friend")
+    // Extract words with their bounding boxes
+    const words = result.data.words.map((word) => ({
+      text: word.text,
+      confidence: word.confidence,
+      bbox: word.bbox,
+      imageWidth,
+      imageHeight,
+    }))
 
-      if (progressCallback) {
-        progressCallback(100)
-      }
+    // Terminate the worker
+    await worker.terminate()
 
-      return result.messages
-    } catch (primaryOcrError) {
-      console.error("OCR processing failed:", primaryOcrError)
-      throw new Error("OCR processing failed: " + primaryOcrError.message)
+    return {
+      text: result.data.text,
+      debugInfo: {
+        words,
+        imageMetadata: { width: imageWidth, height: imageHeight },
+      },
     }
   } catch (error) {
-    console.error("Error extracting text from image:", error)
-    throw error // Propagate the error
+    console.error("OCR extraction error:", error)
+    throw new Error(`OCR extraction failed: ${error.message}`)
+  }
+}
+
+/**
+ * Extracts messages from OCR results
+ * @param ocrResults The OCR results containing text and bounding boxes
+ * @returns Extracted conversation with messages and their positions
+ */
+export function extractMessagesFromOcrResults(ocrResults: OcrResult[]): ExtractedConversation {
+  const messages: Message[] = []
+  const imageWidth = ocrResults[0]?.imageWidth || 1000 // Default if not available
+
+  // Group OCR results into potential messages
+  let currentMessage = ""
+  let currentBBox = { x0: 0, y0: 0, x1: 0, y1: 0 }
+  let currentConfidence = 0
+  let resultCount = 0
+
+  for (const result of ocrResults) {
+    // Simple heuristic: if vertical distance is small, consider part of same message
+    if (resultCount > 0 && Math.abs(result.bbox.y0 - currentBBox.y1) > 20) {
+      // Save the current message before starting a new one
+      if (currentMessage.trim()) {
+        const position = enhancedPositionDetection(currentBBox, imageWidth)
+        messages.push({
+          id: uuidv4(),
+          text: currentMessage.trim(),
+          position,
+          confidence: currentConfidence / resultCount,
+          bbox: currentBBox,
+        })
+      }
+
+      // Reset for new message
+      currentMessage = ""
+      currentBBox = { x0: 0, y0: 0, x1: 0, y1: 0 }
+      currentConfidence = 0
+      resultCount = 0
+    }
+
+    // Add to current message
+    currentMessage += (currentMessage ? " " : "") + result.text
+
+    // Update bounding box to encompass all text in this message
+    if (resultCount === 0) {
+      currentBBox = { ...result.bbox }
+    } else {
+      currentBBox.x0 = Math.min(currentBBox.x0, result.bbox.x0)
+      currentBBox.y0 = Math.min(currentBBox.y0, result.bbox.y0)
+      currentBBox.x1 = Math.max(currentBBox.x1, result.bbox.x1)
+      currentBBox.y1 = Math.max(currentBBox.y1, result.bbox.y1)
+    }
+
+    currentConfidence += result.confidence
+    resultCount++
+  }
+
+  // Add the last message if there is one
+  if (currentMessage.trim() && resultCount > 0) {
+    const position = enhancedPositionDetection(currentBBox, imageWidth)
+    messages.push({
+      id: uuidv4(),
+      text: currentMessage.trim(),
+      position,
+      confidence: currentConfidence / resultCount,
+      bbox: currentBBox,
+    })
+  }
+
+  return {
+    messages,
+    imageMetadata: {
+      width: imageWidth,
+      height: ocrResults[0]?.imageHeight || 800,
+    },
+  }
+}
+
+/**
+ * Process an image to extract conversation messages with position information
+ * @param imageData The image data as a base64 string
+ * @returns Extracted conversation with messages and their positions
+ */
+export async function processImageForConversation(imageData: string): Promise<ExtractedConversation> {
+  try {
+    const { text, debugInfo } = await extractTextFromImage(imageData)
+
+    if (!text.trim()) {
+      throw new Error("No text was extracted from the image")
+    }
+
+    // Use the debug info to get words with bounding boxes
+    const ocrResults = debugInfo?.words || []
+
+    // Extract messages with position information
+    return extractMessagesFromOcrResults(ocrResults)
+  } catch (error) {
+    console.error("Failed to process image for conversation:", error)
+    throw new Error(`Failed to extract conversation: ${error.message}`)
   }
 }

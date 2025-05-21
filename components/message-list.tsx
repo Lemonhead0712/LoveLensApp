@@ -1,3 +1,4 @@
+"use client"
 import { format, isToday, isYesterday } from "date-fns"
 import { AlertTriangle, CheckCircle, Heart, ThumbsUp, ThumbsDown } from "lucide-react"
 import type { Message } from "@/lib/types"
@@ -5,11 +6,23 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 interface MessageListProps {
   messages: Message[]
-  firstPersonName: string
+  firstPersonName?: string
   highlightedMessageId?: string
+  personAName?: string
+  personBName?: string
 }
 
-function MessageList({ messages, firstPersonName, highlightedMessageId }: MessageListProps) {
+export default function MessageList({
+  messages,
+  firstPersonName,
+  highlightedMessageId,
+  personAName = "Person A",
+  personBName = "Person B",
+}: MessageListProps) {
+  if (!messages || messages.length === 0) {
+    return <div className="p-4 text-center text-gray-500">No messages to display</div>
+  }
+
   // Group messages by date
   const groupedMessages: { [key: string]: Message[] } = {}
 
@@ -51,12 +64,16 @@ function MessageList({ messages, firstPersonName, highlightedMessageId }: Messag
               <div
                 key={message.id || index}
                 id={`message-${message.id || index}`}
-                className={`flex ${isFirstPerson ? "justify-end" : "justify-start"} ${
+                className={`flex ${message.position === "left" ? "justify-start" : "justify-end"} ${isFirstPerson ? "justify-end" : "justify-start"} ${
                   isHighlighted ? "animate-pulse" : ""
                 }`}
               >
                 <div
                   className={`max-w-[80%] md:max-w-[70%] rounded-lg p-3 ${
+                    message.position === "left"
+                      ? "bg-blue-100 text-blue-900 rounded-bl-none"
+                      : "bg-green-100 text-green-900 rounded-br-none"
+                  } ${
                     isFirstPerson
                       ? "bg-rose-100 text-gray-800 rounded-tr-none"
                       : "bg-gray-100 text-gray-800 rounded-tl-none"
@@ -64,6 +81,11 @@ function MessageList({ messages, firstPersonName, highlightedMessageId }: Messag
                     isHighlighted ? "ring-2 ring-rose-500 ring-offset-2" : ""
                   }`}
                 >
+                  {showSender && (
+                    <div className="text-xs font-bold mb-1">
+                      {message.position === "left" ? personAName : personBName}
+                    </div>
+                  )}
                   {showSender && (
                     <div className="flex items-center mb-1">
                       <span className={`text-xs font-medium ${isFirstPerson ? "text-rose-600" : "text-gray-600"}`}>
@@ -115,6 +137,11 @@ function MessageList({ messages, firstPersonName, highlightedMessageId }: Messag
                       </TooltipProvider>
                     )}
                   </div>
+                  {message.confidence !== undefined && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Confidence: {Math.round(message.confidence * 100)}%
+                    </div>
+                  )}
 
                   <div className="flex justify-end mt-1">
                     <span className="text-xs text-gray-500">{!showSender && formatTime(message.timestamp)}</span>
@@ -192,5 +219,3 @@ function getSentimentData(sentiment: number) {
     }
   }
 }
-
-export default MessageList
