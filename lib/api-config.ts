@@ -10,36 +10,25 @@ export async function initializeOpenAI() {
     // Try to get the API key from server actions
     const { getServerOpenAIKey } = await import("@/app/actions/api-actions")
 
-    // Add timeout to prevent hanging on fetch requests
-    const keyPromise = getServerOpenAIKey()
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Server key fetch timed out")), 3000),
-    )
-
-    // Race between key fetch and timeout
-    const result = await Promise.race([keyPromise, timeoutPromise]).catch((error) => {
-      console.error("Server key fetch failed:", error)
-      return { available: false, key: null }
-    })
-
-    if (result.available && result.key) {
-      openAIEnabled = true
-      openAIKey = result.key
-      console.log("OpenAI API initialized successfully from server")
-      return true
-    }
-
-    // If server key is not available, check for client-side key
-    let clientKey = null
     try {
-      clientKey = localStorage.getItem("openai_api_key")
-    } catch (error) {
-      console.error("Error accessing localStorage:", error)
+      const result = await getServerOpenAIKey()
+
+      if (result.available && result.key) {
+        openAIEnabled = true
+        openAIKey = result.key
+        console.log("OpenAI API initialized successfully from server")
+        return true
+      }
+    } catch (fetchError) {
+      console.error("Error fetching server OpenAI key:", fetchError)
+      // Continue with client-side initialization
     }
 
-    if (clientKey) {
-      // Validate the client key
-      try {
+    // If server key is not available or fetch failed, check for client-side key
+    try {
+      const clientKey = typeof window !== "undefined" ? localStorage.getItem("openai_api_key") : null
+      if (clientKey) {
+        // Validate the client key
         const { validateApiKey } = await import("@/app/actions/api-actions")
         const validation = await validateApiKey(clientKey)
 
@@ -49,9 +38,9 @@ export async function initializeOpenAI() {
           console.log("OpenAI API initialized successfully from client storage")
           return true
         }
-      } catch (validationError) {
-        console.error("API key validation failed:", validationError)
       }
+    } catch (storageError) {
+      console.error("Error accessing localStorage:", storageError)
     }
 
     console.log("OpenAI API not initialized - no valid key found")

@@ -10,17 +10,22 @@ const openai = new OpenAI({
 export async function POST(req: NextRequest) {
   try {
     // Check rate limit
-    const rateLimit = await checkRateLimit(req)
-    if (!rateLimit.success) {
-      return NextResponse.json(
-        {
-          error: "Rate limit exceeded",
-          limit: rateLimit.limit,
-          remaining: rateLimit.remaining,
-          reset: rateLimit.reset,
-        },
-        { status: 429 },
-      )
+    try {
+      const rateLimit = await checkRateLimit(req)
+      if (!rateLimit.success) {
+        return NextResponse.json(
+          {
+            error: "Rate limit exceeded",
+            limit: rateLimit.limit,
+            remaining: rateLimit.remaining,
+            reset: rateLimit.reset,
+          },
+          { status: 429 },
+        )
+      }
+    } catch (error) {
+      console.error("Rate limit check failed:", error)
+      // Continue without rate limiting if it fails
     }
 
     const { messages, firstPersonName, secondPersonName } = await req.json()

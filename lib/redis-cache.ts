@@ -1,10 +1,13 @@
 import { Redis } from "@upstash/redis"
 
-// Create a Redis client
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL || "",
-  token: process.env.KV_REST_API_TOKEN || "",
-})
+// Create a Redis client if credentials are available
+const redis =
+  process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
+    ? new Redis({
+        url: process.env.KV_REST_API_URL,
+        token: process.env.KV_REST_API_TOKEN,
+      })
+    : null
 
 // Cache expiration time (24 hours in seconds)
 const CACHE_EXPIRATION = 60 * 60 * 24
@@ -15,6 +18,11 @@ export async function cacheGPTAnalysis(
   secondPersonName: string,
   analysis: any,
 ): Promise<void> {
+  if (!redis) {
+    console.log("Redis client not available, skipping cache")
+    return
+  }
+
   try {
     const cacheKey = `gpt-analysis:${messageHash}:${firstPersonName}:${secondPersonName}`
     await redis.set(cacheKey, JSON.stringify(analysis), { ex: CACHE_EXPIRATION })
@@ -30,6 +38,11 @@ export async function getCachedGPTAnalysis(
   firstPersonName: string,
   secondPersonName: string,
 ): Promise<any | null> {
+  if (!redis) {
+    console.log("Redis client not available, skipping cache lookup")
+    return null
+  }
+
   try {
     const cacheKey = `gpt-analysis:${messageHash}:${firstPersonName}:${secondPersonName}`
     const cachedData = await redis.get(cacheKey)
