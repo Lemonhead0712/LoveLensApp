@@ -6,7 +6,7 @@ import { useEffect, useState } from "react"
 import { initializeOpenAI } from "@/lib/api-config"
 import ApiKeyForm from "./api-key-form"
 import { LoadingScreen } from "./loading-screen"
-import { ApiConnectionError } from "./api-connection-error"
+import { ApiFailureScreen } from "./api-failure-screen"
 
 function ApiInitializer({ children }: { children: React.ReactNode }) {
   const [initialized, setInitialized] = useState(false)
@@ -14,14 +14,15 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
   const [apiAvailable, setApiAvailable] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [connectionError, setConnectionError] = useState(false)
+  const [errorDetails, setErrorDetails] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     async function init() {
       setIsLoading(true)
       try {
         // Add a timeout to prevent hanging on network requests
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("API initialization timed out")), 5000),
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("API initialization timed out after 5 seconds")), 5000),
         )
 
         // Race the initialization with a timeout
@@ -33,6 +34,7 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
         console.error("Error initializing API:", error)
         setConnectionError(true)
         setApiAvailable(false)
+        setErrorDetails(error instanceof Error ? error.message : "Unknown error occurred")
       } finally {
         setLoading(false)
         setInitialized(true)
@@ -46,12 +48,18 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
   const handleRetrySuccess = () => {
     setApiAvailable(true)
     setConnectionError(false)
+    setErrorDetails(undefined)
   }
 
   const handleContinueWithoutApi = () => {
     // Allow the user to continue with limited functionality
     setConnectionError(false)
     // We'll keep apiAvailable as false to indicate limited functionality
+
+    // Store the user's choice in localStorage to remember it
+    if (typeof window !== "undefined") {
+      localStorage.setItem("useLimitedMode", "true")
+    }
   }
 
   if (isLoading) {
@@ -59,7 +67,13 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
   }
 
   if (connectionError) {
-    return <ApiConnectionError onRetrySuccess={handleRetrySuccess} onContinueWithoutApi={handleContinueWithoutApi} />
+    return (
+      <ApiFailureScreen
+        onRetrySuccess={handleRetrySuccess}
+        onContinueWithoutApi={handleContinueWithoutApi}
+        errorDetails={errorDetails}
+      />
+    )
   }
 
   if (!initialized || loading) {
