@@ -36,7 +36,9 @@ function MessageList({ messages, firstPersonName, highlightedMessageId }: Messag
           </div>
 
           {groupedMessages[dateKey].map((message, index) => {
-            const isFirstPerson = message.sender === firstPersonName
+            // Use position property if available, otherwise fall back to sender comparison
+            const isFirstPerson =
+              message.position === "right" || (message.position === undefined && message.sender === firstPersonName)
             const prevMessage = index > 0 ? groupedMessages[dateKey][index - 1] : null
             const isSameSenderAsPrev = prevMessage && prevMessage.sender === message.sender
             const showSender = !isSameSenderAsPrev
@@ -47,8 +49,8 @@ function MessageList({ messages, firstPersonName, highlightedMessageId }: Messag
 
             return (
               <div
-                key={message.id}
-                id={`message-${message.id}`}
+                key={message.id || index}
+                id={`message-${message.id || index}`}
                 className={`flex ${isFirstPerson ? "justify-end" : "justify-start"} ${
                   isHighlighted ? "animate-pulse" : ""
                 }`}
@@ -68,6 +70,30 @@ function MessageList({ messages, firstPersonName, highlightedMessageId }: Messag
                         {message.sender}
                       </span>
                       <span className="text-xs text-gray-500 ml-2">{formatTime(message.timestamp)}</span>
+
+                      {/* Add confidence indicator if available */}
+                      {message.confidence && (
+                        <span className="ml-2">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className={`inline-block w-2 h-2 rounded-full ${
+                                    message.confidence >= 80
+                                      ? "bg-green-500"
+                                      : message.confidence >= 60
+                                        ? "bg-yellow-500"
+                                        : "bg-red-500"
+                                  }`}
+                                ></span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>OCR Confidence: {message.confidence.toFixed(1)}%</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </span>
+                      )}
                     </div>
                   )}
 

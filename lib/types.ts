@@ -2,8 +2,37 @@
 export interface Message {
   text: string
   timestamp: string
-  isFromMe: boolean
-  sentiment: number
+  sender: string
+  position?: "left" | "right" // Add position property
+  sentiment?: number
+  confidence?: number // Add confidence property for OCR quality
+}
+
+// Add a new interface for OCR processing results
+export interface OcrProcessingResult {
+  success: boolean
+  messages: Message[]
+  text?: string
+  words?: any[]
+  confidence?: number
+  error?: string
+  imageWidth?: number
+  imageHeight?: number
+  debugInfo?: any
+}
+
+// Add a new interface for positioned text blocks
+export interface PositionedTextBlock {
+  text: string
+  boundingBox: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  position: "left" | "right"
+  confidence: number
+  sender?: string
 }
 
 // Sentiment analysis result

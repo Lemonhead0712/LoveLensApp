@@ -1,132 +1,86 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card-override"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import workerPoolManager, { type PreprocessingStrategy } from "@/lib/workers/worker-pool-manager"
+import { OcrExtractionVisualizer } from "./ocr-extraction-visualizer"
+import { PositionDetectionVisualizer } from "./position-detection-visualizer"
+import type { Message } from "@/lib/types"
 
-interface OCRDebugViewerProps {
-  imageFile: File
-  preprocessingEnabled?: boolean
-  preprocessingStrategy?: PreprocessingStrategy
+interface OcrDebugViewerProps {
+  imageData: string | null
+  ocrResult: {
+    success: boolean
+    messages: Message[]
+    text?: string
+    words?: any[]
+    confidence?: number
+    imageWidth?: number
+    imageHeight?: number
+    error?: string
+    debugInfo?: any
+  }
+  onReprocess?: (options: any) => void
 }
 
-export function OCRDebugViewer({
-  imageFile,
-  preprocessingEnabled = true,
-  preprocessingStrategy = "default",
-}: OCRDebugViewerProps) {
-  const [originalImage, setOriginalImage] = useState<string | null>(null)
-  const [preprocessedImage, setPreprocessedImage] = useState<string | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [processingTime, setProcessingTime] = useState<number | null>(null)
-  const [activeTab, setActiveTab] = useState("original")
-  const [error, setError] = useState<string | null>(null)
+export function OcrDebugViewer({ imageData, ocrResult, onReprocess }: OcrDebugViewerProps) {
+  const [activeTab, setActiveTab] = useState("extraction")
 
-  useEffect(() => {
-    // Load the original image
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      if (e.target?.result) {
-        setOriginalImage(e.target.result as string)
-      }
-    }
-    reader.readAsDataURL(imageFile)
+  // Extract text blocks from OCR result
+  const textBlocks = ocrResult.words
+    ? ocrResult.words.map((word) => ({
+        text: word.text || "",
+        boundingBox: {
+          x: word.bbox?.x0 || 0,
+          y: word.bbox?.y0 || 0,
+          width: (word.bbox?.x1 || 0) - (word.bbox?.x0 || 0),
+          height: (word.bbox?.y1 || 0) - (word.bbox?.y0 || 0),
+        },
+        confidence: word.confidence || 0,
+      }))
+    : []
 
-    // Reset state when file changes
-    setPreprocessedImage(null)
-    setProcessingTime(null)
-    setError(null)
-  }, [imageFile])
-
-  const handlePreprocess = async () => {
-    if (!originalImage) return
-
-    setIsProcessing(true)
-    setError(null)
-
-    try {
-      const startTime = performance.now()
-
-      // Use the worker pool manager to preprocess the image
-      const result = await workerPoolManager.preprocessImage(originalImage, preprocessingStrategy, {}, (progress) => {
-        // Progress updates if needed
-      })
-
-      const endTime = performance.now()
-      setProcessingTime(endTime - startTime)
-      setPreprocessedImage(result)
-      setActiveTab("preprocessed")
-    } catch (err) {
-      console.error("Error preprocessing image:", err)
-      setError(err instanceof Error ? err.message : "Unknown error preprocessing image")
-    } finally {
-      setIsProcessing(false)
-    }
-  }
+  // Prepare data for the extraction visualizer
+  const preprocessingSteps = ocrResult.debugInfo?.preprocessingSteps || []
+  const errors = ocrResult.error ? [ocrResult.error] : []
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">OCR Debug Viewer</CardTitle>
-        <CardDescription>Examine image preprocessing and OCR results</CardDescription>
+    <Card className="w-full shadow-md border-pink-100 mb-6">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-xl text-pink-700">OCR Debug Viewer</CardTitle>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid grid-cols-2">
+            <TabsTrigger value="extraction">Text Extraction</TabsTrigger>
+            <TabsTrigger value="position">Position Detection</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-sm font-medium">File: {imageFile.name}</h3>
-              <p className="text-xs text-muted-foreground">
-                {imageFile.type} • {Math.round(imageFile.size / 1024)} KB
-              </p>
-            </div>
-            <Button size="sm" onClick={handlePreprocess} disabled={isProcessing || !originalImage}>
-              {isProcessing ? "Processing..." : "Preprocess Image"}
-            </Button>
-          </div>
 
-          {error && <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">{error}</div>}
+      <CardContent className="p-0">
+        <TabsContent value="extraction" className="mt-0 p-4">
+          <OcrExtractionVisualizer
+            originalImage={imageData}
+            preprocessingSteps={preprocessingSteps}
+            rawText={ocrResult.text || ""}
+            textBlocks={textBlocks}
+            extractedMessages={ocrResult.messages || []}
+            ocrConfidence={ocrResult.confidence || 0}
+            processingTime={ocrResult.debugInfo?.processingTime || 0}
+            errors={errors}
+            onReprocess={onReprocess}
+          />
+        </TabsContent>
 
-          {processingTime !== null && (
-            <div className="text-xs text-muted-foreground">Processing time: {processingTime.toFixed(2)} ms</div>
-          )}
-
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="original">Original</TabsTrigger>
-              <TabsTrigger value="preprocessed" disabled={!preprocessedImage}>
-                Preprocessed
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="original" className="pt-4">
-              {originalImage && (
-                <div className="border rounded-md overflow-hidden">
-                  <img
-                    src={originalImage || "/placeholder.svg"}
-                    alt="Original"
-                    className="w-full h-auto max-h-[400px] object-contain"
-                  />
-                </div>
-              )}
-            </TabsContent>
-            <TabsContent value="preprocessed" className="pt-4">
-              {preprocessedImage ? (
-                <div className="border rounded-md overflow-hidden">
-                  <img
-                    src={preprocessedImage || "/placeholder.svg"}
-                    alt="Preprocessed"
-                    className="w-full h-auto max-h-[400px] object-contain"
-                  />
-                </div>
-              ) : (
-                <div className="text-center p-8 text-muted-foreground">
-                  Click "Preprocess Image" to see the preprocessed version
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </div>
+        <TabsContent value="position" className="mt-0 p-4">
+          <PositionDetectionVisualizer
+            originalImage={imageData}
+            messages={ocrResult.messages || []}
+            textBlocks={textBlocks}
+            imageWidth={ocrResult.imageWidth || 800}
+            imageHeight={ocrResult.imageHeight || 600}
+            onReprocess={onReprocess ? () => onReprocess({ updatePositions: true }) : undefined}
+          />
+        </TabsContent>
       </CardContent>
     </Card>
   )

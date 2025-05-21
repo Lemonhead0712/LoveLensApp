@@ -6,12 +6,13 @@
  *
  * @module ocr-service
  */
-import type { Message } from "./types"
+import type { Message, OcrProcessingResult, PositionedTextBlock } from "./types"
 import { createWorker } from "tesseract.js"
 import { preprocessImage, defaultOptions, type PreprocessingOptions } from "./image-preprocessing"
 import { isClient } from "./utils"
 // Add the import for the local OCR fallback
-import { performLocalOcrFallback } from "./ocr-fallback"
+//import { performLocalOcrFallback } from "./ocr-fallback" // Removed as part of update
+import { detectMessageSide, detectChatAppType } from "./ocr/position-detection"
 
 // Interface for OCR result with bounding box
 interface OCRWord {
@@ -33,16 +34,17 @@ interface MessageLine {
   width: number
   height: number
   confidence: number
+  position?: "left" | "right" // Add position property
 }
 
 // Interface for a complete message with position
-interface PositionedMessage {
-  content: string
-  position: "left" | "right"
-  y: number
-  confidence: number
-  timestamp?: string
-}
+// interface PositionedMessage { // Removed as part of update
+//   content: string
+//   position: "left" | "right"
+//   y: number
+//   confidence: number
+//   timestamp?: string
+// }
 
 /**
  * Handles OCR failures by throwing an error instead of generating mock data
@@ -136,16 +138,10 @@ function filterSystemMessages(content: string): string {
 }
 
 /**
- * Determine sender based on x-position in the screenshot
- */
-function determineSenderFromX(x: number, threshold = 100): "left" | "right" {
-  return x > threshold ? "right" : "left"
-}
-
-/**
  * Group words into message lines based on vertical position
+ * Enhanced to include position detection
  */
-function groupWordsIntoLines(words: OCRWord[]): MessageLine[] {
+function groupWordsIntoLines(words: OCRWord[], imageWidth: number): MessageLine[] {
   // Sort words by vertical position (y-coordinate)
   const sortedWords = [...words].sort((a, b) => {
     // If words are on roughly the same line (within 10px), sort by x-coordinate
@@ -169,6 +165,8 @@ function groupWordsIntoLines(words: OCRWord[]): MessageLine[] {
     if (lastY === -1 || Math.abs(word.bbox.y0 - lastY) > 15) {
       // If we have a current line, add it to the list
       if (currentLine) {
+        // Determine position for the completed line
+        currentLine.position = detectMessageSide(currentLine.x, imageWidth)
         lines.push(currentLine)
       }
 
@@ -198,6 +196,8 @@ function groupWordsIntoLines(words: OCRWord[]): MessageLine[] {
 
   // Add the last line if it exists
   if (currentLine) {
+    // Determine position for the last line
+    currentLine.position = detectMessageSide(currentLine.x, imageWidth)
     lines.push(currentLine)
   }
 
@@ -207,66 +207,32 @@ function groupWordsIntoLines(words: OCRWord[]): MessageLine[] {
 /**
  * Detect chat app type from screenshot characteristics
  */
-function detectChatAppType(lines: MessageLine[]): "android" | "iphone" | "unknown" {
-  // Count messages on far left vs indented
-  const farLeftCount = lines.filter((line) => line.x <= 30).length
-  const indentedCount = lines.filter((line) => line.x > 30 && line.x < 100).length
-  const farRightCount = lines.filter((line) => line.x >= 100).length
+// function detectChatAppType(lines: MessageLine[]): "android" | "iphone" | "unknown" { // Removed as part of update
+//   // Count messages on far left vs indented
+//   const farLeftCount = lines.filter((line) => line.x <= 30).length
+//   const indentedCount = lines.filter((line) => line.x > 30 && line.x < 100).length
+//   const farRightCount = lines.filter((line) => line.x >= 100).length
 
-  // Check for patterns characteristic of different chat apps
-  if (farLeftCount > 5 && indentedCount > 5) {
-    return "android" // Android typically has messages on far left and indented
-  } else if (farLeftCount > 5 && farRightCount > 5) {
-    return "iphone" // iPhone typically has messages on far left and far right
-  }
+//   // Check for patterns characteristic of different chat apps
+//   if (farLeftCount > 5 && indentedCount > 5) {
+//     return "android" // Android typically has messages on far left and indented
+//   } else if (farLeftCount > 5 && farRightCount > 5) {
+//     return "iphone" // iPhone typically has messages on far left and far right
+//   }
 
-  return "unknown"
-}
+//   return "unknown"
+// }
 
 /**
- * Group lines into complete messages based on proximity and indentation
- * Enhanced to handle both Android and iPhone chat layouts
+ * Group lines into complete messages based on proximity and position
+ * Enhanced to use the detected position
  */
-function groupLinesIntoMessages(lines: MessageLine[]): PositionedMessage[] {
+function groupLinesIntoMessages(lines: MessageLine[]): PositionedTextBlock[] {
   // Sort lines by vertical position
   const sortedLines = [...lines].sort((a, b) => a.y - b.y)
 
-  // Detect chat app type to adjust position detection
-  const appType = detectChatAppType(sortedLines)
-  console.log(`Detected chat app type: ${appType}`)
-
-  // Determine the threshold for left vs right based on app type
-  let positionThreshold = 50 // Default threshold
-  if (appType === "iphone") {
-    // For iPhone, calculate a dynamic threshold based on the distribution of x values
-    const xValues = sortedLines.map((line) => line.x)
-    const minX = Math.min(...xValues)
-    const maxX = Math.max(...xValues)
-    positionThreshold = minX + (maxX - minX) / 2
-  } else if (appType === "android") {
-    // For Android, use a more flexible threshold
-    positionThreshold = 40
-  } else {
-    // For unknown app types, try to determine threshold from the data
-    const xValues = sortedLines.map((line) => line.x).sort((a, b) => a - b)
-    // Find the largest gap in x-coordinates to determine the natural split
-    let maxGap = 0
-    let gapPosition = 50
-    for (let i = 1; i < xValues.length; i++) {
-      const gap = xValues[i] - xValues[i - 1]
-      if (gap > maxGap) {
-        maxGap = gap
-        gapPosition = (xValues[i] + xValues[i - 1]) / 2
-      }
-    }
-    // Only use the gap-based threshold if we found a significant gap
-    if (maxGap > 20) {
-      positionThreshold = gapPosition
-    }
-  }
-
-  const messages: PositionedMessage[] = []
-  let currentMessage: PositionedMessage | null = null
+  const messages: PositionedTextBlock[] = []
+  let currentMessage: PositionedTextBlock | null = null
   let lastPosition: "left" | "right" | null = null
   let lastY = -1
 
@@ -275,8 +241,8 @@ function groupLinesIntoMessages(lines: MessageLine[]): PositionedMessage[] {
     const filteredText = filterSystemMessages(line.text)
     if (!filteredText) continue
 
-    // Determine position based on x-coordinate and app type
-    const position = line.x <= positionThreshold ? "left" : "right"
+    // Use the detected position from the line
+    const position = line.position || "left"
 
     // If this is a new message or sender changed or large vertical gap
     if (lastY === -1 || position !== lastPosition || Math.abs(line.y - lastY) > 50) {
@@ -287,15 +253,22 @@ function groupLinesIntoMessages(lines: MessageLine[]): PositionedMessage[] {
 
       // Start a new message
       currentMessage = {
-        content: filteredText,
+        text: filteredText,
+        boundingBox: {
+          x: line.x,
+          y: line.y,
+          width: line.width,
+          height: line.height,
+        },
         position,
-        y: line.y,
         confidence: line.confidence,
       }
     } else {
       // Continue the current message
       if (currentMessage) {
-        currentMessage.content += `\n${filteredText}`
+        currentMessage.text += `\n${filteredText}`
+        // Expand the bounding box to include this line
+        currentMessage.boundingBox.height = line.y + line.height - currentMessage.boundingBox.y
         // Average the confidence
         currentMessage.confidence = (currentMessage.confidence + line.confidence) / 2
       }
@@ -317,96 +290,96 @@ function groupLinesIntoMessages(lines: MessageLine[]): PositionedMessage[] {
  * Fallback text parsing when bounding boxes aren't available
  * This function attempts to parse the raw OCR text into messages
  */
-function parseFallbackText(text: string, firstPersonName: string, secondPersonName: string): Message[] {
-  if (!text || typeof text !== "string") {
-    throw new Error("No text provided for parsing")
-  }
+// function parseFallbackText(text: string, firstPersonName: string, secondPersonName: string): Message[] { // Removed as part of update
+//   if (!text || typeof text !== "string") {
+//     throw new Error("No text provided for parsing")
+//   }
 
-  console.log("Using fallback text parsing method")
+//   console.log("Using fallback text parsing method")
 
-  // Split text by line breaks
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
+//   // Split text by line breaks
+//   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
 
-  if (lines.length === 0) {
-    throw new Error("No content found in text")
-  }
+//   if (lines.length === 0) {
+//     throw new Error("No content found in text")
+//   }
 
-  const messages: Message[] = []
-  let currentSender: string | null = null
-  let currentMessageLines: string[] = []
-  let currentTimestamp: string | null = null
+//   const messages: Message[] = []
+//   let currentSender: string | null = null
+//   let currentMessageLines: string[] = []
+//   let currentTimestamp: string | null = null
 
-  // Try to detect message patterns
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim()
+//   // Try to detect message patterns
+//   for (let i = 0; i < lines.length; i++) {
+//     const line = lines[i].trim()
 
-    // Skip very short lines as they're likely not content
-    if (line.length < 2) continue
+//     // Skip very short lines as they're likely not content
+//     if (line.length < 2) continue
 
-    // Check for timestamp
-    const timestampMatch = line.match(/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/)
-    if (timestampMatch) {
-      currentTimestamp = timestampMatch[0]
+//     // Check for timestamp
+//     const timestampMatch = line.match(/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}/)
+//     if (timestampMatch) {
+//       currentTimestamp = timestampMatch[0]
 
-      // If this is just a timestamp, skip to next line
-      if (line.length < 10) continue
-    }
+//       // If this is just a timestamp, skip to next line
+//       if (line.length < 10) continue
+//     }
 
-    // Check for common message indicators
-    const isLeftAligned = line.startsWith(" ") || line.startsWith("\t")
+//     // Check for common message indicators
+//     const isLeftAligned = line.startsWith(" ") || line.startsWith("\t")
 
-    // If this looks like a new message
-    if (
-      i === 0 ||
-      (timestampMatch && line.length > 10) ||
-      (i > 0 && lines[i - 1].trim().length === 0 && line.trim().length > 0)
-    ) {
-      // Save previous message if we have one
-      if (currentMessageLines.length > 0) {
-        const messageText = currentMessageLines.join("\n")
-        messages.push({
-          sender: currentSender || (isLeftAligned ? secondPersonName : firstPersonName),
-          text: messageText,
-          timestamp: currentTimestamp ? new Date().toISOString() : new Date().toISOString(),
-        })
+//     // If this looks like a new message
+//     if (
+//       i === 0 ||
+//       (timestampMatch && line.length > 10) ||
+//       (i > 0 && lines[i - 1].trim().length === 0 && line.trim().length > 0)
+//     ) {
+//       // Save previous message if we have one
+//       if (currentMessageLines.length > 0) {
+//         const messageText = currentMessageLines.join("\n")
+//         messages.push({
+//           sender: currentSender || (isLeftAligned ? secondPersonName : firstPersonName),
+//           text: messageText,
+//           timestamp: currentTimestamp ? new Date().toISOString() : new Date().toISOString(),
+//         })
 
-        // Reset for new message
-        currentMessageLines = []
-      }
+//         // Reset for new message
+//         currentMessageLines = []
+//       }
 
-      // Set the new sender based on indentation
-      currentSender = isLeftAligned ? secondPersonName : firstPersonName
-      currentMessageLines.push(line.trim())
-    } else {
-      // Continue with current message
-      currentMessageLines.push(line.trim())
-    }
-  }
+//       // Set the new sender based on indentation
+//       currentSender = isLeftAligned ? secondPersonName : firstPersonName
+//       currentMessageLines.push(line.trim())
+//     } else {
+//       // Continue with current message
+//       currentMessageLines.push(line.trim())
+//     }
+//   }
 
-  // Add final message if there is one
-  if (currentMessageLines.length > 0) {
-    messages.push({
-      sender: currentSender || firstPersonName,
-      text: currentMessageLines.join("\n"),
-      timestamp: currentTimestamp ? new Date().toISOString() : new Date().toISOString(),
-    })
-  }
+//   // Add final message if there is one
+//   if (currentMessageLines.length > 0) {
+//     messages.push({
+//       sender: currentSender || firstPersonName,
+//       text: currentMessageLines.join("\n"),
+//       timestamp: currentTimestamp ? new Date().toISOString() : new Date().toISOString(),
+//     })
+//   }
 
-  // Ensure there are messages from both participants
-  const foundFirstPerson = messages.some((m) => m.sender === firstPersonName)
-  const foundSecondPerson = messages.some((m) => m.sender === secondPersonName)
+//   // Ensure there are messages from both participants
+//   const foundFirstPerson = messages.some((m) => m.sender === firstPersonName)
+//   const foundSecondPerson = messages.some((m) => m.sender === secondPersonName)
 
-  // If we don't have messages from both people, that's an error
-  if (!foundFirstPerson || !foundSecondPerson) {
-    throw new Error("Could not detect messages from both participants")
-  }
+//   // If we don't have messages from both people, that's an error
+//   if (!foundFirstPerson || !foundSecondPerson) {
+//     throw new Error("Could not detect messages from both participants")
+//   }
 
-  if (messages.length < 2) {
-    throw new Error("Not enough messages extracted")
-  }
+//   if (messages.length < 2) {
+//     throw new Error("Not enough messages extracted")
+//   }
 
-  return messages
-}
+//   return messages
+// }
 
 /**
  * Processes an image with OCR and extracts text with bounding box information.
@@ -423,7 +396,7 @@ async function processOCRWithBoundingBoxes(
   firstPersonName: string,
   secondPersonName: string,
   preprocessingOptions?: Partial<PreprocessingOptions>,
-): Promise<Message[]> {
+): Promise<OcrProcessingResult> {
   try {
     console.log(`Processing image with bounding box detection for ${firstPersonName} and ${secondPersonName}`)
 
@@ -453,6 +426,28 @@ async function processOCRWithBoundingBoxes(
     const processedImageData = await preprocessImage(imageFile, preprocessingOptions)
     console.log("Image preprocessing complete")
 
+    // Get image dimensions for position detection
+    let imageWidth = 0
+    let imageHeight = 0
+
+    try {
+      const img = new Image()
+      img.src = processedImageData
+      await new Promise<void>((resolve) => {
+        img.onload = () => {
+          imageWidth = img.width
+          imageHeight = img.height
+          resolve()
+        }
+        img.onerror = () => {
+          console.warn("Could not determine image dimensions")
+          resolve()
+        }
+      })
+    } catch (error) {
+      console.warn("Error getting image dimensions:", error)
+    }
+
     // Before recognition
     console.log("Starting OCR recognition...")
     const result = await worker.recognize(processedImageData)
@@ -465,8 +460,7 @@ async function processOCRWithBoundingBoxes(
       console.warn("OCR result does not contain expected word structure")
       // Try fallback if text is available
       if (result.data && result.data.text) {
-        console.log("Attempting fallback text parsing")
-        return parseFallbackText(result.data.text, firstPersonName, secondPersonName)
+        throw new Error("OCR result does not contain expected word structure, but text was extracted.")
       }
       throw new Error("OCR result does not contain expected word structure.")
     }
@@ -487,10 +481,17 @@ async function processOCRWithBoundingBoxes(
 
     // If words were extracted, proceed with the structured approach
     if (words.length > 0) {
-      // Group words into lines
-      const lines = groupWordsIntoLines(words)
+      // Group words into lines with position detection
+      const lines = groupWordsIntoLines(words, imageWidth)
 
       if (lines.length > 0) {
+        // Detect chat app type for better position detection
+        const chatAppType = detectChatAppType(
+          lines.map((line) => ({ boundingBox: { x: line.x } })),
+          imageWidth,
+        )
+        console.log(`Detected chat app type: ${chatAppType}`)
+
         // Group lines into messages
         const positionedMessages = groupLinesIntoMessages(lines)
 
@@ -498,7 +499,7 @@ async function processOCRWithBoundingBoxes(
           // Convert positioned messages to the Message format
           const messages: Message[] = positionedMessages.map((message, index) => {
             // Try to extract timestamp from the message content
-            const { content, timestamp } = extractTimestamp(message.content)
+            const { content, timestamp } = extractTimestamp(message.text)
 
             // Create a timestamp if none was extracted
             const messageTimestamp = isValidDate(timestamp)
@@ -506,41 +507,42 @@ async function processOCRWithBoundingBoxes(
               : new Date(Date.now() - (positionedMessages.length - index) * 60000).toISOString()
 
             // Determine sender based on position
-            // In both Android and iPhone, left messages are typically from the other person
             const sender = message.position === "left" ? secondPersonName : firstPersonName
 
             return {
               sender,
-              text: content.trim(), // Use text property to match Message interface
+              text: content.trim(),
               timestamp: messageTimestamp,
+              position: message.position,
+              confidence: message.confidence,
             }
           })
 
           if (messages.length > 0) {
             console.log(`Extracted ${messages.length} messages using bounding box method`)
-            return messages
+            return {
+              success: true,
+              messages,
+              text: result.data.text,
+              words: result.data.words,
+              confidence: result.data.confidence,
+              imageWidth,
+              imageHeight,
+            }
           }
         }
       }
     }
 
     // If we get here, the structured approach failed
-    // Let's try the fallback text parsing approach
-    if (result && result.data && result.data.text) {
-      console.log("Structured approach failed, using fallback text parsing")
-      const fallbackMessages = parseFallbackText(result.data.text, firstPersonName, secondPersonName)
-
-      if (fallbackMessages.length > 0) {
-        console.log(`Extracted ${fallbackMessages.length} messages using fallback text parsing`)
-        return fallbackMessages
-      }
-    }
-
-    // If both methods failed, throw an error
     throw new Error("OCR failed: Could not extract messages from the image")
   } catch (error) {
     console.error("Error processing OCR with bounding boxes:", error)
-    throw error // Propagate the error
+    return {
+      success: false,
+      messages: [],
+      error: error.message || "Unknown OCR error",
+    }
   }
 }
 
@@ -602,37 +604,37 @@ export async function extractMessagesFromScreenshots(
         console.log(`Processing screenshot: ${screenshot.name}`)
 
         // Try each preprocessing option until we get good results
-        let messages: Message[] = []
+        let bestResult: OcrProcessingResult | null = null
         let bestOptionIndex = -1
 
         for (let i = 0; i < preprocessingOptions.length; i++) {
           console.log(`Trying preprocessing option ${i + 1}...`)
-          const optionMessages = await processOCRWithBoundingBoxes(
+          const result = await processOCRWithBoundingBoxes(
             screenshot,
             firstPersonName,
             secondPersonName,
             preprocessingOptions[i],
           )
 
-          if (optionMessages && optionMessages.length > 0) {
+          if (result.success && result.messages && result.messages.length > 0) {
             // If this option gave us more messages than previous ones, use it
-            if (optionMessages.length > messages.length) {
-              messages = optionMessages
+            if (!bestResult || result.messages.length > bestResult.messages.length) {
+              bestResult = result
               bestOptionIndex = i
             }
 
             // If we got a good number of messages, stop trying options
-            if (optionMessages.length >= 5) {
+            if (result.messages.length >= 5) {
               break
             }
           }
         }
 
-        if (messages && messages.length > 0) {
+        if (bestResult && bestResult.messages && bestResult.messages.length > 0) {
           console.log(
-            `Successfully extracted ${messages.length} messages from ${screenshot.name} using option ${bestOptionIndex + 1}`,
+            `Successfully extracted ${bestResult.messages.length} messages from ${screenshot.name} using option ${bestOptionIndex + 1}`,
           )
-          allMessages.push(...messages)
+          allMessages.push(...bestResult.messages)
         } else {
           console.warn(`No messages extracted from ${screenshot.name} after trying all preprocessing options`)
           failedScreenshots.push(screenshot.name)
@@ -741,24 +743,16 @@ export async function extractTextFromImage(
 
     try {
       // Use default names for testing - these will be replaced later
-      const messages = await processOCRWithBoundingBoxes(file, "User", "Friend")
+      const result = await processOCRWithBoundingBoxes(file, "User", "Friend")
 
       if (progressCallback) {
         progressCallback(100)
       }
 
-      return messages
+      return result.messages
     } catch (primaryOcrError) {
-      console.warn("Primary OCR failed, trying local fallback:", primaryOcrError)
-
-      // Use the local OCR fallback
-      const fallbackMessages = await performLocalOcrFallback(imageData, "User", "Friend")
-
-      if (progressCallback) {
-        progressCallback(100)
-      }
-
-      return fallbackMessages
+      console.error("OCR processing failed:", primaryOcrError)
+      throw new Error("OCR processing failed: " + primaryOcrError.message)
     }
   } catch (error) {
     console.error("Error extracting text from image:", error)
