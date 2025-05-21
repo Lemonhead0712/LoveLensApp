@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ShieldAlert, AlertTriangle, Upload, ImageIcon, Loader2, CheckCircle2, Info } from "lucide-react"
+import { ShieldAlert, AlertTriangle, Upload, ImageIcon, Loader2, CheckCircle2, Info, Bug } from "lucide-react"
 import { SparkleEffect } from "@/components/sparkle-effect"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
 import { saveAnalysisResults, generateResultId } from "@/lib/storage-utils"
 import { Logo } from "@/components/logo"
 import { isClient } from "@/lib/utils"
+import { DebugModeToggle } from "@/components/debug-mode-toggle"
+import { OcrExtractionVisualizer } from "@/components/ocr-extraction-visualizer"
 
 function UploadForm() {
   const [files, setFiles] = useState<File[]>([])
@@ -72,6 +74,9 @@ export default function UploadPage() {
   const [processingStage, setProcessingStage] = useState<string | null>(null)
   const [showGuidelines, setShowGuidelines] = useState(false)
   const [isClientSide, setIsClientSide] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
+  const [debugData, setDebugData] = useState<any>(null)
+  const [currentFileIndex, setCurrentFileIndex] = useState(0)
 
   // Check if we're on the client side
   useEffect(() => {
@@ -84,6 +89,9 @@ export default function UploadPage() {
     setFiles((prev) => [...prev, ...imageFiles])
     setValidationError(null)
     setError(null) // Clear any previous errors when new files are added
+
+    // Reset debug data when new files are added
+    setDebugData(null)
   }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -105,6 +113,42 @@ export default function UploadPage() {
 
   const removeFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index))
+
+    // Reset debug data when files are removed
+    setDebugData(null)
+  }
+
+  // Process a single file for debugging
+  const processFileForDebug = async (fileIndex: number) => {
+    if (!files[fileIndex]) return
+
+    setIsSubmitting(true)
+    setError(null)
+    setProcessingStage("Extracting text for debug visualization...")
+
+    try {
+      // Create a FileList-like object with just the selected file
+      const singleFile = [files[fileIndex]]
+
+      // Process with debug flag enabled
+      const results = await analyzeScreenshots(singleFile, firstPersonName, secondPersonName, {
+        debug: true,
+        collectDebugInfo: true,
+      })
+
+      // Get debug data from the results
+      if (results && results.debugInfo) {
+        setDebugData(results.debugInfo)
+      } else {
+        throw new Error("No debug information available")
+      }
+    } catch (error) {
+      console.error("Error processing file for debug:", error)
+      setError(`Debug processing failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsSubmitting(false)
+      setProcessingStage(null)
+    }
   }
 
   const handleSubmit = async () => {
@@ -134,7 +178,9 @@ export default function UploadPage() {
       console.log("Starting analysis...")
 
       // Process the screenshots through the enhanced pipeline
-      const results = await analyzeScreenshots(files, firstPersonName, secondPersonName)
+      const results = await analyzeScreenshots(files, firstPersonName, secondPersonName, {
+        debug: debugMode,
+      })
 
       // Check if results are valid
       if (!results) {
@@ -218,10 +264,15 @@ export default function UploadPage() {
         <div className="grid gap-8 md:grid-cols-5">
           <Card className="bg-love-card shadow-lg border-pink-100 md:col-span-3">
             <CardHeader className="pb-2">
-              <CardTitle>Upload Your Conversation</CardTitle>
-              <CardDescription>
-                We accept PNG, JPG, or WEBP screenshots of conversations. Your uploads are private and secure.
-              </CardDescription>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Upload Your Conversation</CardTitle>
+                  <CardDescription>
+                    We accept PNG, JPG, or WEBP screenshots of conversations. Your uploads are private and secure.
+                  </CardDescription>
+                </div>
+                <DebugModeToggle onChange={setDebugMode} />
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Client-side check warning */}
@@ -305,17 +356,35 @@ export default function UploadPage() {
                             </p>
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeFile(index)
-                          }}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          Remove
-                        </Button>
+                        <div className="flex items-center space-x-2">
+                          {debugMode && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setCurrentFileIndex(index)
+                                processFileForDebug(index)
+                              }}
+                              className="text-blue-500 hover:text-blue-700"
+                              disabled={isSubmitting}
+                            >
+                              <Bug className="h-4 w-4 mr-1" />
+                              Debug
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeFile(index)
+                            }}
+                            className="text-gray-500 hover:text-gray-700"
+                          >
+                            Remove
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -399,6 +468,26 @@ export default function UploadPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Debug Visualization */}
+        {debugMode && debugData && (
+          <div className="mt-8">
+            <OcrExtractionVisualizer
+              originalImage={debugData.originalImageDataUrl || null}
+              preprocessingSteps={debugData.preprocessingSteps || []}
+              rawText={debugData.rawText || ""}
+              textBlocks={debugData.textBlocks || []}
+              extractedMessages={debugData.extractedMessages || []}
+              ocrConfidence={debugData.ocrConfidence || 0}
+              processingTime={debugData.processingTime || 0}
+              errors={debugData.errors || []}
+              onReprocess={(options) => processFileForDebug(currentFileIndex)}
+            />
+          </div>
+        )}
+
+        {/* OCR Info Section */}
+        {(error || debugMode) && <OCRInfoSection />}
       </main>
 
       <footer className="py-6 border-t border-pink-100 bg-white bg-opacity-80 backdrop-blur-sm relative z-10">
