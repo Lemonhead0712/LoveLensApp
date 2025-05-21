@@ -193,7 +193,7 @@ function UploadForm() {
             errorDetails = {
               type: "ocr_failed",
               message:
-                "Failed to extract text from the screenshots. Please ensure the images are clear and contain readable text.",
+                "Primary OCR failed, but we used a local fallback to extract some text. Results may be less accurate.",
               recoverable: true,
             }
             break

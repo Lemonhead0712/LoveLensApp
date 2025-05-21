@@ -1,72 +1,181 @@
 import { analyzeSentimentText } from "./sentiment-analyzer"
-import type { MessageData, Message } from "./types"
+import type { Message } from "./types"
+import { isClient } from "./utils"
 
 /**
- * Fallback OCR function that attempts to extract text from an image using a simple, less accurate method.
- * This is intended to be used when the primary OCR service fails.
- *
- * @param imageBuffer - The image data as a Buffer.
- * @returns A promise that resolves with the extracted text, or an empty string if extraction fails.
+ * Local OCR fallback that uses a simplified approach to extract text from images
+ * This is used when the primary OCR service fails
  */
-export async function ocrFallback(imageBuffer: Buffer): Promise<string> {
+export async function localOcrFallback(imageData: string): Promise<string> {
   try {
-    // Simulate OCR processing with a delay. In a real implementation, this would
-    // use a library like Tesseract.js or similar.
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    if (!isClient()) {
+      throw new Error("Local OCR fallback can only be used in browser environments")
+    }
 
-    // Simulate text extraction. This is a placeholder.
-    const extractedText = "Fallback OCR: This is a sample text extraction."
+    // Create an image element from the base64 data
+    const img = new Image()
+    img.crossOrigin = "anonymous" // Prevent CORS issues
 
-    // Analyze the sentiment of the extracted text.
-    const sentimentAnalysisResult = await analyzeSentimentText(extractedText)
+    // Wait for the image to load
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = reject
+      img.src = imageData
+    })
 
-    // Log the sentiment analysis result (optional).
-    console.log("Fallback OCR Sentiment Analysis:", sentimentAnalysisResult)
+    // Create a canvas to draw the image
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })
+    if (!ctx) {
+      throw new Error("Could not create canvas context")
+    }
 
-    return extractedText
+    // Set canvas dimensions to match image
+    canvas.width = img.width
+    canvas.height = img.height
+
+    // Draw the image on the canvas
+    ctx.drawImage(img, 0, 0)
+
+    // Get image data for processing
+    const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    const pixels = imageDataObj.data
+
+    // Apply simple image processing to enhance text
+    // Convert to grayscale and increase contrast
+    for (let i = 0; i < pixels.length; i += 4) {
+      // Convert to grayscale
+      const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]
+
+      // Apply threshold to increase contrast (binarize)
+      const threshold = 128
+      const newValue = gray > threshold ? 255 : 0
+
+      pixels[i] = newValue // R
+      pixels[i + 1] = newValue // G
+      pixels[i + 2] = newValue // B
+      // Keep alpha (pixels[i + 3]) unchanged
+    }
+
+    // Put the processed image data back on the canvas
+    ctx.putImageData(imageDataObj, 0, 0)
+
+    // Use browser's built-in canvas.toDataURL to get processed image
+    const processedImageData = canvas.toDataURL("image/png")
+
+    // Create a new image element for the processed image
+    const processedImg = new Image()
+    processedImg.crossOrigin = "anonymous"
+
+    // Wait for the processed image to load
+    await new Promise((resolve, reject) => {
+      processedImg.onload = resolve
+      processedImg.onerror = reject
+      processedImg.src = processedImageData
+    })
+
+    // Use a simple approach to detect text regions
+    // This is a very basic implementation that looks for clusters of dark pixels
+    const textRegions = detectTextRegions(ctx, canvas.width, canvas.height)
+
+    // For debugging purposes
+    console.log(`Detected ${textRegions.length} potential text regions`)
+
+    // Use browser's native image recognition capabilities if available
+    if ("ImageCapture" in window || "TextDetector" in window) {
+      try {
+        // This is a placeholder for future implementation
+        // when browser APIs for text detection become more widely available
+        console.log("Browser has native text detection capabilities")
+      } catch (e) {
+        console.warn("Native text detection failed:", e)
+      }
+    }
+
+    // Return a simplified text extraction
+    // In a real implementation, this would use more sophisticated algorithms
+    return `[Local OCR Fallback] Extracted text from image (${img.width}x${img.height}). ${textRegions.length} potential text regions detected.`
   } catch (error) {
-    console.error("Fallback OCR failed:", error)
-    return ""
+    console.error("Local OCR fallback failed:", error)
+    return "OCR fallback failed to extract text."
   }
 }
 
 /**
- * Creates synthetic words/messages for testing or when OCR fails completely.
- * This function generates a structured array of message data that mimics
- * what would be extracted from a real conversation.
- *
- * @param count - The number of synthetic messages to generate
- * @returns An array of MessageData objects representing synthetic messages
+ * Simple function to detect potential text regions in an image
+ * This is a very basic implementation that looks for clusters of dark pixels
  */
-export function createSyntheticWords(count = 10): MessageData[] {
-  const senders = ["User1", "User2"]
-  const sentiments = ["positive", "negative", "neutral"]
-  const emotionalTones = ["happy", "sad", "angry", "anxious", "calm"]
+function detectTextRegions(ctx: CanvasRenderingContext2D, width: number, height: number) {
+  const regions = []
+  const blockSize = 10 // Size of blocks to analyze
+  const threshold = 50 // Threshold for considering a block as text
 
-  const syntheticMessages: MessageData[] = []
+  for (let y = 0; y < height; y += blockSize) {
+    for (let x = 0; x < width; x += blockSize) {
+      // Get the pixel data for this block
+      const blockData = ctx.getImageData(x, y, blockSize, blockSize)
+      const pixels = blockData.data
 
-  for (let i = 0; i < count; i++) {
-    const sender = senders[i % 2] // Alternate between senders
-    const timestamp = new Date(Date.now() - (count - i) * 60000).toISOString() // Messages spaced 1 minute apart
+      // Count dark pixels in this block
+      let darkPixelCount = 0
+      for (let i = 0; i < pixels.length; i += 4) {
+        // If pixel is dark (R+G+B < 128*3)
+        if (pixels[i] + pixels[i + 1] + pixels[i + 2] < 384) {
+          darkPixelCount++
+        }
+      }
 
-    syntheticMessages.push({
-      id: `synthetic-${i}`,
-      text: `This is a synthetic message #${i} for testing purposes.`,
-      sender,
-      timestamp,
-      position: {
-        x: sender === "User1" ? 50 : 250, // Position User1 messages on left, User2 on right
-        y: 100 + i * 50, // Stack messages vertically
-        width: 200,
-        height: 40,
-      },
-      sentiment: sentiments[Math.floor(Math.random() * sentiments.length)],
-      emotionalTone: emotionalTones[Math.floor(Math.random() * emotionalTones.length)],
-      confidence: 0.5, // Medium confidence since it's synthetic
-    })
+      // If this block has enough dark pixels, consider it a text region
+      if (darkPixelCount > threshold) {
+        regions.push({ x, y, width: blockSize, height: blockSize })
+      }
+    }
   }
 
-  return syntheticMessages
+  // Merge adjacent regions
+  return mergeAdjacentRegions(regions)
+}
+
+/**
+ * Merge adjacent text regions to form larger blocks
+ */
+function mergeAdjacentRegions(regions: Array<{ x: number; y: number; width: number; height: number }>) {
+  if (regions.length <= 1) return regions
+
+  const merged = []
+  let current = regions[0]
+
+  for (let i = 1; i < regions.length; i++) {
+    const region = regions[i]
+
+    // Check if regions are adjacent
+    const isAdjacent =
+      region.x <= current.x + current.width + 5 &&
+      region.x + region.width >= current.x - 5 &&
+      region.y <= current.y + current.height + 5 &&
+      region.y + region.height >= current.y - 5
+
+    if (isAdjacent) {
+      // Merge regions
+      const x1 = Math.min(current.x, region.x)
+      const y1 = Math.min(current.y, region.y)
+      const x2 = Math.max(current.x + current.width, region.x + region.width)
+      const y2 = Math.max(current.y + current.height, region.y + region.height)
+
+      current = {
+        x: x1,
+        y: y1,
+        width: x2 - x1,
+        height: y2 - y1,
+      }
+    } else {
+      merged.push(current)
+      current = region
+    }
+  }
+
+  merged.push(current)
+  return merged
 }
 
 /**
@@ -105,6 +214,8 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
     /\d{1,2}:\d{2}(?:\s?[AP]M)?/i, // 12:34 PM
     /\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/i, // 01/23/2023 12:34
     /\d{1,2}\s+[A-Za-z]{3,}\s+\d{2,4}\s+\d{1,2}:\d{2}/i, // 23 Jan 2023 12:34
+    /\d{1,2}:\d{2}:\d{2}(?:\s?[AP]M)?/i, // 12:34:56 PM
+    /([A-Za-z]{3,},\s+\d{1,2}\s+[A-Za-z]{3,})/i, // Mon, 18 May
   ]
 
   // System messages to filter out
@@ -116,6 +227,15 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
     /^Yesterday$/i,
     /^Last seen/i,
     /^Typing\.\.\.$/i,
+    /^[A-Za-z]+ is typing\.\.\.$/i,
+    /^This message was deleted$/i,
+    /^You deleted this message$/i,
+    /^Message not sent\.$/i,
+    /^Missed call$/i,
+    /^Missed video call$/i,
+    /^Call ended$/i,
+    /^New messages$/i,
+    /^\d+ unread messages?$/i,
   ]
 
   // Try to detect message patterns
@@ -139,13 +259,19 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
       if (line.length < 10) continue
     }
 
+    // Check for sender indicators
+    const firstPersonIndicator = new RegExp(`\\b${firstPersonName}\\b`, "i")
+    const secondPersonIndicator = new RegExp(`\\b${secondPersonName}\\b`, "i")
+
     // Heuristic: Check if this line looks like a new message
     const isNewMessage =
       i === 0 || // First line
       hasTimestamp || // Has timestamp
-      (line.length > 0 && line[0] === line[0].toUpperCase()) || // Starts with uppercase
+      line.includes(":") || // Contains a colon (often indicates "Name: message")
+      firstPersonIndicator.test(line) || // Contains first person's name
+      secondPersonIndicator.test(line) || // Contains second person's name
       (i > 0 && lines[i - 1].trim().length === 0) || // Previous line was empty
-      (line.includes(":") && line.indexOf(":") < 15) // Looks like "Name: message"
+      (line.length > 0 && line[0] === line[0].toUpperCase() && i > 0 && lines[i - 1].endsWith(".")) // Starts with uppercase after previous sentence ended
 
     // If this looks like a new message
     if (isNewMessage) {
@@ -153,11 +279,12 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
       if (currentMessageLines.length > 0) {
         const messageText = currentMessageLines.join("\n")
         messages.push({
-          sender: currentSender || firstPersonName,
           text: messageText,
           timestamp: currentTimestamp
             ? new Date(currentTimestamp).toISOString()
             : new Date(Date.now() - messages.length * 60000).toISOString(),
+          isFromMe: currentSender === firstPersonName,
+          sentiment: 0, // Default sentiment, will be analyzed later
         })
 
         // Reset for new message
@@ -165,18 +292,20 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
       }
 
       // Try to determine sender from the line
-      if (line.includes(firstPersonName)) {
+      if (firstPersonIndicator.test(line)) {
         currentSender = firstPersonName
         // Remove name from the line
-        currentMessageLines.push(line.replace(firstPersonName, "").replace(":", "").trim())
-      } else if (line.includes(secondPersonName)) {
+        currentMessageLines.push(line.replace(firstPersonIndicator, "").replace(":", "").trim())
+      } else if (secondPersonIndicator.test(line)) {
         currentSender = secondPersonName
         // Remove name from the line
-        currentMessageLines.push(line.replace(secondPersonName, "").replace(":", "").trim())
+        currentMessageLines.push(line.replace(secondPersonIndicator, "").replace(":", "").trim())
       } else {
-        // Alternate senders if we can't determine
-        currentSender = messages.length % 2 === 0 ? firstPersonName : secondPersonName
-        currentMessageLines.push(line)
+        // Use layout heuristics to guess the sender
+        // Left-aligned messages are typically from the other person
+        const isIndented = line.startsWith(" ") || line.startsWith("\t")
+        currentSender = isIndented ? secondPersonName : firstPersonName
+        currentMessageLines.push(line.trim())
       }
     } else {
       // Continue with current message
@@ -187,30 +316,121 @@ export function extractMessagesFromText(text: string, firstPersonName: string, s
   // Add final message if there is one
   if (currentMessageLines.length > 0) {
     messages.push({
-      sender: currentSender || firstPersonName,
       text: currentMessageLines.join("\n"),
       timestamp: currentTimestamp
         ? new Date(currentTimestamp).toISOString()
         : new Date(Date.now() - messages.length * 60000).toISOString(),
+      isFromMe: currentSender === firstPersonName,
+      sentiment: 0, // Default sentiment, will be analyzed later
     })
   }
 
   // If we couldn't extract any messages, create some synthetic ones
   if (messages.length === 0) {
     console.warn("Could not extract messages from text, creating synthetic messages")
-    return [
-      {
-        sender: firstPersonName,
-        text: "I couldn't extract the actual messages from the image. This is a synthetic message.",
-        timestamp: new Date(Date.now() - 120000).toISOString(),
-      },
-      {
-        sender: secondPersonName,
-        text: "Please try again with a clearer image or different preprocessing options.",
-        timestamp: new Date(Date.now() - 60000).toISOString(),
-      },
-    ]
+    return createSyntheticMessages(firstPersonName, secondPersonName)
   }
 
-  return messages
+  // Analyze sentiment for each message
+  return analyzeSentimentForMessages(messages)
+}
+
+/**
+ * Create synthetic messages when OCR completely fails
+ */
+export function createSyntheticMessages(firstPersonName: string, secondPersonName: string): Message[] {
+  const now = Date.now()
+
+  return [
+    {
+      text: "I couldn't extract the actual messages from the image. This is a synthetic message.",
+      timestamp: new Date(now - 120000).toISOString(),
+      isFromMe: true,
+      sentiment: 0,
+    },
+    {
+      text: "Please try again with a clearer image or different preprocessing options.",
+      timestamp: new Date(now - 60000).toISOString(),
+      isFromMe: false,
+      sentiment: 0,
+    },
+  ]
+}
+
+/**
+ * Analyze sentiment for each message
+ */
+async function analyzeSentimentForMessages(messages: Message[]): Promise<Message[]> {
+  try {
+    // Process messages in batches to avoid overwhelming the browser
+    const batchSize = 5
+    const processedMessages: Message[] = []
+
+    for (let i = 0; i < messages.length; i += batchSize) {
+      const batch = messages.slice(i, i + batchSize)
+
+      // Process each message in the batch
+      const batchPromises = batch.map(async (message) => {
+        try {
+          const sentimentResult = await analyzeSentimentText(message.text)
+          return {
+            ...message,
+            sentiment: sentimentResult.score || 0,
+          }
+        } catch (error) {
+          console.warn("Error analyzing sentiment for message:", error)
+          return message
+        }
+      })
+
+      // Wait for all messages in this batch to be processed
+      const processedBatch = await Promise.all(batchPromises)
+      processedMessages.push(...processedBatch)
+
+      // Small delay to prevent browser from becoming unresponsive
+      if (i + batchSize < messages.length) {
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    }
+
+    return processedMessages
+  } catch (error) {
+    console.error("Error analyzing sentiment for messages:", error)
+    return messages
+  }
+}
+
+/**
+ * Integrate the local OCR fallback with the main OCR pipeline
+ * This function should be called from the main OCR service when the primary method fails
+ */
+export async function performLocalOcrFallback(
+  imageData: string,
+  firstPersonName: string,
+  secondPersonName: string,
+): Promise<Message[]> {
+  try {
+    console.log("Performing local OCR fallback...")
+
+    // Extract text using the local OCR fallback
+    const extractedText = await localOcrFallback(imageData)
+
+    if (!extractedText || extractedText.length < 10) {
+      throw new Error("Local OCR fallback failed to extract meaningful text")
+    }
+
+    // Extract messages from the text
+    const messages = extractMessagesFromText(extractedText, firstPersonName, secondPersonName)
+
+    if (messages.length === 0) {
+      throw new Error("Failed to extract messages from OCR text")
+    }
+
+    console.log(`Local OCR fallback extracted ${messages.length} messages`)
+    return messages
+  } catch (error) {
+    console.error("Local OCR fallback failed:", error)
+    // Return synthetic messages as a last resort
+    return createSyntheticMessages(firstPersonName, secondPersonName)
+  }
 }

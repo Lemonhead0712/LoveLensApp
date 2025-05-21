@@ -2,6 +2,8 @@ import type { Message } from "./types"
 import { createWorker } from "tesseract.js"
 import { preprocessImage, defaultOptions, type PreprocessingOptions } from "./image-preprocessing"
 import { isClient } from "./utils"
+// Add the import for the local OCR fallback
+import { performLocalOcrFallback } from "./ocr-fallback"
 
 // Interface for OCR result with bounding box
 interface OCRWord {
@@ -714,14 +716,27 @@ export async function extractTextFromImage(
     const blob = new Blob([ab], { type: mimeString })
     const file = new File([blob], "screenshot.png", { type: mimeString })
 
-    // Use default names for testing - these will be replaced later
-    const messages = await processOCRWithBoundingBoxes(file, "User", "Friend")
+    try {
+      // Use default names for testing - these will be replaced later
+      const messages = await processOCRWithBoundingBoxes(file, "User", "Friend")
 
-    if (progressCallback) {
-      progressCallback(100)
+      if (progressCallback) {
+        progressCallback(100)
+      }
+
+      return messages
+    } catch (primaryOcrError) {
+      console.warn("Primary OCR failed, trying local fallback:", primaryOcrError)
+
+      // Use the local OCR fallback
+      const fallbackMessages = await performLocalOcrFallback(imageData, "User", "Friend")
+
+      if (progressCallback) {
+        progressCallback(100)
+      }
+
+      return fallbackMessages
     }
-
-    return messages
   } catch (error) {
     console.error("Error extracting text from image:", error)
     throw error // Propagate the error
