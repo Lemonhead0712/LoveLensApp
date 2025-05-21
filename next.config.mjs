@@ -8,26 +8,7 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-    ],
   },
-  webpack(config) {
-    // Handle SVG files
-    config.module.rules.push({
-      test: /\.svg$/,
-      use: ['@svgr/webpack'],
-    });
+}
 
-    return config;
-  },
-  // Add environment variables that can be used on the client
-  env: {
-    NEXT_PUBLIC_NODE_ENV: process.env.NODE_ENV,
-  },
-};
-
-export default nextConfig;
+export default nextConfig

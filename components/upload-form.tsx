@@ -1,89 +1,147 @@
 "use client"
 
 import type React from "react"
-import { useState, useCallback } from "react"
-import { useDropzone } from "react-dropzone"
-import { Typography, Box, CircularProgress, Alert } from "@mui/material"
 
-interface UploadFormProps {
-  onSuccess: (data: any) => void
-  onError?: (error: string) => void
-}
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Upload, Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-const UploadForm: React.FC<UploadFormProps> = ({ onSuccess, onError }) => {
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function UploadForm() {
+  const [files, setFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const router = useRouter()
 
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      setIsProcessing(true)
-      setError(null)
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFiles(Array.from(e.target.files))
+    }
+  }
 
-      const file = acceptedFiles[0]
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setFiles(Array.from(e.dataTransfer.files))
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (files.length === 0) return
+
+    setIsUploading(true)
+
+    try {
       const formData = new FormData()
-      formData.append("image", file)
+      files.forEach((file) => {
+        formData.append("screenshots", file)
+      })
 
-      try {
-        const response = await fetch("/api/process-image", {
-          method: "POST",
-          body: formData,
-        })
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      })
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to process image")
-        }
-
-        const data = await response.json()
-        onSuccess(data)
-      } catch (error: any) {
-        console.error("Error processing image:", error)
-
-        // Add this to the catch block where OCR errors are handled
-        if (error.message?.includes("OCR failed: No messages could be extracted and fallback is disabled")) {
-          setError(
-            "OCR failed to extract any messages from your image. Please try a clearer image or different preprocessing options.",
-          )
-          setIsProcessing(false)
-          return
-        }
-
-        setError(error.message || "An unexpected error occurred")
-        if (onError) {
-          onError(error.message || "An unexpected error occurred")
-        }
-      } finally {
-        setIsProcessing(false)
+      if (response.ok) {
+        const { analysisId } = await response.json()
+        router.push(`/analysis/${analysisId}`)
+      } else {
+        throw new Error("Failed to upload images")
       }
-    },
-    [onSuccess, onError],
-  )
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "image/*": [".jpeg", ".png", ".jpg"],
-    },
-  })
+    } catch (error) {
+      console.error("Error uploading images:", error)
+      alert("Failed to upload images. Please try again.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, p: 3 }}>
-      <div
-        {...getRootProps()}
-        style={{ border: "2px dashed #ccc", padding: "20px", textAlign: "center", cursor: "pointer", width: "100%" }}
-      >
-        <input {...getInputProps()} />
-        {isDragActive ? (
-          <Typography>Drop the files here ...</Typography>
-        ) : (
-          <Typography>Drag 'n' drop some files here, or click to select files</Typography>
-        )}
-      </div>
-      {isProcessing && <CircularProgress />}
-      {error && <Alert severity="error">{error}</Alert>}
-      {/* You can add additional UI elements here, such as a preview of the uploaded image */}
-    </Box>
+    <Card className="w-full max-w-2xl mx-auto">
+      <CardContent className="pt-6">
+        <form onSubmit={handleSubmit}>
+          <div
+            className={cn(
+              "border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors",
+              isDragging ? "border-rose-400 bg-rose-50" : "border-gray-300 hover:border-rose-300",
+              "focus-within:border-rose-400",
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <Upload className="h-10 w-10 text-gray-400" />
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium">Upload conversation screenshots</h3>
+                <p className="text-sm text-gray-500">Drag and drop your screenshots here, or click to browse</p>
+              </div>
+              <input
+                id="file-upload"
+                name="file-upload"
+                type="file"
+                className="sr-only"
+                onChange={handleFileChange}
+                multiple
+                accept="image/*"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => document.getElementById("file-upload")?.click()}
+                className="mt-2"
+              >
+                Select Files
+              </Button>
+            </div>
+          </div>
+
+          {files.length > 0 && (
+            <div className="mt-4">
+              <h4 className="font-medium mb-2">Selected files:</h4>
+              <ul className="space-y-1">
+                {files.map((file, index) => (
+                  <li key={index} className="text-sm text-gray-600">
+                    {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="mt-6 flex justify-center">
+            <Button
+              type="submit"
+              disabled={files.length === 0 || isUploading}
+              className="bg-rose-500 hover:bg-rose-600 text-white"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "Analyze Conversation"
+              )}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
-
-export default UploadForm
