@@ -6,6 +6,20 @@
 
 import { WorkerPool, type WorkerPoolOptions } from "./worker-pool"
 
+// Define preprocessing strategies
+export type PreprocessingStrategy =
+  | "default"
+  | "highContrast"
+  | "binarize"
+  | "sharpen"
+  | "despeckle"
+  | "normalize"
+  | "invert"
+  | "textOptimized"
+  | "chatBubbles"
+  | "darkMode"
+  | "lightMode"
+
 class WorkerPoolManager {
   private pools: Map<string, WorkerPool> = new Map()
   private isSupported: boolean
@@ -52,6 +66,15 @@ class WorkerPoolManager {
             retryCount: options?.retryCount || 1,
           }
           break
+        case "preprocessing":
+          poolOptions = {
+            workerScript: new URL("./preprocessing-worker.ts", import.meta.url),
+            maxWorkers: options?.maxWorkers || Math.max(2, navigator.hardwareConcurrency - 1),
+            workerOptions: { type: "module" },
+            taskTimeout: options?.taskTimeout || 30000, // Preprocessing should be faster
+            retryCount: options?.retryCount || 1,
+          }
+          break
         default:
           throw new Error(`Unknown pool type: ${poolType}`)
       }
@@ -70,6 +93,50 @@ class WorkerPoolManager {
   }
 
   /**
+   * Preprocesses an image using the preprocessing worker pool
+   * @param imageData The image data to preprocess
+   * @param strategy The preprocessing strategy to apply
+   * @param options Additional options
+   * @param onProgress Callback for progress updates
+   * @returns Promise resolving to the processed image data
+   */
+  public async preprocessImage(
+    imageData: string,
+    strategy: PreprocessingStrategy = "default",
+    options: any = {},
+    onProgress?: (progress: number) => void,
+  ): Promise<string> {
+    const pool = this.getPool("preprocessing", options.poolOptions)
+
+    if (!pool) {
+      throw new Error("Preprocessing worker pool could not be created")
+    }
+
+    try {
+      const result = await pool.addTask(
+        "PROCESS_IMAGE",
+        {
+          imageData,
+          options: {
+            ...options,
+            strategy,
+          },
+        },
+        {
+          priority: options.priority || 0,
+          onProgress,
+        },
+      )
+
+      return result.processedImageData
+    } catch (error) {
+      console.error("Error preprocessing image:", error)
+      // Return original image if preprocessing fails
+      return imageData
+    }
+  }
+
+  /**
    * Process multiple images in parallel using a worker pool
    * @param images Array of image data to process
    * @param options Processing options
@@ -81,24 +148,73 @@ class WorkerPoolManager {
     options: any = {},
     onProgress?: (progress: number) => void,
   ): Promise<any[]> {
+    // First, preprocess all images if preprocessing is enabled
+    let processedImages = images
+
+    if (options.preprocess !== false) {
+      try {
+        const preprocessingStrategy = options.preprocessingStrategy || "default"
+        console.log(`Preprocessing ${images.length} images with strategy: ${preprocessingStrategy}`)
+
+        // Track preprocessing progress
+        let preprocessingProgress = 0
+        const updatePreprocessingProgress = (progress: number) => {
+          preprocessingProgress = progress
+          if (onProgress) {
+            // Preprocessing is 40% of the total progress
+            onProgress(Math.round(preprocessingProgress * 0.4))
+          }
+        }
+
+        // Preprocess images in parallel
+        const preprocessingPromises = images.map((imageData, index) => {
+          return this.preprocessImage(
+            imageData,
+            preprocessingStrategy as PreprocessingStrategy,
+            {
+              ...options,
+              index,
+              poolOptions: {
+                maxWorkers: Math.max(2, navigator.hardwareConcurrency - 2), // Leave more cores for OCR
+              },
+            },
+            (progress) => {
+              // Update this image's contribution to total preprocessing progress
+              preprocessingProgress += (progress / 100) * (1 / images.length) * 100
+              updatePreprocessingProgress(preprocessingProgress)
+            },
+          )
+        })
+
+        processedImages = await Promise.all(preprocessingPromises)
+        console.log("Preprocessing complete")
+      } catch (preprocessingError) {
+        console.warn("Image preprocessing failed, using original images:", preprocessingError)
+        processedImages = images
+      }
+    }
+
+    // Now perform OCR on the preprocessed images
     const pool = this.getPool("ocr", options.poolOptions)
 
     if (!pool) {
-      throw new Error("Worker pool could not be created")
+      throw new Error("OCR worker pool could not be created")
     }
 
     try {
       // Track overall progress
-      let totalProgress = 0
-      const updateProgress = () => {
+      let ocrProgress = 0
+      const updateOcrProgress = (progress: number) => {
+        ocrProgress = progress
         if (onProgress) {
-          const overallProgress = Math.round(totalProgress / images.length)
-          onProgress(overallProgress)
+          // OCR is 60% of the total progress (after 40% for preprocessing)
+          const totalProgress = 40 + Math.round(ocrProgress * 0.6)
+          onProgress(totalProgress)
         }
       }
 
       // Create tasks for each image
-      const tasks = images.map((imageData, index) => {
+      const tasks = processedImages.map((imageData, index) => {
         return pool.addTask(
           "PROCESS_IMAGE",
           {
@@ -106,14 +222,16 @@ class WorkerPoolManager {
             options: {
               ...options,
               index,
+              // Don't enhance the image in OCR worker if we've already preprocessed it
+              enhanceImage: options.preprocess === false,
             },
           },
           {
             priority: options.priority || 0,
             onProgress: (progress) => {
-              // Update this image's contribution to total progress
-              totalProgress += (progress / 100) * (1 / images.length) * 100
-              updateProgress()
+              // Update this image's contribution to total OCR progress
+              ocrProgress += (progress / 100) * (1 / processedImages.length) * 100
+              updateOcrProgress(ocrProgress)
             },
           },
         )

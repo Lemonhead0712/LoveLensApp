@@ -16,6 +16,8 @@ import { OCRDebugViewer } from "./ocr-debug-viewer"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import workerPoolManager from "@/lib/workers/worker-pool-manager"
+import { PreprocessingStrategySelector } from "./preprocessing-strategy-selector"
+import type { PreprocessingStrategy } from "@/lib/workers/worker-pool-manager"
 
 // Error types for better error handling
 type ErrorType = "api_key_missing" | "upload_failed" | "analysis_failed" | "ocr_failed" | "storage_failed" | "unknown"
@@ -39,6 +41,9 @@ function UploadForm() {
   const [useWorkerPool, setUseWorkerPool] = useState(true)
   const [workersSupported, setWorkersSupported] = useState(false)
   const [poolStats, setPoolStats] = useState<any>(null)
+  const [preprocessingEnabled, setPreprocessingEnabled] = useState(true)
+  const [preprocessingStrategy, setPreprocessingStrategy] = useState<PreprocessingStrategy>("default")
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
@@ -115,6 +120,10 @@ function UploadForm() {
     setSelectedDebugFile(file)
   }
 
+  const handleAdvancedOptionsToggle = (checked: boolean) => {
+    setShowAdvancedOptions(checked)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -159,8 +168,10 @@ function UploadForm() {
       }
 
       // Process images with OCR
+      const processingMethod = useWorkerPool && workersSupported ? "Worker Pool" : "Sequential"
+      const preprocessingInfo = preprocessingEnabled ? ` with ${preprocessingStrategy} preprocessing` : ""
       setStatusMessage(
-        `Extracting text from ${files.length} image${files.length > 1 ? "s" : ""}${useWorkerPool && workersSupported ? " (using Worker Pool)" : ""}...`,
+        `Extracting text from ${files.length} image${files.length > 1 ? "s" : ""} (${processingMethod}${preprocessingInfo})...`,
       )
 
       let allMessages: Message[] = []
@@ -322,12 +333,32 @@ function UploadForm() {
                   </div>
                 )}
 
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="advanced-options"
+                    checked={showAdvancedOptions}
+                    onCheckedChange={handleAdvancedOptionsToggle}
+                  />
+                  <Label htmlFor="advanced-options">Show Advanced Options</Label>
+                </div>
+
                 {!workersSupported && (
                   <div className="text-xs text-amber-600">
                     Web Workers are not supported in your browser. Processing will happen sequentially.
                   </div>
                 )}
               </div>
+
+              {showAdvancedOptions && (
+                <div className="mb-4">
+                  <PreprocessingStrategySelector
+                    value={preprocessingStrategy}
+                    onChange={setPreprocessingStrategy}
+                    enabled={preprocessingEnabled}
+                    onEnabledChange={setPreprocessingEnabled}
+                  />
+                </div>
+              )}
 
               <div
                 className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors"
@@ -408,7 +439,13 @@ function UploadForm() {
 
       {debugMode && (
         <div className="mt-6">
-          {selectedDebugFile && <OCRDebugViewer imageFile={selectedDebugFile} />}
+          {selectedDebugFile && (
+            <OCRDebugViewer
+              imageFile={selectedDebugFile}
+              preprocessingEnabled={preprocessingEnabled}
+              preprocessingStrategy={preprocessingStrategy}
+            />
+          )}
 
           {poolStats && (
             <Card className="mt-4">
