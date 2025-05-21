@@ -1,10 +1,13 @@
+/**
+ * Screenshot Analysis Module
+ *
+ * This module coordinates the process of analyzing conversation screenshots,
+ * including text extraction, message parsing, and sentiment analysis.
+ */
 import type { AnalysisResults, Message } from "./types"
 import { extractMessagesFromScreenshots } from "./ocr-service"
 import { analyzeSentiment } from "./sentiment-analyzer"
-import { saveAnalysisResults, getAnalysisResults, storeTransformedAnalysisResult } from "./storage-utils"
-import { validateAnalysisResults } from "./result-validator"
-import { generatePsychologicalProfile } from "./psychological-frameworks"
-import { fetchGPTEmotionalAnalysis } from "./gpt-ei-service"
+import { getAnalysisResults } from "./storage-utils"
 
 // Import the data validation utility
 import { ensureValidEmotionalIntelligenceData } from "./data-validation"
@@ -13,311 +16,231 @@ import { ensureValidEmotionalIntelligenceData } from "./data-validation"
 import { performOcr } from "./ocr-service-enhanced"
 import { analyzeText as analyzeSentimentText } from "./sentiment-analyzer"
 import { extractEmotionalInsights } from "./gpt-ei-service"
+import type { AnalysisResult } from "./types"
+import { validateExtractedMessages } from "./ocr-validation"
+import { getCachedOcrResult, cacheOcrResult } from "./ocr-cache"
+import { isClient } from "./utils"
+import { WorkerPoolManager } from "./workers/worker-pool-manager"
+
+// Export the analyzeText function that's missing
+export function analyzeText(text: string): { sentiment: number; keywords: string[] } {
+  // Simple implementation to analyze text sentiment and extract keywords
+  const sentiment =
+    text.toLowerCase().includes("love") || text.toLowerCase().includes("happy")
+      ? 0.8
+      : text.toLowerCase().includes("sad") || text.toLowerCase().includes("angry")
+        ? -0.5
+        : 0
+
+  // Extract simple keywords
+  const keywords = text
+    .split(/\s+/)
+    .filter((word) => word.length > 4)
+    .filter((word) => !["about", "there", "their", "would", "could", "should"].includes(word.toLowerCase()))
+    .slice(0, 5)
+
+  return { sentiment, keywords }
+}
+
+interface AnalyzeOptions {
+  debug?: boolean
+  collectDebugInfo?: boolean
+}
 
 // Main function to analyze screenshots
+/**
+ * Analyzes conversation screenshots to extract messages and perform sentiment analysis
+ *
+ * @param files Array of screenshot image files
+ * @param firstPersonName Name of the first person in the conversation
+ * @param secondPersonName Name of the second person in the conversation
+ * @param options Optional configuration options
+ * @returns Analysis results including messages with sentiment scores
+ */
 export async function analyzeScreenshots(
-  screenshots: File[],
+  files: File[],
   firstPersonName: string,
   secondPersonName: string,
-): Promise<AnalysisResults> {
+  options: AnalyzeOptions = {},
+): Promise<AnalysisResult> {
   try {
-    console.log(`Starting analysis for ${screenshots.length} screenshots`)
-    console.log(`First person: ${firstPersonName}, Second person: ${secondPersonName}`)
+    console.log(`Starting analysis of ${files.length} screenshots...`)
+
+    // Check if we're on the client side
+    if (!isClient()) {
+      throw new Error("Server-side analysis is not supported")
+    }
+
+    // Initialize worker pool if in debug mode
+    let workerPool: WorkerPoolManager | null = null
+    let debugInfo: any = null
+
+    if (options.debug) {
+      console.log("Debug mode enabled, initializing worker pool...")
+      workerPool = new WorkerPoolManager({
+        maxWorkers: 2,
+        workerTypes: {
+          ocr: "/workers/ocr-worker.js",
+          preprocessing: "/workers/preprocessing-worker.js",
+        },
+      })
+
+      if (options.collectDebugInfo) {
+        debugInfo = {
+          processingSteps: [],
+          imageData: [],
+          textExtractionResults: [],
+          performanceMetrics: {},
+        }
+      }
+    }
+
+    // Check cache first
+    const cacheKey = files.map((f) => `${f.name}-${f.size}-${f.lastModified}`).join("|")
+    const cachedResult = getCachedOcrResult(cacheKey)
+
+    if (cachedResult) {
+      console.log("Using cached OCR result")
+
+      // Update names in cached result
+      const updatedMessages = cachedResult.messages.map((msg) => ({
+        ...msg,
+        sender: msg.sender === "User" ? firstPersonName : msg.sender === "Friend" ? secondPersonName : msg.sender,
+      }))
+
+      return {
+        ...cachedResult,
+        messages: updatedMessages,
+      }
+    }
 
     // Extract messages from screenshots
-    let extractedMessages: Message[] = []
-    try {
-      extractedMessages = await extractMessagesFromScreenshots(screenshots, firstPersonName, secondPersonName)
-      console.log(`Extracted ${extractedMessages.length} messages`)
+    console.log("Extracting messages from screenshots...")
+    let messages: Message[] = []
 
-      // Ensure we have real extracted messages, not synthetic ones
-      if (!extractedMessages || extractedMessages.length === 0) {
-        throw new Error("OCR failed: No messages could be extracted from the screenshots.")
+    if (workerPool) {
+      // Use worker pool for extraction if available
+      const startTime = performance.now()
+
+      // Process each file with the worker pool
+      const results = await Promise.all(
+        files.map((file) => {
+          return new Promise<Message[]>(async (resolve, reject) => {
+            try {
+              // Convert file to base64
+              const reader = new FileReader()
+              reader.onload = async () => {
+                try {
+                  const base64Data = reader.result as string
+
+                  // First preprocess the image
+                  const preprocessingTask = await workerPool!.runTask({
+                    type: "preprocessing",
+                    data: {
+                      imageData: base64Data,
+                      options: {
+                        grayscale: true,
+                        normalize: true,
+                        threshold: true,
+                      },
+                    },
+                  })
+
+                  if (debugInfo) {
+                    debugInfo.processingSteps.push({
+                      step: "preprocessing",
+                      file: file.name,
+                      duration: preprocessingTask.duration,
+                    })
+                  }
+
+                  // Then run OCR on the preprocessed image
+                  const ocrTask = await workerPool!.runTask({
+                    type: "ocr",
+                    data: {
+                      imageData: preprocessingTask.data.processedImage || base64Data,
+                      options: {
+                        firstPersonName,
+                        secondPersonName,
+                      },
+                    },
+                  })
+
+                  if (debugInfo) {
+                    debugInfo.processingSteps.push({
+                      step: "ocr",
+                      file: file.name,
+                      duration: ocrTask.duration,
+                    })
+
+                    debugInfo.textExtractionResults.push({
+                      file: file.name,
+                      text: ocrTask.data.text,
+                      confidence: ocrTask.data.confidence,
+                    })
+                  }
+
+                  resolve(ocrTask.data.messages || [])
+                } catch (error) {
+                  reject(error)
+                }
+              }
+              reader.onerror = reject
+              reader.readAsDataURL(file)
+            } catch (error) {
+              reject(error)
+            }
+          })
+        }),
+      )
+
+      // Combine all results
+      messages = results.flat()
+
+      // Record performance metrics
+      if (debugInfo) {
+        debugInfo.performanceMetrics.totalDuration = performance.now() - startTime
+        debugInfo.performanceMetrics.averageFileProcessingTime =
+          debugInfo.performanceMetrics.totalDuration / files.length
       }
-    } catch (ocrError) {
-      console.error("OCR extraction failed:", ocrError)
-      throw new Error(`OCR extraction failed: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`)
+    } else {
+      // Use standard extraction if no worker pool
+      messages = await extractMessagesFromScreenshots(files, firstPersonName, secondPersonName)
     }
 
-    // 🔁 Re-Establish Two-Way Separation - Clearly separate messages by sender
-    const messagesA = extractedMessages.filter((msg) => msg.sender === firstPersonName)
-    const messagesB = extractedMessages.filter((msg) => msg.sender === secondPersonName)
-
-    if (!messagesA.length || !messagesB.length) {
-      throw new Error("OCR message separation failed: One or both sides have zero messages.")
+    // Validate the extracted messages
+    if (!validateExtractedMessages(messages)) {
+      throw new Error("Invalid messages extracted from screenshots")
     }
 
-    console.log(
-      `Separated messages - ${firstPersonName}: ${messagesA.length}, ${secondPersonName}: ${messagesB.length}`,
-    )
+    // Sort messages by timestamp
+    messages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 
-    // ✅ Soft Handling + Logging - Replace error throwing with warnings
-    const validationWarnings: string[] = []
+    // Analyze sentiment for each message
+    console.log("Analyzing sentiment for messages...")
+    const messagesWithSentiment = await analyzeSentiment(messages)
 
-    if (!messagesA || messagesA.length === 0) {
-      const warning = `⚠️ No messages from ${firstPersonName}. Skipping their analysis.`
-      console.warn(warning)
-      validationWarnings.push(warning)
-    }
-
-    if (!messagesB || messagesB.length === 0) {
-      const warning = `⚠️ No messages from ${secondPersonName}. Skipping their analysis.`
-      console.warn(warning)
-      validationWarnings.push(warning)
-    }
-
-    // Initialize variables with default values
-    let sentimentA: any = { overallScore: 0, messagesWithSentiment: [], gottmanScores: {}, relationshipDynamics: {} }
-    let sentimentB: any = { overallScore: 0, messagesWithSentiment: [], gottmanScores: {}, relationshipDynamics: {} }
-    let linguisticA: any = {}
-    let linguisticB: any = {}
-    let communicationStyleA = "Unknown"
-    let communicationStyleB = "Unknown"
-    let profileA: any = {
-      attachmentStyle: { primaryStyle: "Unknown" },
-      transactionalAnalysis: { dominantEgoState: "Unknown" },
-      cognitivePatterns: {},
-    }
-    let profileB: any = {
-      attachmentStyle: { primaryStyle: "Unknown" },
-      transactionalAnalysis: { dominantEgoState: "Unknown" },
-      cognitivePatterns: {},
-    }
-    let emotionalBreakdownA: any = {}
-    let emotionalBreakdownB: any = {}
-    let emotionalIntelligenceA = 0
-    let emotionalIntelligenceB = 0
-
-    // ✅ Wrap Each Participant's Analysis in Conditional Blocks
-    const participants: any[] = []
-
-    // 🆕 Fetch GPT-powered emotional analysis
-    console.log("Fetching GPT emotional analysis...")
-    const { analysis: emotionalInsights, error: gptError } = await fetchGPTEmotionalAnalysis(
-      extractedMessages,
+    // Cache the result for future use
+    const result: AnalysisResult = {
+      id: "", // Will be set by the caller
+      messages: messagesWithSentiment,
+      timestamp: new Date().toISOString(),
       firstPersonName,
       secondPersonName,
-    )
-
-    if (gptError) {
-      console.warn("GPT analysis error:", gptError)
-      validationWarnings.push(`⚠️ GPT analysis error: ${gptError.error}`)
-
-      if (gptError.status === 429) {
-        validationWarnings.push(`⚠️ Rate limit exceeded. Try again in ${Math.ceil((gptError.reset || 0) / 60)} minutes.`)
-      }
+      debugInfo: debugInfo,
     }
 
-    console.log("GPT emotional analysis complete")
+    cacheOcrResult(cacheKey, result)
 
-    // Analyze first person if they have messages
-    if (messagesA && messagesA.length > 0) {
-      console.log(`Analyzing sentiment for ${firstPersonName}...`)
-      sentimentA = await analyzeSentiment(messagesA, firstPersonName)
-
-      console.log(`Analyzing linguistic patterns for ${firstPersonName}...`)
-      linguisticA = calculateLinguisticPatterns(messagesA)
-
-      console.log(`Determining communication style for ${firstPersonName}...`)
-      communicationStyleA = determineCommStyle(linguisticA, messagesA)
-
-      console.log(`Generating psychological profile for ${firstPersonName}...`)
-      profileA = generatePsychologicalProfile(messagesA, firstPersonName)
-
-      console.log(`Calculating emotional intelligence for ${firstPersonName}...`)
-      emotionalBreakdownA = ensureValidEmotionalIntelligenceData(
-        calculateEmotionalBreakdown(messagesA, sentimentA.overallScore),
-      )
-      emotionalIntelligenceA = calculateEmotionalIntelligence(
-        emotionalBreakdownA,
-        sentimentA.firstPersonProfile,
-        linguisticA,
-        messagesA,
-      )
-
-      // Add first person to participants array
-      participants.push({
-        name: firstPersonName,
-        communicationStyle: communicationStyleA,
-        emotionalIntelligence: emotionalIntelligenceA,
-        attachmentStyle: profileA.attachmentStyle.primaryStyle,
-        egoState: profileA.transactionalAnalysis.dominantEgoState,
-        cognitivePatterns: profileA.cognitivePatterns,
-        emotionalBreakdown: emotionalBreakdownA,
-        psychologicalProfile: profileA,
-        sentiment: sentimentA.overallScore,
-        linguisticPatterns: linguisticA,
-        insights: sentimentA.insights || [],
-        recommendations: sentimentA.recommendations || [],
-        // 🆕 Add GPT emotional insights with null safety
-        gptEmotionalInsights: emotionalInsights?.forPersonA || null,
-        // 🆕 Add analysis metadata
-        gptAnalysisMetadata: emotionalInsights?._metadata || null,
-      })
-    } else {
-      throw new Error(`No messages found from ${firstPersonName}. Analysis cannot proceed.`)
+    // Clean up worker pool if it was created
+    if (workerPool) {
+      await workerPool.terminate()
     }
 
-    // Analyze second person if they have messages
-    if (messagesB && messagesB.length > 0) {
-      console.log(`Analyzing sentiment for ${secondPersonName}...`)
-      sentimentB = await analyzeSentiment(messagesB, secondPersonName)
-
-      console.log(`Analyzing linguistic patterns for ${secondPersonName}...`)
-      linguisticB = calculateLinguisticPatterns(messagesB)
-
-      console.log(`Determining communication style for ${secondPersonName}...`)
-      communicationStyleB = determineCommStyle(linguisticB, messagesB)
-
-      console.log(`Generating psychological profile for ${secondPersonName}...`)
-      profileB = generatePsychologicalProfile(messagesB, secondPersonName)
-
-      console.log(`Calculating emotional intelligence for ${secondPersonName}...`)
-      emotionalBreakdownB = ensureValidEmotionalIntelligenceData(
-        calculateEmotionalBreakdown(messagesB, sentimentB.overallScore),
-      )
-      emotionalIntelligenceB = calculateEmotionalIntelligence(
-        emotionalBreakdownB,
-        sentimentB.firstPersonProfile,
-        linguisticB,
-        messagesB,
-      )
-
-      // Add second person to participants array
-      participants.push({
-        name: secondPersonName,
-        communicationStyle: communicationStyleB,
-        emotionalIntelligence: emotionalIntelligenceB,
-        attachmentStyle: profileB.attachmentStyle.primaryStyle,
-        egoState: profileB.transactionalAnalysis.dominantEgoState,
-        cognitivePatterns: profileB.cognitivePatterns,
-        emotionalBreakdown: emotionalBreakdownB,
-        psychologicalProfile: profileB,
-        sentiment: sentimentB.overallScore,
-        linguisticPatterns: linguisticB,
-        insights: sentimentB.insights || [],
-        recommendations: sentimentB.recommendations || [],
-        // 🆕 Add GPT emotional insights
-        gptEmotionalInsights: emotionalInsights?.forPersonB || null,
-        // 🆕 Add analysis metadata
-        gptAnalysisMetadata: emotionalInsights?._metadata || null,
-      })
-    } else {
-      throw new Error(`No messages found from ${secondPersonName}. Analysis cannot proceed.`)
-    }
-
-    // Calculate compatibility only if both participants have messages
-    let compatibility: any = null
-    if (messagesA && messagesA.length > 0 && messagesB && messagesB.length > 0) {
-      // Calculate compatibility scores
-      const attachmentCompatibilityScore = calculateAttachmentCompatibility(
-        profileA.attachmentStyle.primaryStyle,
-        profileB.attachmentStyle.primaryStyle,
-      )
-
-      const communicationStyleCompatibilityScore = calculateCommunicationStyleCompatibility(
-        communicationStyleA,
-        communicationStyleB,
-      )
-
-      const emotionalSyncScore = calculateEmotionalSynchrony(emotionalBreakdownA, emotionalBreakdownB)
-
-      // Calculate category scores
-      const categoryScores = calculateCategoryScores(
-        emotionalIntelligenceA,
-        emotionalIntelligenceB,
-        sentimentA.gottmanScores,
-        emotionalBreakdownA,
-        emotionalBreakdownB,
-        sentimentA.relationshipDynamics,
-        communicationStyleA,
-        communicationStyleB,
-        profileA,
-        profileB,
-      )
-
-      const finalCompatibilityScore = calculateFinalCompatibilityScore(categoryScores)
-
-      // Structure the compatibility data
-      compatibility = {
-        attachment: attachmentCompatibilityScore,
-        communication: communicationStyleCompatibilityScore,
-        emotionalSync: emotionalSyncScore,
-        categoryScores,
-        finalScore: finalCompatibilityScore,
-        gottmanScores: sentimentA.gottmanScores,
-        relationshipDynamics: sentimentA.relationshipDynamics,
-        // 🆕 Add GPT relationship dynamics
-        gptRelationshipDynamics: emotionalInsights?.relationshipDynamics,
-        // 🆕 Add analysis metadata
-        gptAnalysisMetadata: emotionalInsights?._metadata || null,
-      }
-    } else {
-      throw new Error("Compatibility analysis requires messages from both participants.")
-    }
-
-    // Enhance the messagesWithSentiment handling in analyzeScreenshots
-    // Combine messages with sentiment
-    const messagesWithSentiment = [
-      ...(sentimentA.messagesWithSentiment || []),
-      ...(sentimentB.messagesWithSentiment || []),
-    ].sort((a, b) =>
-      a.timestamp && b.timestamp ? new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() : 0,
-    )
-
-    // Ensure each message has required properties
-    const enhancedMessagesWithSentiment = messagesWithSentiment.map((msg) => ({
-      ...msg,
-      sender: msg.sender || "Unknown",
-      text: msg.text || "",
-      timestamp: msg.timestamp || new Date().toISOString(),
-      sentiment: msg.sentiment || 50,
-      sentimentScore: msg.sentimentScore || 50,
-      detectedTone: msg.detectedTone || "neutral",
-    }))
-
-    // Build the final results object
-    const results = {
-      id: generateAnalysisId(),
-      timestamp: new Date().toISOString(),
-      participants,
-      compatibility,
-      messagesWithSentiment: enhancedMessagesWithSentiment,
-      keyMoments: [...(sentimentA.keyMoments || []), ...(sentimentB.keyMoments || [])],
-      gottmanSummary: sentimentA.gottmanSummary || "Analysis incomplete due to insufficient data.",
-      gottmanRecommendations: sentimentA.gottmanRecommendations || [],
-      analysisMethod: "gpt-enhanced", // 🆕 Update analysis method
-      validationWarnings,
-    }
-
-    // Log the messagesWithSentiment for debugging
-    console.log(`Final messagesWithSentiment count: ${enhancedMessagesWithSentiment.length}`)
-    console.log(
-      "Sample messagesWithSentiment:",
-      enhancedMessagesWithSentiment.length > 0
-        ? enhancedMessagesWithSentiment.slice(0, 2)
-        : "No messages with sentiment",
-    )
-
-    // Validate results to ensure they're not too similar
-    const validationResult = validateAnalysisResults(results)
-
-    // Combine existing warnings with new ones
-    if (validationResult.warnings && validationResult.warnings.length > 0) {
-      results.validationWarnings = [...results.validationWarnings, ...validationResult.warnings]
-    }
-
-    // Save analysis results
-    await saveAnalysisResults(results)
-    await storeTransformedAnalysisResult(results)
-
-    // Log the final results for debugging
-    console.log("Final Results:", JSON.stringify(results, null, 2))
-
-    return results
+    return result
   } catch (error) {
     console.error("Error analyzing screenshots:", error)
-    throw error // Propagate the error instead of returning a fallback result
+    throw error
   }
 }
 

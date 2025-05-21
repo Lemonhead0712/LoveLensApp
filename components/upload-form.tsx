@@ -2,22 +2,25 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react"
+import { useCallback, useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
+import { useDropzone } from "react-dropzone"
 import { analyzeScreenshots } from "@/lib/analyze-screenshots"
-import { storeAnalysisResult } from "@/lib/storage-utils"
+import { storeAnalysisResult, saveAnalysisResults, generateResultId } from "@/lib/storage-utils"
 import { validateExtractedMessages } from "@/lib/ocr-service"
+import { extractTextFromImagesWithWorkerPool, subscribeToPartialResults } from "@/lib/ocr-service-enhanced"
 import type { AnalysisResult, Message } from "@/lib/types"
 import { LoadingScreen } from "./loading-screen"
 import { OCRDebugViewer } from "./ocr-debug-viewer"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import workerPoolManager from "@/lib/workers/worker-pool-manager"
 import { PreprocessingStrategySelector } from "./preprocessing-strategy-selector"
 import { PartialResultsViewer } from "./partial-results-viewer"
 import type { PreprocessingStrategy } from "@/lib/workers/worker-pool-manager"
+import { isClient } from "@/lib/utils"
+import { DebugModeToggle } from "./debug-mode-toggle"
+import { OcrMethodToggle } from "./ocr-method-toggle"
 
 // Error types for better error handling
 type ErrorType = "api_key_missing" | "upload_failed" | "analysis_failed" | "ocr_failed" | "storage_failed" | "unknown"
@@ -31,12 +34,22 @@ interface ErrorDetails {
 }
 
 function UploadForm() {
+  const router = useRouter()
   const [files, setFiles] = useState<File[]>([])
+  const [firstPersonName, setFirstPersonName] = useState("You")
+  const [secondPersonName, setSecondPersonName] = useState("Partner")
+  const [isSubmitting, setIsSubmitting] = useState(isSubmitting)
+  const [error, setError] = useState<string | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [processingStage, setProcessingStage] = useState<string | null>(null)
+  const [isClientSide, setIsClientSide] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
+  const [debugData, setDebugData] = useState<any>(null)
+  const [currentFileIndex, setCurrentFileIndex] = useState(0)
+  const [partialResults, setPartialResults] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [error, setError] = useState<ErrorDetails | null>(null)
   const [statusMessage, setStatusMessage] = useState<string>("Preparing...")
-  const [debugMode, setDebugMode] = useState(false)
   const [selectedDebugFile, setSelectedDebugFile] = useState<File | null>(null)
   const [useWorkerPool, setUseWorkerPool] = useState(true)
   const [workersSupported, setWorkersSupported] = useState(false)
@@ -51,7 +64,11 @@ function UploadForm() {
   const [analysisReady, setAnalysisReady] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const router = useRouter()
+
+  // Check if we're on the client side
+  useEffect(() => {
+    setIsClientSide(isClient())
+  }, [])
 
   // Check if Web Workers are supported
   useEffect(() => {
@@ -82,38 +99,92 @@ function UploadForm() {
 
   // Subscribe to partial results
   useEffect(() => {
-    // Import the function dynamically to avoid issues with missing exports
-    const subscribeToPartialResults = async () => {
-      try {
-        const { subscribeToPartialResults } = await import("@/lib/ocr-service-enhanced")
-
-        return subscribeToPartialResults((results) => {
-          if (results.messages) {
-            setPartialMessages(results.messages)
-          }
-          if (results.processedImages !== undefined) {
-            setProcessedImages(results.processedImages)
-          }
-          if (results.complete !== undefined) {
-            setProcessingComplete(results.complete)
-          }
-        })
-      } catch (error) {
-        console.error("Failed to subscribe to partial results:", error)
-        return () => {}
+    const unsubscribe = subscribeToPartialResults((results) => {
+      if (results.messages) {
+        setPartialMessages(results.messages)
       }
-    }
-
-    // Call the function and store the unsubscribe function
-    let unsubscribe = () => {}
-    subscribeToPartialResults().then((unsub) => {
-      if (unsub) unsubscribe = unsub
+      if (results.processedImages !== undefined) {
+        setProcessedImages(results.processedImages)
+      }
+      if (results.complete !== undefined) {
+        setProcessingComplete(results.complete)
+      }
     })
 
     return () => {
       unsubscribe()
     }
   }, [])
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    // Filter out non-image files
+    const imageFiles = acceptedFiles.filter((file) => file.type.startsWith("image/"))
+    setFiles((prev) => [...prev, ...imageFiles])
+    setValidationError(null)
+    setError(null) // Clear any previous errors when new files are added
+
+    // Reset debug data when new files are added
+    setDebugData(null)
+    setPartialResults(null)
+  }, [])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
+    },
+    maxSize: 10485760, // 10MB
+    onDropRejected: (fileRejections) => {
+      if (fileRejections.some((r) => r.errors.some((e) => e.code === "file-too-large"))) {
+        setValidationError("File is too large. Maximum size is 10MB.")
+      } else if (fileRejections.some((r) => r.errors.some((e) => e.code === "file-invalid-type"))) {
+        setValidationError("Invalid file type. Only images are accepted.")
+      } else {
+        setValidationError("File upload failed. Please try again.")
+      }
+    },
+  })
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+
+    // Reset debug data when files are removed
+    setDebugData(null)
+    setPartialResults(null)
+  }
+
+  // Process a single file for debugging
+  const processFileForDebug = async (fileIndex: number) => {
+    if (!files[fileIndex]) return
+
+    setIsSubmitting(true)
+    setError(null)
+    setProcessingStage("Extracting text for debug visualization...")
+
+    try {
+      // Create a FileList-like object with just the selected file
+      const singleFile = [files[fileIndex]]
+
+      // Process with debug flag enabled
+      const results = await analyzeScreenshots(singleFile, firstPersonName, secondPersonName, {
+        debug: true,
+        collectDebugInfo: true,
+      })
+
+      // Get debug data from the results
+      if (results && results.debugInfo) {
+        setDebugData(results.debugInfo)
+      } else {
+        throw new Error("No debug information available")
+      }
+    } catch (error) {
+      console.error("Error processing file for debug:", error)
+      setError(`Debug processing failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsSubmitting(false)
+      setProcessingStage(null)
+    }
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -187,7 +258,7 @@ function UploadForm() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmitOld = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (files.length === 0) {
@@ -248,9 +319,6 @@ function UploadForm() {
       try {
         if (useWorkerPool && workersSupported) {
           // Use the worker pool for parallel processing with progressive results
-          // Import the function dynamically to avoid issues with missing exports
-          const { extractTextFromImagesWithWorkerPool } = await import("@/lib/ocr-service-enhanced")
-
           allMessages = await extractTextFromImagesWithWorkerPool(
             base64Files,
             (ocrProgress) => {
@@ -388,6 +456,99 @@ function UploadForm() {
     }
   }
 
+  const handleSubmit = async () => {
+    if (files.length === 0) {
+      setValidationError("Please upload at least one conversation screenshot.")
+      return
+    }
+
+    if (!firstPersonName.trim() || !secondPersonName.trim()) {
+      setValidationError("Please enter names for both participants.")
+      return
+    }
+
+    // Check if we're on the client side
+    if (!isClientSide) {
+      setValidationError("This feature requires client-side processing. Please try again in the browser.")
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+    setValidationError(null)
+    setPartialResults(null)
+
+    try {
+      // Set processing stages for better user feedback
+      setProcessingStage("Extracting text from screenshots...")
+      console.log("Starting analysis...")
+
+      // Process the screenshots through the enhanced pipeline
+      const results = await analyzeScreenshots(files, firstPersonName, secondPersonName, {
+        debug: debugMode,
+      })
+
+      // Check if results are valid
+      if (!results) {
+        throw new Error("Analysis failed to produce valid results")
+      }
+
+      console.log(
+        "Analysis completed, extracted text length:",
+        results.messages?.length || 0,
+        "messages with sentiment data",
+      )
+
+      // Generate a unique ID for this analysis
+      setProcessingStage("Saving analysis results...")
+      const resultId = generateResultId()
+
+      // Add the ID to the results
+      results.id = resultId
+
+      // Save results to localStorage with the ID
+      const saveSuccess = await saveAnalysisResults(results, resultId)
+
+      if (!saveSuccess) {
+        throw new Error("Failed to save analysis results")
+      }
+
+      console.log("Results saved successfully with ID:", resultId)
+
+      // Verify the ID exists before redirecting
+      if (!resultId) {
+        throw new Error("No result ID generated")
+      }
+
+      // Navigate to results page with the ID
+      console.log("Redirecting to results page with ID:", resultId)
+      router.push(`/results?id=${resultId}`)
+    } catch (error) {
+      console.error("Error analyzing screenshots:", error)
+
+      // Provide more specific error messages based on the error type
+      if (error instanceof Error) {
+        if (error.message.includes("OCR failed") || error.message.includes("No messages")) {
+          setError(
+            "We couldn't extract any messages from your screenshots. Please make sure your screenshots clearly show both sides of the conversation and follow our screenshot guidelines.",
+          )
+        } else if (error.message.includes("message separation failed")) {
+          setError(
+            "We couldn't identify messages from both participants. Please ensure your screenshots show messages from both people in the conversation.",
+          )
+        } else {
+          setError(`An error occurred: ${error.message}. Please try again with different screenshots.`)
+        }
+      } else {
+        setError("An unexpected error occurred. Please try again with different screenshots.")
+      }
+
+      setProcessingStage(null)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleErrorAction = () => {
     if (error?.type === "api_key_missing") {
       router.push("/settings")
@@ -408,6 +569,11 @@ function UploadForm() {
   // Determine if we should show the loading screen or partial results
   const showLoadingScreen = isLoading && (!showPartialResults || !processingComplete)
 
+  // Handle partial results updates from worker
+  const handlePartialResults = (results: any) => {
+    setPartialResults(results)
+  }
+
   return (
     <div className="w-full max-w-md mx-auto">
       {showLoadingScreen ? (
@@ -416,136 +582,101 @@ function UploadForm() {
         <>
           <Card className="w-full">
             <CardContent className="pt-6">
-              <form onSubmit={handleSubmit}>
-                <div className="flex flex-col space-y-4 mb-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch id="debug-mode" checked={debugMode} onCheckedChange={handleDebugModeChange} />
-                    <Label htmlFor="debug-mode">Debug Mode</Label>
-                  </div>
-
-                  {workersSupported && (
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        id="use-worker-pool"
-                        checked={useWorkerPool}
-                        onCheckedChange={handleUseWorkerPoolChange}
-                      />
-                      <Label htmlFor="use-worker-pool">
-                        Use Worker Pool
-                        <span className="ml-2 text-xs text-green-600 font-medium">
-                          (Recommended for multiple images)
-                        </span>
-                      </Label>
-                    </div>
-                  )}
-
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="show-partial-results"
-                      checked={showPartialResults}
-                      onCheckedChange={handleShowPartialResultsChange}
-                    />
-                    <Label htmlFor="show-partial-results">
-                      Show Partial Results
-                      <span className="ml-2 text-xs text-green-600 font-medium">
-                        (See results as they're processed)
-                      </span>
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="advanced-options"
-                      checked={showAdvancedOptions}
-                      onCheckedChange={handleAdvancedOptionsToggle}
-                    />
-                    <Label htmlFor="advanced-options">Show Advanced Options</Label>
-                  </div>
-
-                  {!workersSupported && (
-                    <div className="text-xs text-amber-600">
-                      Web Workers are not supported in your browser. Processing will happen sequentially.
-                    </div>
-                  )}
+              <form onSubmit={handleSubmitOld}>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                  <input
+                    type="text"
+                    value={firstPersonName}
+                    onChange={(e) => setFirstPersonName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Your name"
+                  />
                 </div>
 
-                {showAdvancedOptions && (
-                  <div className="mb-4">
-                    <PreprocessingStrategySelector
-                      value={preprocessingStrategy}
-                      onChange={setPreprocessingStrategy}
-                      enabled={preprocessingEnabled}
-                      onEnabledChange={setPreprocessingEnabled}
-                    />
-                  </div>
-                )}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Partner's Name</label>
+                  <input
+                    type="text"
+                    value={secondPersonName}
+                    onChange={(e) => setSecondPersonName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Partner's name"
+                  />
+                </div>
 
                 <div
-                  className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition-colors"
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onClick={() => fileInputRef.current?.click()}
+                  {...getRootProps()}
+                  className={`border-2 border-dashed rounded-lg p-6 mb-4 text-center cursor-pointer transition-colors ${
+                    isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-blue-400"
+                  }`}
                 >
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    multiple
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <div className="flex flex-col items-center justify-center space-y-2">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-10 w-10 text-gray-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                      />
-                    </svg>
-                    <p className="text-sm text-gray-600">Drag and drop screenshots here, or click to select files</p>
-                    <p className="text-xs text-gray-500">Supported formats: PNG, JPG, JPEG, GIF</p>
-                  </div>
+                  <input {...getInputProps()} />
+                  {isDragActive ? (
+                    <p className="text-blue-500">Drop the files here...</p>
+                  ) : (
+                    <div>
+                      <p className="mb-2">Drag and drop your screenshots here, or click to select files</p>
+                      <p className="text-sm text-gray-500">PNG, JPG, JPEG, GIF or WEBP (max 10MB)</p>
+                    </div>
+                  )}
                 </div>
 
                 {files.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-sm font-medium text-gray-700">Selected files ({files.length}):</p>
-                    <ul className="mt-2 text-sm text-gray-500 max-h-32 overflow-y-auto">
+                  <div className="mb-6">
+                    <h3 className="font-medium mb-2">Uploaded Screenshots ({files.length})</h3>
+                    <ul className="space-y-2">
                       {files.map((file, index) => (
-                        <li
-                          key={index}
-                          className={`truncate p-1 rounded cursor-pointer ${debugMode && selectedDebugFile === file ? "bg-blue-100" : ""}`}
-                          onClick={() => debugMode && handleSelectDebugFile(file)}
-                        >
-                          {file.name}
+                        <li key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                          <div className="flex items-center">
+                            <span className="text-sm truncate max-w-xs">{file.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">({(file.size / 1024).toFixed(1)} KB)</span>
+                          </div>
+                          <div className="flex space-x-2">
+                            {debugMode && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCurrentFileIndex(index)
+                                  processFileForDebug(index)
+                                }}
+                                className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
+                                disabled={isSubmitting}
+                              >
+                                Debug
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removeFile(index)}
+                              className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200"
+                              disabled={isSubmitting}
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
 
-                {error && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                    <p className="text-sm font-medium text-red-800">{error.message}</p>
-                    {error.recoverable && (
-                      <div className="mt-2 flex space-x-2">
-                        <Button type="button" variant="outline" size="sm" onClick={handleRetry}>
-                          Retry
-                        </Button>
-                        {error.action && (
-                          <Button type="button" variant="outline" size="sm" onClick={handleErrorAction}>
-                            {error.action}
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                {validationError && <div className="text-red-500 mb-4 text-sm">{validationError}</div>}
+
+                {/* Debug mode toggle */}
+                <div className="mb-4">
+                  <DebugModeToggle enabled={debugMode} onChange={setDebugMode} />
+                </div>
+
+                {/* Show advanced options when debug mode is enabled */}
+                {debugMode && (
+                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                    <h3 className="font-medium mb-3">Advanced Options</h3>
+
+                    <div className="space-y-4">
+                      <OcrMethodToggle />
+                      <PreprocessingStrategySelector />
+                    </div>
                   </div>
                 )}
 
@@ -597,6 +728,52 @@ function UploadForm() {
                   </CardContent>
                 </Card>
               )}
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
+              <p className="font-medium">Error</p>
+              <p>{error}</p>
+            </div>
+          )}
+
+          {processingStage && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-md">
+              <div className="flex items-center">
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                <span className="text-blue-700">{processingStage}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Debug data viewer */}
+          {debugData && (
+            <div className="mt-6">
+              <OCRDebugViewer debugData={debugData} fileName={files[currentFileIndex]?.name || "Unknown file"} />
+            </div>
+          )}
+
+          {/* Partial results viewer */}
+          {partialResults && (
+            <div className="mt-6">
+              <PartialResultsViewer
+                results={partialResults}
+                firstPersonName={firstPersonName}
+                secondPersonName={secondPersonName}
+              />
             </div>
           )}
         </>

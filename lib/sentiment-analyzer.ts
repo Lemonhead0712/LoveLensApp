@@ -1,10 +1,16 @@
-import type { Message, RelationshipDynamics, SentimentResult, AnalysisResults } from "./types"
+/**
+ * Sentiment Analysis Module
+ *
+ * This module provides functions for analyzing the sentiment of text messages.
+ */
+import type { Message, RelationshipDynamics, SentimentResult } from "./types"
 import type { PsychologicalProfile } from "./psychological-frameworks"
 import {
   analyzeAttachmentStyle,
   analyzeLinguisticMarkers as analyzeLinguisticMarkersBase,
   analyzeEgoStates,
 } from "./psychological-frameworks"
+import { analyzeText } from "./analyze-screenshots"
 
 // Simple word lists for sentiment analysis
 const positiveWords = [
@@ -107,185 +113,97 @@ async function analyzeSentimentText(text: string): Promise<SentimentResult> {
   }
 }
 
-// Main function to analyze conversation sentiment
-// Analyze sentiment and generate insights
-export async function analyzeSentiment(messages: Message[], personName: string): Promise<AnalysisResults> {
+/**
+ * Analyzes the sentiment of a batch of messages
+ *
+ * @param messages Array of messages to analyze
+ * @returns Messages with sentiment scores added
+ */
+export async function analyzeSentiment(messages: Message[]): Promise<Message[]> {
   try {
-    console.log(`Starting sentiment analysis for ${messages.length} messages from ${personName}`)
+    console.log(`Analyzing sentiment for ${messages.length} messages...`)
 
-    // 🚫 Remove Fallback Profiles - Check for sufficient messages
-    if (!messages || messages.length === 0) {
-      console.warn(`Insufficient messages from ${personName} for accurate analysis. Using fallback.`)
+    // Process messages in batches to avoid overwhelming the browser
+    const batchSize = 10
+    const results: Message[] = []
 
-      // Create fallback messagesWithSentiment
-      const fallbackMessagesWithSentiment = [
-        {
-          sender: personName,
-          text: "No messages available for analysis",
-          timestamp: new Date().toISOString(),
-          sentiment: 50,
-          sentimentScore: 50,
-          detectedTone: "neutral",
-        },
-      ]
+    for (let i = 0; i < messages.length; i += batchSize) {
+      const batch = messages.slice(i, i + batchSize)
 
-      // Return minimal valid result with fallback data
-      return {
-        overallScore: 50,
-        messagesWithSentiment: fallbackMessagesWithSentiment,
-        insights: [`Insufficient messages from ${personName} for accurate analysis.`],
-        recommendations: ["Provide more conversation data for better analysis."],
-        gottmanScores: {
-          criticism: 30,
-          contempt: 20,
-          defensiveness: 35,
-          stonewalling: 25,
-          emotionalBids: 50,
-          turnTowards: 50,
-          repairAttempts: 50,
-          sharedMeaning: 50,
-        },
-        relationshipDynamics: {
-          positiveToNegativeRatio: 1,
-          biddingPatterns: {
-            emotionalBids: 50,
-            turningToward: 50,
-            turningAway: 50,
-            turningAgainst: 50,
-          },
-          conflictStyle: "Unknown",
-          sharedMeaning: 50,
-          attachmentCompatibility: "Unknown",
-          communicationCompatibility: "Unknown",
-          keyStrengths: ["Insufficient data for analysis"],
-          keyGrowthAreas: ["Provide more conversation data"],
-        },
-        keyMoments: [],
-        gottmanSummary: "Insufficient data for analysis",
-        gottmanRecommendations: ["Provide more conversation data for better analysis"],
-        validationWarnings: [`Insufficient messages from ${personName} for accurate analysis.`],
-        analysisMethod: "fallback",
+      // Process each message in the batch
+      const batchResults = await Promise.all(
+        batch.map(async (message) => {
+          try {
+            // Skip empty messages
+            if (!message.text || message.text.trim() === "") {
+              return { ...message, sentiment: 0 }
+            }
+
+            // Use the analyzeText function to get sentiment
+            const analysis = analyzeText(message.text)
+
+            // Return message with sentiment added
+            return {
+              ...message,
+              sentiment: analysis.sentiment,
+              keywords: analysis.keywords,
+            }
+          } catch (error) {
+            console.warn(`Error analyzing message: ${error}`)
+            // Return original message with neutral sentiment on error
+            return { ...message, sentiment: 0 }
+          }
+        }),
+      )
+
+      results.push(...batchResults)
+
+      // Small delay to prevent UI freezing
+      if (i + batchSize < messages.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
       }
     }
 
-    // Analyze sentiment for the person's messages
-    const messagesWithSentiment = await addSentimentToMessages(messages)
-    console.log(`Generated ${messagesWithSentiment.length} messages with sentiment`)
-
-    // Generate psychological profile for the person
-    const profile = await generatePsychologicalProfileInternal(messages, personName)
-
-    // Set up the appropriate profiles based on the person's name
-    const firstPersonProfile = profile
-    const secondPersonProfile = {
-      name: "Other",
-      attachmentStyle: { primaryStyle: "Secure", secondaryStyle: "Anxious", secure: 70, anxious: 20, avoidant: 10 },
-      egoStates: { dominantState: "Adult", parent: 30, adult: 50, child: 20 },
-      linguisticPatterns: {
-        emotionalExpressiveness: 60,
-        cognitiveComplexity: 60,
-        socialEngagement: 60,
-        psychologicalDistancing: 40,
-        certaintyLevel: 60,
-        dominantEmotions: ["Joy", "Trust", "Anticipation"],
-      },
-      personalityTraits: ["Adaptive", "Balanced", "Thoughtful"],
-      communicationPreferences: ["Direct communication", "Balanced feedback", "Mutual respect"],
-    }
-
-    // Create placeholder for relationship dynamics
-    const relationshipDynamics = {
-      positiveToNegativeRatio: 3,
-      biddingPatterns: {
-        emotionalBids: 70,
-        turningToward: 60,
-        turningAway: 30,
-        turningAgainst: 10,
-      },
-      conflictStyle: "Validating",
-      sharedMeaning: 70,
-      attachmentCompatibility: "Moderately Compatible",
-      communicationCompatibility: "Complementary",
-      keyStrengths: [
-        "Healthy positive-to-negative interaction ratio",
-        "Responsive to emotional bids",
-        "Mutual respect",
-      ],
-      keyGrowthAreas: ["Deepening emotional connection", "Improving active listening"],
-    }
-
-    // Generate Gottman-based scores
-    const gottmanScores = {
-      criticism: 30,
-      contempt: 20,
-      defensiveness: 35,
-      stonewalling: 25,
-      emotionalBids: 70,
-      turnTowards: 65,
-      repairAttempts: 75,
-      sharedMeaning: 80,
-    }
-
-    // Generate insights specific to this person
-    const insights = [
-      `${personName} shows a ${profile.attachmentStyle.primaryStyle.toLowerCase()} attachment style with ${
-        profile.linguisticPatterns.emotionalExpressiveness
-      }% emotional expressiveness.`,
-      `${personName} communicates primarily from the ${profile.egoStates.dominantState} ego state with ${
-        profile.linguisticPatterns.cognitiveComplexity
-      }% cognitive complexity.`,
-      `${personName}'s dominant emotions are ${profile.linguisticPatterns.dominantEmotions.join(", ")}.`,
-      `${personName} shows ${profile.personalityTraits.join(", ")} as key personality traits.`,
-      `${personName} prefers ${profile.communicationPreferences.join(", ")} in communication.`,
-    ]
-
-    // Generate recommendations based on this person's profile
-    const recommendations = generateRecommendations(profile, secondPersonProfile, relationshipDynamics, gottmanScores)
-
-    // Generate Gottman summary and recommendations
-    const gottmanSummary = generateGottmanSummary(gottmanScores)
-    const gottmanRecommendations = generateGottmanRecommendations(gottmanScores)
-
-    // Identify key moments in the conversation
-    const keyMoments = identifyKeyMoments(messagesWithSentiment)
-
-    // Calculate overall score
-    const overallScore = calculateOverallScore(gottmanScores, relationshipDynamics)
-
-    // Generate negative insights if needed
-    const negativeInsights = generateNegativeInsights(messagesWithSentiment, gottmanScores, relationshipDynamics)
-
-    // Ensure every message is enriched with basic sentiment metadata
-    const validationWarnings: string[] = []
-    const enrichedMessagesWithSentiment = messages.map((msg) => ({
-      ...msg,
-      sentimentScore: msg.sentiment || 50 + Math.floor(Math.random() * 20) - 10,
-      detectedTone: determineTone(msg.sentiment || 50),
-    }))
-
-    console.log(`Final enriched messages count: ${enrichedMessagesWithSentiment.length}`)
-    if (enrichedMessagesWithSentiment.length > 0) {
-      console.log("Sample enriched message:", enrichedMessagesWithSentiment[0])
-    }
-
-    // Update the return statement to include messagesWithSentiment
-    return {
-      overallScore,
-      messagesWithSentiment: enrichedMessagesWithSentiment,
-      insights,
-      recommendations,
-      gottmanScores,
-      relationshipDynamics,
-      keyMoments,
-      gottmanSummary,
-      gottmanRecommendations,
-      validationWarnings: [],
-      analysisMethod: "single-person",
-    }
+    return results
   } catch (error) {
     console.error("Error in sentiment analysis:", error)
-    throw new Error(`Sentiment analysis failed: ${error instanceof Error ? error.message : String(error)}`)
+    // Return original messages with neutral sentiment on error
+    return messages.map((msg) => ({ ...msg, sentiment: 0 }))
   }
+}
+
+/**
+ * Calculates the overall sentiment score for a conversation
+ *
+ * @param messages Array of messages with sentiment scores
+ * @returns Overall sentiment score between -1 and 1
+ */
+export function calculateOverallSentiment(messages: Message[]): number {
+  if (!messages || messages.length === 0) {
+    return 0
+  }
+
+  // Filter out messages without sentiment scores
+  const validMessages = messages.filter((msg) => typeof msg.sentiment === "number")
+
+  if (validMessages.length === 0) {
+    return 0
+  }
+
+  // Calculate weighted average based on message length
+  const totalWeight = validMessages.reduce((sum, msg) => sum + Math.min(msg.text.length, 100), 0)
+
+  if (totalWeight === 0) {
+    return 0
+  }
+
+  const weightedSum = validMessages.reduce((sum, msg) => {
+    const weight = Math.min(msg.text.length, 100) / totalWeight
+    return sum + msg.sentiment * weight
+  }, 0)
+
+  // Ensure result is between -1 and 1
+  return Math.max(-1, Math.min(1, weightedSum))
 }
 
 // Helper function to determine tone from sentiment
