@@ -17,9 +17,19 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
     async function init() {
       setIsLoading(true)
       try {
-        // Check if we have an API key available
-        const result = await initializeOpenAI()
-        setApiAvailable(result)
+        // Add timeout to prevent hanging on fetch requests
+        const initPromise = initializeOpenAI()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("API initialization timed out")), 5000),
+        )
+
+        // Race between initialization and timeout
+        const result = await Promise.race([initPromise, timeoutPromise]).catch((error) => {
+          console.error("API initialization failed:", error)
+          return false
+        })
+
+        setApiAvailable(!!result)
       } catch (error) {
         console.error("Error initializing API:", error)
         setApiAvailable(false)
@@ -58,6 +68,15 @@ function ApiInitializer({ children }: { children: React.ReactNode }) {
             LoveLens uses advanced AI to analyze emotional intelligence and relationship dynamics. Please provide your
             OpenAI API key to enable the full AI-powered analysis.
           </p>
+          {!initialized ? (
+            <div className="text-amber-600 p-4 mb-4 bg-amber-50 rounded-md">
+              <p className="font-medium">Connection issue detected</p>
+              <p className="text-sm">
+                The app couldn't connect to required services. This might be due to network issues or service
+                unavailability.
+              </p>
+            </div>
+          ) : null}
           <ApiKeyForm onSuccess={() => setApiAvailable(true)} />
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">

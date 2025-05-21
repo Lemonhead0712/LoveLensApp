@@ -9,7 +9,18 @@ export async function initializeOpenAI() {
   try {
     // Try to get the API key from server actions
     const { getServerOpenAIKey } = await import("@/app/actions/api-actions")
-    const result = await getServerOpenAIKey()
+
+    // Add timeout to prevent hanging on fetch requests
+    const keyPromise = getServerOpenAIKey()
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Server key fetch timed out")), 3000),
+    )
+
+    // Race between key fetch and timeout
+    const result = await Promise.race([keyPromise, timeoutPromise]).catch((error) => {
+      console.error("Server key fetch failed:", error)
+      return { available: false, key: null }
+    })
 
     if (result.available && result.key) {
       openAIEnabled = true
@@ -19,17 +30,27 @@ export async function initializeOpenAI() {
     }
 
     // If server key is not available, check for client-side key
-    const clientKey = localStorage.getItem("openai_api_key")
+    let clientKey = null
+    try {
+      clientKey = localStorage.getItem("openai_api_key")
+    } catch (error) {
+      console.error("Error accessing localStorage:", error)
+    }
+
     if (clientKey) {
       // Validate the client key
-      const { validateApiKey } = await import("@/app/actions/api-actions")
-      const validation = await validateApiKey(clientKey)
+      try {
+        const { validateApiKey } = await import("@/app/actions/api-actions")
+        const validation = await validateApiKey(clientKey)
 
-      if (validation.valid) {
-        openAIEnabled = true
-        openAIKey = clientKey
-        console.log("OpenAI API initialized successfully from client storage")
-        return true
+        if (validation.valid) {
+          openAIEnabled = true
+          openAIKey = clientKey
+          console.log("OpenAI API initialized successfully from client storage")
+          return true
+        }
+      } catch (validationError) {
+        console.error("API key validation failed:", validationError)
       }
     }
 

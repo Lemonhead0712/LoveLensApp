@@ -9,6 +9,7 @@ import { Header } from "@/components/header"
 import { ApiInitializer } from "@/components/api-initializer"
 import { Suspense } from "react"
 import { LoadingScreen } from "@/components/loading-screen"
+import { ErrorBoundary } from "@/components/error-boundary"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -47,7 +48,9 @@ export default function RootLayout({
               <Header />
               <main className="flex-1 pt-16">
                 <ApiInitializer />
-                <Suspense fallback={<LoadingScreen />}>{children}</Suspense>
+                <ErrorBoundary>
+                  <Suspense fallback={<LoadingScreen />}>{children}</Suspense>
+                </ErrorBoundary>
               </main>
             </div>
           </GradientBackground>
