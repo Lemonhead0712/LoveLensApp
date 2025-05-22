@@ -6,7 +6,6 @@ import CompactHowItWorks from "@/components/compact-how-it-works"
 import CompactUploadSection from "@/components/compact-upload-section"
 import LoadingAnalysis from "@/components/loading-analysis"
 import CompactFooter from "@/components/compact-footer"
-import AccountBenefits from "@/components/account-benefits"
 
 export default function Home() {
   return (
@@ -20,7 +19,6 @@ export default function Home() {
           <CompactUploadSection />
         </Suspense>
       </div>
-      <AccountBenefits />
       <CompactFooter />
     </main>
   )

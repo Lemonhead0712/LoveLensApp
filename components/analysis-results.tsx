@@ -6,11 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import BarChartDisplay from "@/components/bar-chart-display"
 import GottmanQuizResults from "@/components/gottman-quiz-results"
-import { Download, Save } from "lucide-react"
-import { useAuth } from "@/contexts/auth-context"
-import { saveAnalysisResult } from "@/lib/database"
-import { useToast } from "@/components/ui/use-toast"
-import { useRouter } from "next/navigation"
+import { Download } from "lucide-react"
 
 interface AnalysisResultsProps {
   analysis: {
@@ -55,47 +51,9 @@ interface AnalysisResultsProps {
   onExport?: () => void
 }
 
+// Changed from named export to default export
 export default function AnalysisResults({ analysis, onExport }: AnalysisResultsProps) {
   const [activeTab, setActiveTab] = useState("analysis")
-  const [isSaving, setIsSaving] = useState(false)
-  const { user } = useAuth()
-  const { toast } = useToast()
-  const router = useRouter()
-
-  const handleSave = async () => {
-    if (!user) {
-      toast({
-        title: "Login required",
-        description: "Please login to save your analysis results",
-        variant: "destructive",
-      })
-      router.push("/login")
-      return
-    }
-
-    setIsSaving(true)
-    try {
-      const title = `Relationship Analysis - ${new Date().toLocaleDateString()}`
-      const result = await saveAnalysisResult(user.id, title, analysis)
-
-      if (result) {
-        toast({
-          title: "Analysis saved",
-          description: "Your analysis has been saved successfully",
-        })
-      } else {
-        throw new Error("Failed to save analysis")
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save your analysis. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSaving(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -105,20 +63,12 @@ export default function AnalysisResults({ analysis, onExport }: AnalysisResultsP
             <h2 className="text-2xl font-bold text-purple-900 mb-4">Analysis Results</h2>
             <p className="text-gray-700">{analysis.summary}</p>
           </div>
-          <div className="flex gap-2">
-            {user && (
-              <Button onClick={handleSave} variant="outline" className="flex items-center gap-2" disabled={isSaving}>
-                <Save size={16} />
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            )}
-            {onExport && (
-              <Button onClick={onExport} variant="outline" className="flex items-center gap-2">
-                <Download size={16} />
-                Export
-              </Button>
-            )}
-          </div>
+          {onExport && (
+            <Button onClick={onExport} variant="outline" className="flex items-center gap-2">
+              <Download size={16} />
+              Export
+            </Button>
+          )}
         </div>
       </Card>
 
