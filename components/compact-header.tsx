@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Menu, X } from "lucide-react"
+import { Menu, X, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -46,6 +46,16 @@ export default function CompactHeader() {
               {link.name}
             </Link>
           ))}
+          <Link href="/login">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1 border-purple-200 text-purple-700 hover:bg-purple-50"
+            >
+              <LogIn className="h-4 w-4" />
+              <span>Login</span>
+            </Button>
+          </Link>
           <Button
             className="bg-purple-600 hover:bg-purple-700 text-white"
             onClick={() => {
@@ -81,6 +91,14 @@ export default function CompactHeader() {
               {link.name}
             </Link>
           ))}
+          <Link
+            href="/login"
+            className="flex items-center gap-2 text-purple-600 py-2"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <LogIn className="h-4 w-4" />
+            <span>Login</span>
+          </Link>
           <Button
             className="bg-purple-600 hover:bg-purple-700 text-white w-full"
             onClick={() => {
