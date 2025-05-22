@@ -1,11 +1,8 @@
-import CompactPageLayout from "@/components/compact-page-layout"
+import AboutPageClient from "@/components/about-page-client"
 
 export default function AboutPage() {
   return (
-    <CompactPageLayout
-      title="About Love Lens"
-      description="Learn about our mission, vision, and the team behind Love Lens"
-    >
+    <AboutPageClient>
       <section className="mb-6">
         <h2 className="text-xl font-bold mb-3">Our Mission</h2>
         <p className="mb-3">
@@ -59,6 +56,6 @@ export default function AboutPage() {
           with experts in relationship psychology to refine our analysis and recommendations.
         </p>
       </section>
-    </CompactPageLayout>
+    </AboutPageClient>
   )
 }
