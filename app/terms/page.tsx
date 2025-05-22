@@ -1,171 +1,82 @@
-import PageLayout from "@/components/page-layout"
+import { Suspense } from "react"
+import CompactHeader from "@/components/compact-header"
+import CompactFooter from "@/components/compact-footer"
+import { Card } from "@/components/ui/card"
 
 export default function TermsPage() {
   return (
-    <PageLayout title="Terms of Service" description="Rules and guidelines for using Love Lens">
-      <section className="mb-8">
-        <p className="mb-4">
-          <strong>Last Updated:</strong> May 21, 2025
-        </p>
-        <p className="mb-4">
-          Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the Love Lens website
-          and application (the "Service") operated by Love Lens ("us", "we", or "our").
-        </p>
-        <p className="mb-4">
-          Your access to and use of the Service is conditioned on your acceptance of and compliance with these Terms.
-          These Terms apply to all visitors, users, and others who access or use the Service.
-        </p>
-        <p>
-          By accessing or using the Service, you agree to be bound by these Terms. If you disagree with any part of the
-          terms, then you may not access the Service.
-        </p>
-      </section>
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-rose-50 to-white">
+      <Suspense fallback={<div className="h-16 bg-white border-b border-gray-200"></div>}>
+        <CompactHeader />
+      </Suspense>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Use of Service</h2>
-        <h3 className="text-xl font-semibold mb-2">Eligibility</h3>
-        <p className="mb-4">
-          You must be at least 18 years old to use this Service. By using this Service, you represent and warrant that
-          you are at least 18 years of age and have the legal capacity to enter into these Terms.
-        </p>
+      <main className="flex-grow">
+        <div className="container mx-auto px-4 py-6">
+          <div className="mb-6 text-center">
+            <h1 className="mb-2 text-2xl md:text-3xl font-bold text-gray-900">Terms of Service</h1>
+            <p className="mx-auto max-w-2xl text-gray-600 text-sm md:text-base">
+              Please read these terms carefully before using Love Lens
+            </p>
+          </div>
 
-        <h3 className="text-xl font-semibold mb-2">User Accounts</h3>
-        <p className="mb-4">
-          When you create an account with us, you must provide information that is accurate, complete, and current at
-          all times. Failure to do so constitutes a breach of the Terms, which may result in immediate termination of
-          your account on our Service.
-        </p>
-        <p className="mb-4">
-          You are responsible for safeguarding the password that you use to access the Service and for any activities or
-          actions under your password. You agree not to disclose your password to any third party. You must notify us
-          immediately upon becoming aware of any breach of security or unauthorized use of your account.
-        </p>
+          <Card className="mb-8 border-gray-200 p-4 md:p-6 shadow-md">
+            <div className="prose prose-sm md:prose-base prose-rose max-w-none">
+              <section className="mb-6">
+                <h2 className="text-xl font-bold mb-3">Acceptance of Terms</h2>
+                <p className="mb-3">
+                  By accessing and using Love Lens, you accept and agree to be bound by the terms and provision of this
+                  agreement.
+                </p>
+              </section>
 
-        <h3 className="text-xl font-semibold mb-2">Acceptable Use</h3>
-        <p className="mb-4">You agree not to use the Service:</p>
-        <ul className="list-disc pl-6 mb-4">
-          <li>In any way that violates any applicable national or international law or regulation</li>
-          <li>To upload or analyze conversations without the consent of all parties involved</li>
-          <li>To harass, abuse, or harm another person</li>
-          <li>
-            To impersonate any person or entity or falsely state or misrepresent your affiliation with a person or
-            entity
-          </li>
-          <li>To engage in any other conduct that restricts or inhibits anyone's use or enjoyment of the Service</li>
-        </ul>
-      </section>
+              <section className="mb-6">
+                <h2 className="text-xl font-bold mb-3">Use License</h2>
+                <p className="mb-3">
+                  Permission is granted to temporarily use Love Lens for personal, non-commercial transitory viewing
+                  only. This is the grant of a license, not a transfer of title, and under this license you may not:
+                </p>
+                <ul className="list-disc pl-6 mb-3">
+                  <li>modify or copy the materials</li>
+                  <li>use the materials for any commercial purpose or for any public display</li>
+                  <li>attempt to reverse engineer any software contained in Love Lens</li>
+                  <li>remove any copyright or other proprietary notations from the materials</li>
+                </ul>
+              </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Content</h2>
-        <p className="mb-4">
-          Our Service allows you to upload, analyze, and view the results of conversation analysis. You are responsible
-          for ensuring you have the right to upload and analyze any content, including obtaining consent from all
-          parties involved in the conversations.
-        </p>
-        <p className="mb-4">
-          You retain all rights to your content. By uploading content to our Service, you grant us a limited license to
-          use, process, and analyze your content solely for the purpose of providing the Service to you.
-        </p>
-        <p>
-          We do not claim ownership of your content, and we will not use your content for any purpose other than
-          providing and improving the Service.
-        </p>
-      </section>
+              <section className="mb-6">
+                <h2 className="text-xl font-bold mb-3">Disclaimer</h2>
+                <p className="mb-3">
+                  Love Lens is provided as an educational and informational tool. The insights and analysis provided
+                  should not be considered as professional relationship counseling or therapy. Always consult with
+                  qualified professionals for serious relationship issues.
+                </p>
+              </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Intellectual Property</h2>
-        <p className="mb-4">
-          The Service and its original content (excluding content provided by users), features, and functionality are
-          and will remain the exclusive property of Love Lens and its licensors. The Service is protected by copyright,
-          trademark, and other laws of both the United States and foreign countries.
-        </p>
-        <p>
-          Our trademarks and trade dress may not be used in connection with any product or service without the prior
-          written consent of Love Lens.
-        </p>
-      </section>
+              <section className="mb-6">
+                <h2 className="text-xl font-bold mb-3">Limitations</h2>
+                <p className="mb-3">
+                  In no event shall Love Lens or its suppliers be liable for any damages (including, without limitation,
+                  damages for loss of data or profit, or due to business interruption) arising out of the use or
+                  inability to use Love Lens, even if Love Lens or a Love Lens authorized representative has been
+                  notified orally or in writing of the possibility of such damage.
+                </p>
+              </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Disclaimer</h2>
-        <p className="mb-4">
-          Love Lens is not a substitute for professional relationship counseling or therapy. The analysis and insights
-          provided by our Service are for informational purposes only and should not be considered professional advice.
-        </p>
-        <p className="mb-4">
-          Your use of the Service is at your sole risk. The Service is provided on an "AS IS" and "AS AVAILABLE" basis.
-          The Service is provided without warranties of any kind, whether express or implied, including, but not limited
-          to, implied warranties of merchantability, fitness for a particular purpose, non-infringement, or course of
-          performance.
-        </p>
-      </section>
+              <section>
+                <h2 className="text-xl font-bold mb-3">Revisions</h2>
+                <p>
+                  Love Lens may revise these terms of service at any time without notice. By using this application, you
+                  are agreeing to be bound by the then current version of these terms of service.
+                </p>
+              </section>
+            </div>
+          </Card>
+        </div>
+      </main>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Limitation of Liability</h2>
-        <p className="mb-4">
-          In no event shall Love Lens, nor its directors, employees, partners, agents, suppliers, or affiliates, be
-          liable for any indirect, incidental, special, consequential, or punitive damages, including without
-          limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from:
-        </p>
-        <ul className="list-disc pl-6 mb-4">
-          <li>Your access to or use of or inability to access or use the Service</li>
-          <li>Any conduct or content of any third party on the Service</li>
-          <li>Any content obtained from the Service</li>
-          <li>Unauthorized access, use, or alteration of your transmissions or content</li>
-        </ul>
-        <p>
-          Whether based on warranty, contract, tort (including negligence), or any other legal theory, whether or not we
-          have been informed of the possibility of such damage, and even if a remedy set forth herein is found to have
-          failed of its essential purpose.
-        </p>
-      </section>
-
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Termination</h2>
-        <p className="mb-4">
-          We may terminate or suspend your account immediately, without prior notice or liability, for any reason
-          whatsoever, including without limitation if you breach the Terms.
-        </p>
-        <p className="mb-4">
-          Upon termination, your right to use the Service will immediately cease. If you wish to terminate your account,
-          you may simply discontinue using the Service or contact us to request account deletion.
-        </p>
-      </section>
-
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Governing Law</h2>
-        <p className="mb-4">
-          These Terms shall be governed and construed in accordance with the laws of the United States, without regard
-          to its conflict of law provisions.
-        </p>
-        <p>
-          Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights.
-          If any provision of these Terms is held to be invalid or unenforceable by a court, the remaining provisions of
-          these Terms will remain in effect.
-        </p>
-      </section>
-
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4">Changes to Terms</h2>
-        <p className="mb-4">
-          We reserve the right, at our sole discretion, to modify or replace these Terms at any time. If a revision is
-          material, we will try to provide at least 30 days' notice prior to any new terms taking effect.
-        </p>
-        <p>
-          By continuing to access or use our Service after those revisions become effective, you agree to be bound by
-          the revised terms. If you do not agree to the new terms, please stop using the Service.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="text-2xl font-bold mb-4">Contact Us</h2>
-        <p>
-          If you have any questions about these Terms, please contact us at{" "}
-          <a href="mailto:Tvnewsome@hotmail.com" className="text-rose-600 hover:underline">
-            Tvnewsome@hotmail.com
-          </a>
-          .
-        </p>
-      </section>
-    </PageLayout>
+      <Suspense fallback={<div className="h-16 bg-gray-100"></div>}>
+        <CompactFooter />
+      </Suspense>
+    </div>
   )
 }
