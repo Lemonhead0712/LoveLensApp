@@ -83,64 +83,66 @@ export default function GottmanQuizResults({
       </Card>
 
       <Accordion type="single" collapsible className="w-full">
-        {principles.map((principle) => (
-          <AccordionItem key={principle.id} value={principle.id}>
-            <AccordionTrigger className="text-base font-medium py-2">{principle.title}</AccordionTrigger>
-            <AccordionContent>
-              <div className="text-sm text-gray-700 mb-2">{principle.description}</div>
+        {principles.map((principle) => {
+          return (
+            <AccordionItem key={principle.id} value={principle.id}>
+              <AccordionTrigger className="text-base font-medium py-2">{principle.title}</AccordionTrigger>
+              <AccordionContent>
+                <div className="text-sm text-gray-700 mb-2">{principle.description}</div>
 
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs font-medium text-gray-700">Subject A</span>
+                      <span className="text-xs font-medium text-gray-700">{principle.subjectAScore}/10</span>
+                    </div>
+                    <Progress
+                      value={principle.subjectAScore * 10}
+                      className="h-1.5 bg-gray-200"
+                      indicatorClassName="bg-rose-600"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs font-medium text-gray-700">Subject B</span>
+                      <span className="text-xs font-medium text-gray-700">{principle.subjectBScore}/10</span>
+                    </div>
+                    <Progress
+                      value={principle.subjectBScore * 10}
+                      className="h-1.5 bg-gray-200"
+                      indicatorClassName="bg-blue-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-medium text-gray-700">Subject A</span>
-                    <span className="text-xs font-medium text-gray-700">{principle.subjectAScore}/10</span>
+                    <span className="text-xs font-medium text-gray-700">Combined Score</span>
+                    <span className="text-xs font-medium text-gray-700">{principle.combined}/10</span>
                   </div>
                   <Progress
-                    value={principle.subjectAScore * 10}
+                    value={principle.combined * 10}
                     className="h-1.5 bg-gray-200"
-                    indicatorClassName="bg-rose-600"
+                    indicatorClassName="bg-purple-600"
                   />
                 </div>
 
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-medium text-gray-700">Subject B</span>
-                    <span className="text-xs font-medium text-gray-700">{principle.subjectBScore}/10</span>
-                  </div>
-                  <Progress
-                    value={principle.subjectBScore * 10}
-                    className="h-1.5 bg-gray-200"
-                    indicatorClassName="bg-blue-600"
-                  />
+                <div className="bg-gray-50 p-3 rounded-md text-xs">
+                  <p className="text-gray-700 mb-2">{principle.interpretation}</p>
+                  <h5 className="font-medium text-gray-900 mb-1">Recommendations:</h5>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {principle.recommendations.map((recommendation, idx) => (
+                      <li key={idx} className="text-gray-700">
+                        {recommendation}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-
-              <div className="mb-3">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-medium text-gray-700">Combined Score</span>
-                  <span className="text-xs font-medium text-gray-700">{principle.combined}/10</span>
-                </div>
-                <Progress
-                  value={principle.combined * 10}
-                  className="h-1.5 bg-gray-200"
-                  indicatorClassName="bg-purple-600"
-                />
-              </div>
-
-              <div className="bg-gray-50 p-3 rounded-md text-xs">
-                <p className="text-gray-700 mb-2">{principle.interpretation}</p>
-                <h5 className="font-medium text-gray-900 mb-1">Recommendations:</h5>
-                <ul className="list-disc pl-5 space-y-1">
-                  {principle.recommendations.map((recommendation, idx) => (
-                    <li key={idx} className="text-gray-700">
-                      {recommendation}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
+              </AccordionContent>
+            </AccordionItem>
+          )
+        })}
       </Accordion>
     </div>
   )

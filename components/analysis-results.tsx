@@ -1,120 +1,184 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import SectionDisplay from "./section-display"
-import BarChartDisplay from "./bar-chart-display"
-import GottmanQuizResults from "./gottman-quiz-results"
-import { exportToWord } from "@/app/actions"
+import { Button } from "@/components/ui/button"
+import BarChartDisplay from "@/components/bar-chart-display"
+import GottmanQuizResults from "@/components/gottman-quiz-results"
 import { Download } from "lucide-react"
 
 interface AnalysisResultsProps {
-  results: {
-    communicationStyles: string
-    recurringPatterns: string
-    reflectiveFrameworks: string
-    gettingInTheWay: string
-    constructiveFeedback: string
-    outlook: string
-    optionalAppendix: string
-    emotionalCharacteristics: any[]
-    conflictStyles: any[]
-    loveLanguages: any[]
-    gottmanQuiz: {
+  analysis: {
+    summary: string
+    keyInsights: string[]
+    emotionalPatterns: {
+      subject: string
+      emotions: {
+        emotion: string
+        percentage: number
+      }[]
+    }[]
+    communicationStyle: {
+      subject: string
+      styles: {
+        style: string
+        percentage: number
+      }[]
+    }[]
+    recommendations: string[]
+    gottmanQuiz?: {
       summary: string
       strengths: string[]
       improvements: string[]
-      principles: any[]
-      radarData: any[]
+      principles: {
+        id: string
+        title: string
+        description: string
+        subjectAScore: number
+        subjectBScore: number
+        combined: number
+        interpretation: string
+        recommendations: string[]
+      }[]
+      radarData: {
+        principle: string
+        "Subject A": number
+        "Subject B": number
+      }[]
     }
   }
+  onExport?: () => void
 }
 
-export default function AnalysisResults({ results }: AnalysisResultsProps) {
-  const [isExporting, setIsExporting] = useState(false)
-
-  const handleExport = async () => {
-    setIsExporting(true)
-    try {
-      await exportToWord(results)
-    } catch (error) {
-      console.error("Error exporting to Word:", error)
-    } finally {
-      setIsExporting(false)
-    }
-  }
+// Changed from named export to default export
+export default function AnalysisResults({ analysis, onExport }: AnalysisResultsProps) {
+  const [activeTab, setActiveTab] = useState("analysis")
 
   return (
     <div className="space-y-6">
-      <Card className="border-gray-200 p-6 shadow-md">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-          <h2 className="text-2xl font-bold text-rose-600">Analysis Results</h2>
-          <Button onClick={handleExport} disabled={isExporting} className="bg-rose-600 hover:bg-rose-700">
-            <Download className="mr-2 h-4 w-4" />
-            {isExporting ? "Exporting..." : "Export as Word Doc"}
-          </Button>
+      <Card className="p-6 border-purple-200 bg-purple-50">
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-2xl font-bold text-purple-900 mb-4">Analysis Results</h2>
+            <p className="text-gray-700">{analysis.summary}</p>
+          </div>
+          {onExport && (
+            <Button onClick={onExport} variant="outline" className="flex items-center gap-2">
+              <Download size={16} />
+              Export
+            </Button>
+          )}
         </div>
+      </Card>
 
-        <Card className="mb-6 p-4 bg-rose-50 border-rose-200">
-          <p className="text-gray-700">
-            <strong>Note to Reader:</strong> This is a third-party relationship reflection based on real conversations.
-            The goal? Clarity. All emotional tones are preserved as they were sent. We're not assigning blame—just
-            holding up a mirror to the emotional patterns at play.
-          </p>
-        </Card>
+      <Card className="p-6">
+        <h3 className="text-xl font-semibold mb-4 text-gray-800">Key Insights</h3>
+        <ul className="list-disc pl-5 space-y-2">
+          {analysis.keyInsights.map((insight, index) => (
+            <li key={index} className="text-gray-700">
+              {insight}
+            </li>
+          ))}
+        </ul>
+      </Card>
 
-        <Tabs defaultValue="analysis" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="analysis">Written Analysis</TabsTrigger>
-            <TabsTrigger value="charts">Visual Insights</TabsTrigger>
-            <TabsTrigger value="gottman">Gottman Quiz</TabsTrigger>
-          </TabsList>
+      <Tabs defaultValue="analysis" className="w-full" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsTrigger value="analysis">Written Analysis</TabsTrigger>
+          <TabsTrigger value="charts">Visual Insights</TabsTrigger>
+          {analysis.gottmanQuiz && <TabsTrigger value="gottman">Gottman Quiz</TabsTrigger>}
+        </TabsList>
 
-          <TabsContent value="analysis" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <SectionDisplay title="💬 Communication Styles & Emotional Tone" content={results.communicationStyles} />
-              <SectionDisplay title="🔁 Recurring Patterns Identified" content={results.recurringPatterns} />
-            </div>
+        <TabsContent value="analysis" className="space-y-6">
+          <Card className="p-6">
+            <h3 className="text-xl font-semibold mb-4 text-gray-800">Emotional Patterns</h3>
+            {analysis.emotionalPatterns.map((subject, index) => (
+              <div key={index} className="mb-6 last:mb-0">
+                <h4 className="font-medium text-lg mb-2 text-gray-700">{subject.subject}</h4>
+                <ul className="list-disc pl-5 space-y-1">
+                  {subject.emotions.map((emotion, idx) => (
+                    <li key={idx} className="text-gray-600">
+                      {emotion.emotion}: {emotion.percentage}%
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </Card>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <SectionDisplay title="🧠 Reflective Frameworks" content={results.reflectiveFrameworks} />
-              <SectionDisplay title="🚧 What's Getting in the Way" content={results.gettingInTheWay} />
-            </div>
+          <Card className="p-6">
+            <h3 className="text-xl font-semibold mb-4 text-gray-800">Communication Styles</h3>
+            {analysis.communicationStyle.map((subject, index) => (
+              <div key={index} className="mb-6 last:mb-0">
+                <h4 className="font-medium text-lg mb-2 text-gray-700">{subject.subject}</h4>
+                <ul className="list-disc pl-5 space-y-1">
+                  {subject.styles.map((style, idx) => (
+                    <li key={idx} className="text-gray-600">
+                      {style.style}: {style.percentage}%
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </Card>
 
-            <SectionDisplay title="🌱 Constructive Feedback" content={results.constructiveFeedback} />
+          <Card className="p-6">
+            <h3 className="text-xl font-semibold mb-4 text-gray-800">Recommendations</h3>
+            <ul className="list-disc pl-5 space-y-2">
+              {analysis.recommendations.map((recommendation, index) => (
+                <li key={index} className="text-gray-700">
+                  {recommendation}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </TabsContent>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <SectionDisplay title="🔮 Outlook" content={results.outlook} />
-              <SectionDisplay title="📎 Optional Appendix" content={results.optionalAppendix} />
-            </div>
-          </TabsContent>
+        <TabsContent value="charts">
+          <div className="space-y-6">
+            {analysis.emotionalPatterns.map((subject, index) => (
+              <Card key={index} className="p-6">
+                <h3 className="text-xl font-semibold mb-4 text-gray-800">{subject.subject} - Emotional Patterns</h3>
+                <BarChartDisplay
+                  data={subject.emotions.map((e) => ({
+                    category: e.emotion,
+                    "Subject A": e.percentage,
+                    "Subject B": 0,
+                  }))}
+                  title={`${subject.subject} - Emotional Patterns`}
+                />
+              </Card>
+            ))}
 
-          <TabsContent value="charts" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-1">
-              <BarChartDisplay
-                data={results.emotionalCharacteristics}
-                title="Emotional Communication Characteristics"
-              />
+            {analysis.communicationStyle.map((subject, index) => (
+              <Card key={index} className="p-6">
+                <h3 className="text-xl font-semibold mb-4 text-gray-800">{subject.subject} - Communication Styles</h3>
+                <BarChartDisplay
+                  data={subject.styles.map((s) => ({
+                    category: s.style,
+                    "Subject A": s.percentage,
+                    "Subject B": 0,
+                  }))}
+                  title={`${subject.subject} - Communication Styles`}
+                />
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
 
-              <BarChartDisplay data={results.conflictStyles} title="Conflict Expression Styles" />
-
-              <BarChartDisplay data={results.loveLanguages} title="Love Language Alignment" />
-            </div>
-          </TabsContent>
-
+        {analysis.gottmanQuiz && (
           <TabsContent value="gottman">
             <GottmanQuizResults
-              summary={results.gottmanQuiz.summary}
-              strengths={results.gottmanQuiz.strengths}
-              improvements={results.gottmanQuiz.improvements}
-              principles={results.gottmanQuiz.principles}
-              radarData={results.gottmanQuiz.radarData}
+              summary={analysis.gottmanQuiz.summary}
+              strengths={analysis.gottmanQuiz.strengths}
+              improvements={analysis.gottmanQuiz.improvements}
+              principles={analysis.gottmanQuiz.principles}
+              radarData={analysis.gottmanQuiz.radarData}
             />
           </TabsContent>
-        </Tabs>
-      </Card>
+        )}
+      </Tabs>
     </div>
   )
 }
