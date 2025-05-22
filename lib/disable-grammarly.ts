@@ -1,27 +1,42 @@
-"use client"
-
-import React from "react"
+/**
+ * Utility functions to disable Grammarly on specific elements
+ */
 
 /**
- * Utility to disable Grammarly on specific elements
+ * Disables Grammarly on a specific DOM element
  */
-export function disableGrammarly(element: HTMLElement | null) {
+export function disableGrammarlyOnElement(element: HTMLElement): void {
   if (!element) return
 
-  // Add attributes to disable Grammarly
   element.setAttribute("data-gramm", "false")
   element.setAttribute("data-gramm_editor", "false")
   element.setAttribute("data-enable-grammarly", "false")
-
-  // Add inline style to prevent Grammarly icons
-  element.style.setProperty("--grammarly-shadow-root", "none")
 }
 
 /**
- * React hook to disable Grammarly on a ref
+ * Disables Grammarly on all elements matching a selector
  */
-export function useDisableGrammarly(ref: React.RefObject<HTMLElement>) {
-  React.useEffect(() => {
-    disableGrammarly(ref.current)
-  }, [ref])
+export function disableGrammarlyOnSelector(selector: string): void {
+  if (typeof document === "undefined") return
+
+  const elements = document.querySelectorAll(selector)
+  elements.forEach((element) => {
+    if (element instanceof HTMLElement) {
+      disableGrammarlyOnElement(element)
+    }
+  })
+}
+
+/**
+ * Disables Grammarly on Monaco Editor instances
+ * Call this after Monaco Editor is mounted
+ */
+export function disableGrammarlyOnMonaco(): void {
+  if (typeof document === "undefined") return
+
+  // Target Monaco Editor's textarea elements
+  disableGrammarlyOnSelector(".monaco-editor textarea")
+
+  // Target Monaco Editor's content editable divs
+  disableGrammarlyOnSelector('.monaco-editor [contenteditable="true"]')
 }

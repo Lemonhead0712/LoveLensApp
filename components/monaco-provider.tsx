@@ -8,23 +8,23 @@ interface MonacoProviderProps {
 
 export function MonacoProvider({ children }: MonacoProviderProps) {
   useEffect(() => {
-    // Ensure MonacoEnvironment is configured
+    // Fallback configuration if the global one isn't set
     if (typeof window !== "undefined" && !window.MonacoEnvironment) {
       window.MonacoEnvironment = {
-        getWorkerUrl: (moduleId, label) => {
+        getWorkerUrl: (_moduleId: string, label: string) => {
           if (label === "json") {
-            return "./json.worker.bundle.js"
+            return "/monaco-editor/json.worker.js"
           }
           if (label === "css" || label === "scss" || label === "less") {
-            return "./css.worker.bundle.js"
+            return "/monaco-editor/css.worker.js"
           }
           if (label === "html" || label === "handlebars" || label === "razor") {
-            return "./html.worker.bundle.js"
+            return "/monaco-editor/html.worker.js"
           }
           if (label === "typescript" || label === "javascript") {
-            return "./ts.worker.bundle.js"
+            return "/monaco-editor/ts.worker.js"
           }
-          return "./editor.worker.bundle.js"
+          return "/monaco-editor/editor.worker.js"
         },
       }
     }

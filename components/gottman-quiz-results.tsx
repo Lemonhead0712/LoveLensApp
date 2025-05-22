@@ -83,7 +83,7 @@ export default function GottmanQuizResults({
       </Card>
 
       <Accordion type="single" collapsible className="w-full">
-        {principles.map((principle, index) => (
+        {principles.map((principle) => (
           <AccordionItem key={principle.id} value={principle.id}>
             <AccordionTrigger className="text-base font-medium py-2">{principle.title}</AccordionTrigger>
             <AccordionContent>
