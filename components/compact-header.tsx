@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Menu, X, LogIn } from "lucide-react"
+import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import Image from "next/image"
@@ -55,12 +55,6 @@ export default function CompactHeader() {
           >
             Analyze Now
           </Button>
-          <Button variant="outline" size="sm" asChild className="ml-2">
-            <Link href="/login">
-              <LogIn className="h-4 w-4 mr-2" />
-              Login
-            </Link>
-          </Button>
         </nav>
 
         {/* Mobile menu button */}
@@ -96,12 +90,6 @@ export default function CompactHeader() {
             }}
           >
             Analyze Now
-          </Button>
-          <Button variant="outline" size="sm" asChild className="w-full mt-2">
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-              <LogIn className="h-4 w-4 mr-2" />
-              Login
-            </Link>
           </Button>
         </nav>
       </div>

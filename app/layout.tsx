@@ -1,13 +1,15 @@
 import type React from "react"
+import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import "./globals.css"
+import { ThemeProvider } from "@/components/theme-provider"
+import EnhancedScrollToTop from "@/components/enhanced-scroll-to-top"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Love Lens - AI-Powered Relationship Analysis",
-  description: "Analyze your relationship conversations with AI to gain insights and improve communication",
+  title: "Love Lens - Relationship Insight",
+  description: "Analyze relationship conversations for emotional patterns and insights",
     generator: 'v0.dev'
 }
 
@@ -18,7 +20,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          <EnhancedScrollToTop />
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   )
 }
