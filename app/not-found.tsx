@@ -6,10 +6,12 @@ import { Home, Search } from "lucide-react"
 import CompactHeader from "@/components/compact-header"
 import CompactFooter from "@/components/compact-footer"
 
-function NotFoundContent() {
+export default function NotFound() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 to-white">
-      <CompactHeader />
+      <Suspense fallback={<div>Loading...</div>}>
+        <CompactHeader />
+      </Suspense>
       <main className="flex-grow flex items-center justify-center p-4">
         <Card className="max-w-md w-full p-8 text-center border-purple-200">
           <div className="mb-6">
@@ -26,15 +28,9 @@ function NotFoundContent() {
           </Link>
         </Card>
       </main>
-      <CompactFooter />
+      <Suspense fallback={<div>Loading...</div>}>
+        <CompactFooter />
+      </Suspense>
     </div>
-  )
-}
-
-export default function NotFound() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <NotFoundContent />
-    </Suspense>
   )
 }
