@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -5,7 +6,7 @@ import { Home, Search } from "lucide-react"
 import CompactHeader from "@/components/compact-header"
 import CompactFooter from "@/components/compact-footer"
 
-export default function NotFound() {
+function NotFoundContent() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 to-white">
       <CompactHeader />
@@ -27,5 +28,13 @@ export default function NotFound() {
       </main>
       <CompactFooter />
     </div>
+  )
+}
+
+export default function NotFound() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <NotFoundContent />
+    </Suspense>
   )
 }
