@@ -34,8 +34,6 @@ export default function ContactForm() {
     setError(null)
 
     try {
-      // In a real implementation, this would send the form data to a server
-      // For demo purposes, we'll simulate a successful submission
       await new Promise((resolve) => setTimeout(resolve, 1500))
       setIsSubmitted(true)
     } catch (err) {
@@ -63,6 +61,7 @@ export default function ContactForm() {
               message: "",
             })
           }}
+          className="border-green-600 text-green-600 hover:bg-green-50"
         >
           Send Another Message
         </Button>
@@ -71,8 +70,8 @@ export default function ContactForm() {
   }
 
   return (
-    <Card className="border-gray-200 p-6 shadow-md">
-      <h2 className="text-2xl font-bold mb-6">Send Us a Message</h2>
+    <Card className="border-purple-200 p-6 shadow-md">
+      <h2 className="text-2xl font-bold mb-6 text-purple-700">Send Us a Message</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="name">Name</Label>
@@ -118,7 +117,7 @@ export default function ContactForm() {
 
         {error && <p className="text-red-600 text-sm">{error}</p>}
 
-        <Button type="submit" className="bg-rose-600 hover:bg-rose-700 text-white w-full" disabled={isSubmitting}>
+        <Button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white w-full" disabled={isSubmitting}>
           {isSubmitting ? "Sending..." : "Send Message"}
         </Button>
       </form>

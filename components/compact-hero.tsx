@@ -1,6 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { scrollToSection } from "@/lib/scroll-utils"
 import Image from "next/image"
 
 export default function CompactHero() {
@@ -16,6 +17,7 @@ export default function CompactHero() {
                 width={80}
                 height={80}
                 className="object-contain"
+                priority
               />
             </div>
           </div>
@@ -28,20 +30,14 @@ export default function CompactHero() {
           <div className="flex flex-col sm:flex-row justify-center space-y-3 sm:space-y-0 sm:space-x-4">
             <Button
               className="bg-purple-600 hover:bg-purple-700 text-white"
-              onClick={() => {
-                const uploadSection = document.getElementById("upload-section")
-                uploadSection?.scrollIntoView({ behavior: "smooth" })
-              }}
+              onClick={() => scrollToSection("upload-section")}
             >
               Analyze Your Conversation
             </Button>
             <Button
               variant="outline"
-              className="border-purple-200 text-purple-600 hover:bg-purple-50"
-              onClick={() => {
-                const howItWorks = document.getElementById("how-it-works")
-                howItWorks?.scrollIntoView({ behavior: "smooth" })
-              }}
+              className="border-purple-200 text-purple-600 hover:bg-purple-50 bg-transparent"
+              onClick={() => scrollToSection("how-it-works")}
             >
               How It Works
             </Button>

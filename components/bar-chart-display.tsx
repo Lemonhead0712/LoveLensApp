@@ -14,8 +14,8 @@ interface BarChartDisplayProps {
 
 export default function BarChartDisplay({ data, title }: BarChartDisplayProps) {
   return (
-    <Card className="border-gray-200 p-6 shadow-md">
-      <h3 className="mb-6 text-xl font-semibold text-rose-600">{title}</h3>
+    <Card className="border-purple-200 p-6 shadow-md">
+      <h3 className="mb-6 text-xl font-semibold text-purple-700">{title}</h3>
       <div className="h-96 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -33,8 +33,8 @@ export default function BarChartDisplay({ data, title }: BarChartDisplayProps) {
             <YAxis dataKey="category" type="category" tick={{ fontSize: 12 }} width={140} />
             <Tooltip />
             <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: 10 }} />
-            <Bar dataKey="Subject A" fill="#f43f5e" barSize={20} />
-            <Bar dataKey="Subject B" fill="#3b82f6" barSize={20} />
+            <Bar dataKey="Subject A" fill="#9333ea" barSize={20} />
+            <Bar dataKey="Subject B" fill="#ec4899" barSize={20} />
           </BarChart>
         </ResponsiveContainer>
       </div>

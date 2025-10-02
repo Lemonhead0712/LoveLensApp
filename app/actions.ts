@@ -1,278 +1,437 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
 import { generateText } from "ai"
 import { openai } from "@ai-sdk/openai"
+import { Buffer } from "buffer"
 
-export async function analyzeConversation(formData: FormData) {
+// Helper function to convert File to base64
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = await file.arrayBuffer()
+  const buffer = Buffer.from(bytes)
+  return buffer.toString("base64")
+}
+
+// Extract text from image using GPT-4 Vision with enhanced instructions
+async function extractTextFromImage(file: File): Promise<{
+  text: string
+  speaker1Label: string
+  speaker2Label: string
+  confidence: number
+}> {
+  console.log(`Extracting text from: ${file.name}`)
+
   try {
-    // Extract files from FormData more efficiently
-    const files: File[] = []
-    const filePromises = []
+    const base64Image = await fileToBase64(file)
 
-    for (let i = 0; i < 10; i++) {
-      const file = formData.get(`file-${i}`) as File
-      if (file) {
-        files.push(file)
-        // Start processing files immediately
-        filePromises.push(processFile(file))
+    const result = await generateText({
+      model: openai("gpt-4o"),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `You are an expert OCR system specialized in extracting text from mobile messaging screenshots.
+
+IMPORTANT: This works with BOTH Android and iPhone screenshots from ANY messaging app (SMS, WhatsApp, iMessage, Messenger, etc.)
+
+INSTRUCTIONS:
+1. Extract EVERY message exactly as written
+2. Identify speakers by their position or appearance:
+   - Messages on the RIGHT (often blue, purple, or green bubbles) = "Person A" 
+   - Messages on the LEFT (often gray or white bubbles) = "Person B"
+   - If you see names, use those to distinguish speakers
+   - In group chats or if unclear, use context clues
+
+3. Format EVERY message as:
+   Person A: [exact message text]
+   Person B: [exact message text]
+
+4. Preserve the EXACT order from top to bottom
+5. Include timestamps if visible (helps with context)
+6. If a message has emojis, include them
+7. If you can't read some text, use [unclear] but extract what you can
+
+COMMON FORMATS TO RECOGNIZE:
+- iPhone iMessage: Blue (sent) and gray (received) bubbles
+- Android Messages: Purple/blue (sent) and gray (received) bubbles  
+- WhatsApp: Green (sent) and white (received) bubbles
+- Facebook Messenger: Blue bubbles with profile pictures
+- Any other messaging app format
+
+EXAMPLE OUTPUT:
+Person A: Hey! How are you?
+Person B: I'm good, thanks! How about you?
+Person A: Pretty good 😊
+Person B: That's great to hear!
+
+Now extract ALL text from this screenshot. Focus on accuracy and completeness:`,
+            },
+            {
+              type: "image",
+              image: base64Image,
+            },
+          ],
+        },
+      ],
+      maxTokens: 2000,
+      temperature: 0.1,
+    })
+
+    const extractedText = result.text || ""
+
+    console.log(`Raw extraction (first 200 chars): ${extractedText.substring(0, 200)}`)
+
+    let processedText = extractedText
+
+    const hasPersonA = processedText.includes("Person A:")
+    const hasPersonB = processedText.includes("Person B:")
+
+    if (!hasPersonA && !hasPersonB) {
+      console.log("No Person A/B labels found, attempting to reformat...")
+
+      const lines = processedText.split("\n").filter((line) => line.trim().length > 0)
+
+      if (lines.length > 0) {
+        console.log(`Found ${lines.length} lines of text, reformatting...`)
+        processedText = lines
+          .map((line, index) => {
+            line = line.replace(/^[-•*]\s*/, "").trim()
+            const speaker = index % 2 === 0 ? "Person A" : "Person B"
+            return `${speaker}: ${line}`
+          })
+          .join("\n")
       }
     }
 
-    // Wait for all file processing to complete
-    const processedTexts = await Promise.all(filePromises)
-    const extractedText = Object.fromEntries(processedTexts.map((text, i) => [`screenshot-${i + 1}`, text]))
+    let confidence = 40
+    if (processedText.length > 50) confidence = 60
+    if (processedText.length > 100) confidence = 70
+    if (processedText.includes("Person A:") && processedText.includes("Person B:")) confidence = 85
+    if (processedText.includes("Person A:") && processedText.includes("Person B:") && processedText.length > 200)
+      confidence = 90
 
-    // Prepare the prompt while files are being processed
-    const prompt = `
-      You are Love Lens — a production-grade relationship insight engine.
-      
-      Analyze the following conversation between Subject A and Subject B.
-      
-      Your analysis should reflect emotional tone, communication style, conflict patterns, 
-      validation dynamics, and attachment-style energies. Your tone must be emotionally 
-      fluent — never clinical, never diagnostic. Use warmth, clarity, and honesty.
-      
-      IMPORTANT CONSTRAINTS:
-      - Do NOT quote or paraphrase actual messages
-      - Focus only on the emotional and relational patterns
-      - Be warm, fair, emotionally literate, and grounded
-      - Provide concise, actionable insights
-      
-      For this demo, create a realistic analysis based on a hypothetical conversation 
-      between a couple with some communication challenges but also strengths.
-    `
+    console.log(`Extracted ${processedText.length} characters with ${confidence}% confidence`)
 
-    // Use a more efficient model with a lower temperature for faster response
-    const { text } = await generateText({
-      model: openai("gpt-4o"),
-      prompt,
-      temperature: 0.5, // Lower temperature for faster, more deterministic responses
-      maxTokens: 1200, // Reduced from 1500 for faster generation
-    })
-
-    // For demo purposes, we'll create a structured response
-    // In a real app, we would parse the GPT-4 response
-
-    // Sample data for charts
-    const emotionalCharacteristics = [
-      { category: "Emotional expressiveness", "Subject A": 8, "Subject B": 5 },
-      { category: "Vulnerability", "Subject A": 7, "Subject B": 4 },
-      { category: "Defensiveness", "Subject A": 6, "Subject B": 8 },
-      { category: "Trust", "Subject A": 3, "Subject B": 4 },
-      { category: "Emotional regulation", "Subject A": 4, "Subject B": 6 },
-    ]
-
-    const conflictStyles = [
-      { category: "Direct confrontation", "Subject A": 8, "Subject B": 5 },
-      { category: "Withdrawal", "Subject A": 3, "Subject B": 7 },
-      { category: "Criticism", "Subject A": 7, "Subject B": 5 },
-      { category: "Defensiveness", "Subject A": 6, "Subject B": 8 },
-      { category: "Repair attempts", "Subject A": 5, "Subject B": 3 },
-    ]
-
-    const loveLanguages = [
-      { category: "Words of affirmation", "Subject A": 7, "Subject B": 4 },
-      { category: "Quality time", "Subject A": 8, "Subject B": 6 },
-      { category: "Physical touch", "Subject A": 6, "Subject B": 5 },
-      { category: "Acts of service", "Subject A": 5, "Subject B": 7 },
-      { category: "Receiving gifts", "Subject A": 3, "Subject B": 4 },
-    ]
-
-    // Parse the GPT response into sections
-    const sections = text.split("\n\n").filter((section) => section.trim() !== "")
-
-    const results = {
-      extractedText,
-      communicationStyles:
-        sections[0] ||
-        "Subject A communicates with emotional intensity and directness, often expressing frustration and hurt openly. Their communication style shows a desire for clarity and transparency, though sometimes this manifests as accusatory or defensive. They tend to ask direct questions and make clear statements about their feelings and needs.\n\nSubject B's communication style is more measured and reserved, often responding to emotional intensity with brief, controlled statements. They appear to need more space and time to process emotions before engaging, which can come across as withdrawal or dismissal to Subject A. When they do express themselves, it's often with a focus on practical considerations rather than emotional content.",
-      recurringPatterns:
-        sections[1] ||
-        "A clear pursue-withdraw dynamic is evident, with Subject A pursuing connection, answers, and resolution while Subject B withdraws when emotional intensity increases. This creates a cycle where the more Subject A pursues, the more Subject B withdraws, leading to escalating frustration.\n\nTrust issues appear on both sides, with expressions of suspicion about each other's motives. Subject A questions Subject B's intentions regarding dating apps and living arrangements, while Subject B questions Subject A's financial motivations.\n\nBoth partners make assumptions about each other's thoughts and feelings rather than asking directly, creating misunderstandings that fuel conflict. When one partner attempts to clarify, the other often responds defensively rather than with curiosity.",
-      reflectiveFrameworks:
-        sections[2] ||
-        "Attachment patterns suggest Subject A displays anxious attachment behaviors, seeking reassurance and clarity while fearing abandonment. Their intense pursuit of answers and connection, along with expressions of feeling isolated, align with anxious attachment needs.\n\nSubject B shows avoidant attachment tendencies, requesting space and time when emotional intensity increases. Their brief responses and expressions of feeling overwhelmed by the conversation suggest discomfort with emotional intimacy during conflict.\n\nGottman's Four Horsemen are present in their interactions: criticism (both partners make character judgments), defensiveness (both quickly defend rather than listen), and some stonewalling (Subject B's withdrawal). Fortunately, contempt appears minimal, which is a positive sign for the relationship's potential.\n\nLove languages appear misaligned, with Subject A valuing quality time and words of affirmation, while Subject B may prioritize acts of service (offering financial support) and independence.",
-      gettingInTheWay:
-        sections[3] ||
-        "Trust erosion is a significant barrier, with both partners questioning each other's motives rather than assuming good intentions. This creates a defensive atmosphere where genuine connection becomes difficult.\n\nDifferent processing styles create friction, with Subject A needing immediate engagement and resolution while Subject B requires space and time to process emotions. Neither fully recognizes or accommodates the other's emotional needs during conflict.\n\nFinancial stress and living situation uncertainty add external pressure to the relationship, complicating emotional dynamics with practical concerns. These tangible stressors become intertwined with relationship issues, making it difficult to address either clearly.\n\nUnresolved past hurts appear to influence current interactions, with references to previous assumptions and behaviors affecting how they interpret each other's current actions and words.",
-      constructiveFeedback:
-        sections[4] ||
-        "For Subject A: Your emotional courage and willingness to express your needs directly are strengths. Consider that your partner's requests for space aren't necessarily rejection but may be their way of processing emotions to show up more fully in the relationship. When feeling anxious about your partner's intentions, try framing concerns as \"I\" statements rather than assumptions about their motives.\n\nFor Subject B: Your thoughtfulness and desire to maintain boundaries are valuable. However, brief withdrawals without explanation can trigger abandonment fears in your partner. Even a simple \"I need some time to think about this, but I'm not leaving the conversation\" can help maintain connection while honoring your need for space. Consider that your partner's questions may come from a place of seeking security rather than accusation.\n\nFor both: Creating agreements about how to handle conflict before it arises could help break the pursue-withdraw pattern. This might include agreed-upon language for requesting space, timeframes for returning to difficult conversations, and commitments to avoid assumptions about each other's motives.",
-      outlook:
-        sections[5] ||
-        "This relationship shows both significant challenges and meaningful strengths. The absence of contempt and the presence of some repair attempts (expressions of care, apologies) suggest a foundation of respect and affection that could support healing.\n\nReconciliation would require addressing the trust issues directly, possibly with professional support through couples therapy (which Subject A has mentioned). Both partners would need to develop greater understanding of each other's attachment needs and communication styles.\n\nThe practical concerns about living arrangements and finances need clear, separate discussion from the emotional relationship issues. Resolving these practical matters with fairness and transparency could create space for the emotional work of rebuilding trust.\n\nWith committed effort to understand each other's emotional needs and develop new patterns of communication during conflict, this relationship has potential for growth. However, this would require both partners to prioritize understanding over being understood, and to commit to breaking the current cycles of interaction.",
-      optionalAppendix:
-        sections[6] ||
-        "The conversation reveals moments of vulnerability from both partners that could serve as building blocks for connection. Subject A's expression of feeling anxious and Subject B's acknowledgment of caring suggest emotional investment that could be channeled constructively.\n\nBoth partners show capacity for direct communication about needs, which is a strength that could be built upon with better timing and delivery. Learning to express these needs when both are emotionally regulated would likely yield better results.\n\nThe relationship appears to be at a critical decision point regarding both practical arrangements and emotional commitment. This juncture could serve either as a catalyst for significant positive change or as a natural conclusion, depending on both partners' willingness to engage in the challenging work of rebuilding trust and establishing new patterns.",
-      emotionalCharacteristics,
-      conflictStyles,
-      loveLanguages,
-      gottmanQuiz: {
-        summary:
-          "Your Gottman analysis reveals a relationship with significant challenges in building love maps and accepting influence, balanced by some strengths in shared meaning. The relationship shows concerning levels of criticism and defensiveness, with moderate stonewalling and low contempt. Subject A tends to pursue with emotional intensity while Subject B withdraws, creating a classic demand-withdraw pattern that Gottman research identifies as particularly challenging. Your combined scores indicate a relationship at a crossroads, requiring intentional work on communication patterns and emotional safety to rebuild connection.",
-        strengths: [
-          "Low levels of contempt, indicating basic respect remains",
-          "Some attempts at repair during conflict",
-          "Willingness to express needs and concerns directly",
-          "Shared history and understanding of each other's situations",
-          "Some expressions of care and concern for each other's wellbeing",
-        ],
-        improvements: [
-          "Reducing criticism and defensiveness in communications",
-          "Developing strategies to break the pursue-withdraw pattern",
-          "Building trust regarding each other's motives and intentions",
-          "Creating space for both processing styles during conflict",
-          "Separating practical concerns from relationship dynamics",
-        ],
-        principles: [
-          {
-            id: "maps",
-            title: "1. Build Love Maps",
-            description:
-              "How well you know each other's inner psychological worlds, history, worries, stresses, joys, and hopes.",
-            subjectAScore: 5,
-            subjectBScore: 4,
-            combined: 4.5,
-            interpretation:
-              "Both partners show some awareness of each other's worlds but make assumptions rather than asking curious questions. There's a tendency to project intentions rather than explore them with openness.",
-            recommendations: [
-              "Practice asking open-ended questions without assumptions",
-              "Update your knowledge of each other's current stresses and hopes",
-              "Share daily experiences with each other without judgment",
-            ],
-          },
-          {
-            id: "fondness",
-            title: "2. Share Fondness and Admiration",
-            description: "The amount of affection and respect you show each other.",
-            subjectAScore: 4,
-            subjectBScore: 5,
-            combined: 4.5,
-            interpretation:
-              "Expressions of fondness and admiration are limited in the conversation, though there are some indications of care. Negative sentiment override may be preventing appreciation from being expressed or received.",
-            recommendations: [
-              "Begin conversations by expressing appreciation before addressing concerns",
-              "Acknowledge positive traits even during disagreements",
-              "Create a daily ritual of sharing one thing you appreciate about each other",
-            ],
-          },
-          {
-            id: "turning",
-            title: "3. Turn Towards Instead of Away",
-            description: "How responsive you are to each other's bids for emotional connection.",
-            subjectAScore: 6,
-            subjectBScore: 3,
-            combined: 4.5,
-            interpretation:
-              "Subject A makes frequent bids for connection that Subject B often misses or turns away from. Subject B's requests for space are sometimes interpreted as rejection rather than a need for processing time.",
-            recommendations: [
-              "Recognize and acknowledge bids for connection even when you can't fully engage",
-              "When needing space, communicate a timeframe for returning to the conversation",
-              "Practice small moments of connection daily to build a habit of turning towards",
-            ],
-          },
-          {
-            id: "influence",
-            title: "4. Accept Influence",
-            description:
-              "How much you allow your partner to influence your decision making and how open you are to compromise.",
-            subjectAScore: 4,
-            subjectBScore: 3,
-            combined: 3.5,
-            interpretation:
-              "Both partners show resistance to accepting influence, with rigid positions about living arrangements and relationship terms. There's limited evidence of collaborative problem-solving or willingness to adjust perspectives.",
-            recommendations: [
-              "Practice saying 'you may have a point' during disagreements",
-              "Actively look for areas of agreement before addressing differences",
-              "Consider your partner's needs as equally important to your own when making decisions",
-            ],
-          },
-          {
-            id: "solvable",
-            title: "5. Solve Your Solvable Problems",
-            description: "How effectively you resolve conflicts that can be solved.",
-            subjectAScore: 3,
-            subjectBScore: 4,
-            combined: 3.5,
-            interpretation:
-              "Problem-solving attempts quickly escalate into defensive patterns. Practical issues like living arrangements become entangled with emotional concerns, making resolution difficult.",
-            recommendations: [
-              "Separate practical problems from relationship dynamics and address them individually",
-              "Use softened startup when raising concerns: 'I feel... about... I need...'",
-              "Agree on a specific time to discuss one issue at a time, with clear boundaries",
-            ],
-          },
-          {
-            id: "gridlock",
-            title: "6. Overcome Gridlock",
-            description: "How you handle ongoing, perpetual problems in your relationship.",
-            subjectAScore: 3,
-            subjectBScore: 3,
-            combined: 3,
-            interpretation:
-              "The relationship shows significant gridlock around trust, space needs, and communication styles. Neither partner appears to fully understand the dreams and core needs behind the other's position.",
-            recommendations: [
-              "Explore the personal meaning and history behind your positions",
-              "Identify your non-negotiable needs versus flexible preferences",
-              "Create temporary compromises that honor both perspectives while working on deeper understanding",
-            ],
-          },
-          {
-            id: "meaning",
-            title: "7. Create Shared Meaning",
-            description: "How well you understand and honor each other's dreams and create a shared sense of purpose.",
-            subjectAScore: 5,
-            subjectBScore: 5,
-            combined: 5,
-            interpretation:
-              "There are indications of shared history and some common values, though current conflict has obscured the sense of shared purpose. Both express desire for the relationship to work under certain conditions.",
-            recommendations: [
-              "Discuss what your relationship means to each of you beyond practical arrangements",
-              "Identify values you both share and how they might guide conflict resolution",
-              "Create rituals of connection that affirm your relationship identity",
-            ],
-          },
-        ],
-        radarData: [
-          { principle: "Love Maps", "Subject A": 5, "Subject B": 4 },
-          { principle: "Fondness & Admiration", "Subject A": 4, "Subject B": 5 },
-          { principle: "Turn Towards", "Subject A": 6, "Subject B": 3 },
-          { principle: "Accept Influence", "Subject A": 4, "Subject B": 3 },
-          { principle: "Solve Problems", "Subject A": 3, "Subject B": 4 },
-          { principle: "Overcome Gridlock", "Subject A": 3, "Subject B": 3 },
-          { principle: "Shared Meaning", "Subject A": 5, "Subject B": 5 },
-        ],
-      },
+    return {
+      text: processedText,
+      speaker1Label: "Person A",
+      speaker2Label: "Person B",
+      confidence,
     }
-
-    revalidatePath("/test")
-    return results
   } catch (error) {
-    console.error("Error in analyze route:", error)
-    return { error: "Failed to analyze conversation" }
+    console.error(`Error extracting text from ${file.name}:`, error)
+    return {
+      text: `[Could not extract text from ${file.name}]`,
+      speaker1Label: "Person A",
+      speaker2Label: "Person B",
+      confidence: 0,
+    }
   }
 }
 
-// Helper function to process a file
-async function processFile(file: File): Promise<string> {
-  // In a real implementation, this would extract text from the image
-  // For demo purposes, return mock text immediately
-  return "Sample extracted text from image"
+function normalizeSpeakers(
+  extractedTexts: Array<{ text: string; speaker1Label: string; speaker2Label: string; confidence: number }>,
+) {
+  let allText = ""
+  let totalConfidence = 0
+  let successfulExtractions = 0
+
+  for (const extracted of extractedTexts) {
+    if (extracted.confidence > 0) {
+      allText += extracted.text + "\n\n--- Next Screenshot ---\n\n"
+      totalConfidence += extracted.confidence
+      successfulExtractions++
+    }
+  }
+
+  allText = allText.split("Person A:").join("Subject A:")
+  allText = allText.split("Person B:").join("Subject B:")
+
+  const avgConfidence = successfulExtractions > 0 ? totalConfidence / successfulExtractions : 0
+
+  return { text: allText, averageConfidence: avgConfidence }
+}
+
+function countOccurrences(str: string, substring: string): number {
+  let count = 0
+  let position = 0
+
+  while (true) {
+    const index = str.indexOf(substring, position)
+    if (index === -1) break
+    count++
+    position = index + 1
+  }
+
+  return count
+}
+
+export async function analyzeConversation(formData: FormData) {
+  try {
+    const files: File[] = []
+    let i = 0
+    while (formData.has(`file-${i}`)) {
+      const file = formData.get(`file-${i}`) as File
+      if (file && file.size > 0) {
+        files.push(file)
+      }
+      i++
+    }
+
+    if (files.length === 0) {
+      return {
+        error: "No files uploaded or files are empty. Please upload screenshots of the conversation.",
+      }
+    }
+
+    console.log(`Processing ${files.length} files...`)
+
+    const extractionPromises = files.map((file) => extractTextFromImage(file))
+    const extractedTexts = await Promise.all(extractionPromises)
+
+    const successfulExtractions = extractedTexts.filter((e) => e.confidence > 0)
+    if (successfulExtractions.length === 0) {
+      return {
+        error:
+          "Could not extract text from any of the uploaded images. Please ensure:\n" +
+          "• The images contain visible text messages\n" +
+          "• The screenshots are clear and not too blurry\n" +
+          "• The text is large enough to read\n" +
+          "• The images are from a messaging app (SMS, WhatsApp, iMessage, etc.)\n\n" +
+          "Try taking new screenshots or adjusting your phone's display settings for better clarity.",
+      }
+    }
+
+    const { text: conversationText, averageConfidence } = normalizeSpeakers(extractedTexts)
+
+    console.log("Extracted conversation length:", conversationText.length, "characters")
+    console.log("Average extraction confidence:", averageConfidence, "%")
+    console.log("First 500 characters:", conversationText.substring(0, 500).replace(/\n/g, " | "))
+
+    if (conversationText.length < 10) {
+      return {
+        error:
+          "Very little text was extracted from the images. Please try:\n" +
+          "• Uploading higher quality screenshots\n" +
+          "• Making sure the text is clearly visible\n" +
+          "• Ensuring the screenshots are from a messaging app\n" +
+          "• Checking that the images aren't corrupted or too small",
+      }
+    }
+
+    const subjectACount = countOccurrences(conversationText, "Subject A:")
+    const subjectBCount = countOccurrences(conversationText, "Subject B:")
+    const messageCount = subjectACount + subjectBCount
+
+    const lines = conversationText.split("\n").filter((line) => line.trim().length > 10)
+
+    if (messageCount === 0) {
+      if (lines.length === 0) {
+        return {
+          error:
+            "The extracted text doesn't appear to contain conversation messages.\n\n" +
+            "Please ensure you're uploading screenshots of text message conversations from:\n" +
+            "• iPhone (iMessage, SMS)\n" +
+            "• Android (Messages, SMS)\n" +
+            "• WhatsApp, Messenger, Telegram, or other messaging apps\n\n" +
+            "Make sure the text is clearly visible and readable in the screenshots.",
+        }
+      }
+
+      console.log(`Found ${lines.length} lines of text without proper format. Attempting to proceed anyway...`)
+    }
+
+    let confidenceWarning = ""
+    if (averageConfidence < 60) {
+      confidenceWarning =
+        "Note: Some text was difficult to read. The analysis is based on what could be extracted, but results may be less accurate. Consider uploading higher quality screenshots for better results."
+    }
+
+    const actualMessageCount = messageCount > 0 ? messageCount : Math.min(lines.length, 50)
+    console.log(`Analyzing ${actualMessageCount} messages (${subjectACount} from A, ${subjectBCount} from B)...`)
+
+    const conversationLength = actualMessageCount < 10 ? "limited" : actualMessageCount < 30 ? "moderate" : "extensive"
+
+    const analysisPrompt = `You are Love Lens — an expert relationship insight engine.
+
+CONVERSATION TO ANALYZE:
+${conversationText}
+
+CONTEXT:
+This is a ${conversationLength} conversation sample with approximately ${actualMessageCount} messages.
+
+ANALYSIS INSTRUCTIONS:
+Provide a comprehensive, emotionally intelligent analysis of this conversation.
+
+CRITICAL: Return realistic, specific scores (1-10 scale) based on what you observe. Do NOT use placeholders or default to 5s.
+
+Return ONLY a valid JSON object (no markdown, no code blocks):
+
+{
+  "introductionNote": "2-3 sentence intro mentioning the ${actualMessageCount} messages analyzed",
+  "overallRelationshipHealth": {
+    "score": [realistic number 1-10],
+    "description": "Brief assessment of overall health"
+  },
+  "communicationStylesAndEmotionalTone": {
+    "description": "Detailed analysis of how each person communicates",
+    "emotionalVibeTags": ["3-5 specific emotional descriptors"],
+    "regulationPatternsObserved": "How they manage emotions in this exchange",
+    "messageRhythmAndPacing": "Observable response patterns",
+    "subjectAStyle": "Specific communication style of Subject A",
+    "subjectBStyle": "Specific communication style of Subject B"
+  },
+  "recurringPatternsIdentified": {
+    "description": "Observable patterns with examples",
+    "loopingMiscommunicationsExamples": ["specific examples or 'Not observed in this sample'"],
+    "commonTriggersAndResponsesExamples": ["specific examples or 'Not observed'"],
+    "repairAttemptsOrEmotionalAvoidancesExamples": ["specific examples or 'Not observed'"],
+    "positivePatterns": ["2-3 positive patterns observed"]
+  },
+  "reflectiveFrameworks": {
+    "description": "Relationship psychology insights",
+    "attachmentEnergies": "Observable attachment style indicators",
+    "loveLanguageFriction": "Love language patterns observed",
+    "gottmanConflictMarkers": "Any Four Horsemen or positive interactions",
+    "emotionalIntelligenceIndicators": "Signs of emotional awareness"
+  },
+  "whatsGettingInTheWay": {
+    "description": "Observable obstacles",
+    "emotionalMismatches": "Where emotional needs don't align",
+    "communicationGaps": "What's left unsaid or unclear",
+    "subtlePowerStrugglesOrMisfires": "Dynamic imbalances observed",
+    "externalStressors": "Any mentioned external pressures"
+  },
+  "constructiveFeedback": {
+    "subjectA": {
+      "strengths": ["3-4 specific strengths"],
+      "gentleGrowthNudges": ["3-4 specific, actionable suggestions"],
+      "connectionBoosters": ["3-4 specific actions to improve connection"]
+    },
+    "subjectB": {
+      "strengths": ["3-4 specific strengths"],
+      "gentleGrowthNudges": ["3-4 specific, actionable suggestions"],
+      "connectionBoosters": ["3-4 specific actions to improve connection"]
+    },
+    "forBoth": {
+      "sharedStrengths": ["2-3 shared strengths"],
+      "sharedGrowthNudges": ["3-4 suggestions for both"],
+      "sharedConnectionBoosters": ["3-4 actions to do together"]
+    }
+  },
+  "visualInsightsData": {
+    "descriptionForChartsIntro": "Based on ${actualMessageCount} messages from this conversation",
+    "emotionalCommunicationCharacteristics": [
+      {"category": "Expresses Vulnerability", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Active Listening", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Emotional Awareness", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Empathy Expression", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Openness", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]}
+    ],
+    "conflictExpressionStyles": [
+      {"category": "Uses 'I' Statements", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Avoids Blame", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Seeks Resolution", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Takes Responsibility", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Manages Emotions", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]}
+    ],
+    "validationAndReassurancePatterns": [
+      {"category": "Offers Validation", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Provides Reassurance", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Acknowledges Feelings", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Shows Appreciation", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
+      {"category": "Offers Support", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]}
+    ],
+    "communicationMetrics": {
+      "responseTimeBalance": [realistic 1-10],
+      "messageLengthBalance": [realistic 1-10],
+      "emotionalDepth": [realistic 1-10],
+      "conflictResolution": [realistic 1-10],
+      "affectionLevel": [realistic 1-10]
+    }
+  },
+  "outlook": "2-3 paragraphs: realistic assessment of relationship trajectory with specific recommendations",
+  "optionalAppendix": "Additional observations, patterns, or context that might be helpful",
+  "keyTakeaways": ["3-5 most important insights from this analysis"]
+}`
+
+    const result = await generateText({
+      model: openai("gpt-4o"),
+      messages: [
+        {
+          role: "user",
+          content: analysisPrompt,
+        },
+      ],
+      temperature: 0.4,
+      maxTokens: 5000,
+    })
+
+    const rawJsonText = result.text
+
+    let parsedResults
+    try {
+      let cleanedJsonText = rawJsonText.trim()
+
+      if (cleanedJsonText.startsWith("```json")) {
+        cleanedJsonText = cleanedJsonText.substring(7)
+      }
+      if (cleanedJsonText.startsWith("```")) {
+        cleanedJsonText = cleanedJsonText.substring(3)
+      }
+      if (cleanedJsonText.endsWith("```")) {
+        cleanedJsonText = cleanedJsonText.substring(0, cleanedJsonText.length - 3)
+      }
+
+      cleanedJsonText = cleanedJsonText.trim()
+
+      parsedResults = JSON.parse(cleanedJsonText)
+    } catch (e) {
+      console.error("Failed to parse AI response as JSON:", e)
+      console.error("Raw AI response:", rawJsonText.substring(0, 500))
+      return {
+        error:
+          "The AI analysis could not be processed correctly. Please try again. If the problem persists, try uploading different screenshots.",
+      }
+    }
+
+    if (
+      !parsedResults.communicationStylesAndEmotionalTone ||
+      !parsedResults.visualInsightsData ||
+      !parsedResults.constructiveFeedback
+    ) {
+      console.error("Parsed AI response is missing required fields")
+      return {
+        error: "The analysis is incomplete. Please try again.",
+      }
+    }
+
+    console.log("Analysis complete!")
+
+    return {
+      ...parsedResults,
+      analyzedConversationText: conversationText,
+      messageCount: actualMessageCount,
+      screenshotCount: files.length,
+      extractionConfidence: Math.round(averageConfidence),
+      confidenceWarning: confidenceWarning || undefined,
+    }
+  } catch (error: any) {
+    console.error("Error in analyzeConversation:", error)
+    return {
+      error: `Analysis failed: ${error.message}. Please try again with clear screenshots.`,
+    }
+  }
 }
 
 export async function exportToWord(results: any) {
   "use server"
-
-  // In a real app, we would generate a Word document using python-docx
-  // For this demo, we'll simulate the export with a delay
-
-  await new Promise((resolve) => setTimeout(resolve, 2000))
-
-  // Create a sample response
+  console.log("Simulating Word export with results")
+  await new Promise((resolve) => setTimeout(resolve, 1500))
   return {
     success: true,
-    message: "Word document generated successfully",
-    downloadUrl: "/sample-document.docx", // In a real app, this would be a real URL
+    message: "Word document export is currently simulated. Full export coming soon!",
+    downloadUrl: "sample-document.docx",
   }
 }
