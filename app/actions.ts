@@ -1,13 +1,8 @@
 "use server"
 
 import { generateText } from "ai"
-import { createOpenAI } from "@ai-sdk/openai"
+import { openai } from "@ai-sdk/openai"
 import { Buffer } from "buffer"
-
-// Create OpenAI provider instance with API key
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
 
 // Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
@@ -43,7 +38,7 @@ async function extractTextFromImage(file: File): Promise<{
     console.log(`Base64 image length: ${base64Image.length} characters`)
 
     const result = await generateText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-4o-2024-08-06"),
       messages: [
         {
           role: "user",
@@ -88,7 +83,7 @@ Now extract ALL text from this screenshot. Focus on accuracy and completeness:`,
             },
             {
               type: "image",
-              image: `data:image/jpeg;base64,${base64Image}`,
+              image: base64Image,
             },
           ],
         },
@@ -425,7 +420,7 @@ Return ONLY a valid JSON object (no markdown, no code blocks):
 }`
 
     const result = await generateText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-4o-2024-08-06"),
       messages: [
         {
           role: "user",
