@@ -1,8 +1,13 @@
 "use server"
 
 import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { createOpenAI } from "@ai-sdk/openai"
 import { Buffer } from "buffer"
+
+// Create OpenAI provider instance with API key
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
 // Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
@@ -83,7 +88,7 @@ Now extract ALL text from this screenshot. Focus on accuracy and completeness:`,
             },
             {
               type: "image",
-              image: base64Image,
+              image: `data:image/jpeg;base64,${base64Image}`,
             },
           ],
         },
