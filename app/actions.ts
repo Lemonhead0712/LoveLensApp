@@ -20,8 +20,22 @@ async function extractTextFromImage(file: File): Promise<{
 }> {
   console.log(`Extracting text from: ${file.name}`)
 
+  // Check if API key is available (server-side only)
+  if (!process.env.OPENAI_API_KEY) {
+    console.error("CRITICAL: No OpenAI API key found in environment variables")
+    throw new Error("OpenAI API key not configured. Please check your environment variables.")
+  }
+
   try {
     const base64Image = await fileToBase64(file)
+
+    // Verify the base64 image is valid
+    if (!base64Image || base64Image.length < 100) {
+      console.error(`Invalid base64 image data for ${file.name}`)
+      throw new Error("Failed to convert image to base64 format")
+    }
+
+    console.log(`Base64 image length: ${base64Image.length} characters`)
 
     const result = await generateText({
       model: openai("gpt-4o"),
@@ -80,6 +94,7 @@ Now extract ALL text from this screenshot. Focus on accuracy and completeness:`,
 
     const extractedText = result.text || ""
 
+    console.log(`Successfully extracted ${extractedText.length} characters from ${file.name}`)
     console.log(`Raw extraction (first 200 chars): ${extractedText.substring(0, 200)}`)
 
     let processedText = extractedText
@@ -119,14 +134,31 @@ Now extract ALL text from this screenshot. Focus on accuracy and completeness:`,
       speaker2Label: "Person B",
       confidence,
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error extracting text from ${file.name}:`, error)
-    return {
-      text: `[Could not extract text from ${file.name}]`,
-      speaker1Label: "Person A",
-      speaker2Label: "Person B",
-      confidence: 0,
+    console.error("Error details:", {
+      message: error.message,
+      code: error.code,
+      status: error.status,
+      name: error.name,
+    })
+
+    // Provide more specific error message
+    if (error.message?.includes("API key")) {
+      throw new Error(
+        "OpenAI API authentication failed. Please verify your API key is correctly configured in Vercel environment variables.",
+      )
     }
+
+    if (error.status === 429) {
+      throw new Error("OpenAI API rate limit exceeded. Please try again in a moment.")
+    }
+
+    if (error.status === 401) {
+      throw new Error("OpenAI API authentication failed. Please check your API key configuration.")
+    }
+
+    throw new Error(`Failed to extract text: ${error.message || "Unknown error"}`)
   }
 }
 
@@ -169,11 +201,18 @@ function countOccurrences(str: string, substring: string): number {
 
 export async function analyzeConversation(formData: FormData) {
   try {
+    // Verify environment (server-side only)
+    console.log("Environment check:", {
+      hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+      nodeEnv: process.env.NODE_ENV,
+    })
+
     const files: File[] = []
     let i = 0
     while (formData.has(`file-${i}`)) {
       const file = formData.get(`file-${i}`) as File
       if (file && file.size > 0) {
+        console.log(`File ${i}: ${file.name}, size: ${file.size} bytes, type: ${file.type}`)
         files.push(file)
       }
       i++
@@ -187,20 +226,44 @@ export async function analyzeConversation(formData: FormData) {
 
     console.log(`Processing ${files.length} files...`)
 
-    const extractionPromises = files.map((file) => extractTextFromImage(file))
-    const extractedTexts = await Promise.all(extractionPromises)
+    // Process files one at a time to better handle errors
+    const extractedTexts = []
+    const extractionErrors = []
 
-    const successfulExtractions = extractedTexts.filter((e) => e.confidence > 0)
-    if (successfulExtractions.length === 0) {
+    for (let i = 0; i < files.length; i++) {
+      try {
+        console.log(`Processing file ${i + 1}/${files.length}: ${files[i].name}`)
+        const extracted = await extractTextFromImage(files[i])
+        extractedTexts.push(extracted)
+      } catch (error: any) {
+        console.error(`Failed to process file ${i + 1}:`, error)
+        extractionErrors.push({
+          fileName: files[i].name,
+          error: error.message,
+        })
+      }
+    }
+
+    // If ALL files failed, provide detailed error
+    if (extractedTexts.length === 0) {
+      const errorMessages = extractionErrors.map((e) => `• ${e.fileName}: ${e.error}`).join("\n")
+
       return {
         error:
-          "Could not extract text from any of the uploaded images. Please ensure:\n" +
-          "• The images contain visible text messages\n" +
-          "• The screenshots are clear and not too blurry\n" +
-          "• The text is large enough to read\n" +
-          "• The images are from a messaging app (SMS, WhatsApp, iMessage, etc.)\n\n" +
-          "Try taking new screenshots or adjusting your phone's display settings for better clarity.",
+          "Could not extract text from any of the uploaded images.\n\n" +
+          "Errors encountered:\n" +
+          errorMessages +
+          "\n\nPossible solutions:\n" +
+          "• Verify your OpenAI API key is correctly configured in Vercel\n" +
+          "• Check that your API key has access to GPT-4 Vision\n" +
+          "• Ensure the images are clear and contain visible text\n" +
+          "• Try uploading fewer images at once",
       }
+    }
+
+    // If some failed, log but continue
+    if (extractionErrors.length > 0) {
+      console.warn(`${extractionErrors.length} files failed to process:`, extractionErrors)
     }
 
     const { text: conversationText, averageConfidence } = normalizeSpeakers(extractedTexts)
@@ -420,7 +483,7 @@ Return ONLY a valid JSON object (no markdown, no code blocks):
   } catch (error: any) {
     console.error("Error in analyzeConversation:", error)
     return {
-      error: `Analysis failed: ${error.message}. Please try again with clear screenshots.`,
+      error: `Analysis failed: ${error.message || "Unknown error"}. Please try again with clear screenshots.`,
     }
   }
 }
