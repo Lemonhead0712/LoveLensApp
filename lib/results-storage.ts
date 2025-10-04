@@ -19,6 +19,9 @@ export function storeResults(results: AnalysisResults): string {
   }
 }
 
+// Add saveResults as an alias for storeResults for backward compatibility
+export const saveResults = storeResults
+
 export function getResults(resultId: string): AnalysisResults | null {
   if (typeof window === "undefined") return null
 

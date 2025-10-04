@@ -7,8 +7,8 @@ export default function FAQPage() {
       title="Frequently Asked Questions"
       description="Find answers to common questions about Love Lens"
     >
-      <section className="mb-8">
-        <p className="mb-6 text-gray-700">
+      <section className="mb-6">
+        <p className="mb-5 text-gray-700">
           Find answers to the most common questions about Love Lens below. If you don't see your question answered here,
           please don't hesitate to{" "}
           <a href="/contact" className="text-purple-600 hover:text-purple-700 underline">
@@ -18,8 +18,8 @@ export default function FAQPage() {
         </p>
       </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">General Questions</h2>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">General Questions</h2>
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="what-is-love-lens" className="border-purple-100">
             <AccordionTrigger className="text-purple-700 hover:text-purple-800">What is Love Lens?</AccordionTrigger>
@@ -68,8 +68,8 @@ export default function FAQPage() {
         </Accordion>
       </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">Using Love Lens</h2>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Using Love Lens</h2>
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="what-screenshots" className="border-purple-100">
             <AccordionTrigger className="text-purple-700 hover:text-purple-800">
@@ -107,8 +107,8 @@ export default function FAQPage() {
         </Accordion>
       </section>
 
-      <section>
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">Technical Questions</h2>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Technical Questions</h2>
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="supported-formats" className="border-purple-100">
             <AccordionTrigger className="text-purple-700 hover:text-purple-800">

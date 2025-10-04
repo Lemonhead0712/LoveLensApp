@@ -45,10 +45,10 @@ export default function ContactForm() {
 
   if (isSubmitted) {
     return (
-      <Card className="border-green-200 bg-green-50 p-8 text-center">
-        <CheckCircle2 className="mx-auto h-12 w-12 text-green-600 mb-4" />
-        <h3 className="text-xl font-bold text-green-800 mb-2">Message Sent!</h3>
-        <p className="text-green-700 mb-6">Thank you for contacting us. We'll get back to you as soon as possible.</p>
+      <Card className="border-green-200 bg-green-50 p-5 text-center">
+        <CheckCircle2 className="mx-auto h-10 w-10 text-green-600 mb-3" />
+        <h3 className="text-lg font-bold text-green-800 mb-1.5">Message Sent!</h3>
+        <p className="text-green-700 mb-5">Thank you for contacting us. We'll get back to you as soon as possible.</p>
         <Button
           type="button"
           variant="outline"
@@ -70,9 +70,9 @@ export default function ContactForm() {
   }
 
   return (
-    <Card className="border-purple-200 p-6 shadow-md">
-      <h2 className="text-2xl font-bold mb-6 text-purple-700">Send Us a Message</h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Card className="border-purple-200 p-5 shadow-md">
+      <h2 className="text-xl font-bold mb-5 text-purple-700">Send Us a Message</h2>
+      <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label htmlFor="name">Name</Label>
           <Input id="name" name="name" value={formState.name} onChange={handleChange} required className="mt-1" />

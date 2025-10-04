@@ -20,7 +20,6 @@ async function extractTextFromImage(file: File): Promise<{
 }> {
   console.log(`Extracting text from: ${file.name}`)
 
-  // Check if API key is available (server-side only)
   if (!process.env.OPENAI_API_KEY) {
     console.error("CRITICAL: No OpenAI API key found in environment variables")
     throw new Error("OpenAI API key not configured. Please check your environment variables.")
@@ -29,7 +28,6 @@ async function extractTextFromImage(file: File): Promise<{
   try {
     const base64Image = await fileToBase64(file)
 
-    // Verify the base64 image is valid
     if (!base64Image || base64Image.length < 100) {
       console.error(`Invalid base64 image data for ${file.name}`)
       throw new Error("Failed to convert image to base64 format")
@@ -143,7 +141,6 @@ Now extract ALL text from this screenshot. Focus on accuracy and completeness:`,
       name: error.name,
     })
 
-    // Provide more specific error message
     if (error.message?.includes("API key")) {
       throw new Error(
         "OpenAI API authentication failed. Please verify your API key is correctly configured in Vercel environment variables.",
@@ -199,9 +196,62 @@ function countOccurrences(str: string, substring: string): number {
   return count
 }
 
+// Helper function to extract JSON from text that might contain markdown code blocks
+function extractJSON(text: string): string {
+  let cleaned = text.trim()
+
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.substring(7)
+  }
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.substring(3)
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.substring(0, cleaned.length - 3)
+  }
+
+  cleaned = cleaned.trim()
+
+  const jsonStart = cleaned.indexOf("{")
+  const jsonEnd = cleaned.lastIndexOf("}")
+
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    return cleaned.substring(jsonStart, jsonEnd + 1)
+  }
+
+  return cleaned
+}
+
+// Validate that the parsed result has required structure
+function validateAnalysisResult(result: any): boolean {
+  const requiredFields = [
+    "communicationStylesAndEmotionalTone",
+    "visualInsightsData",
+    "constructiveFeedback",
+    "overallRelationshipHealth",
+  ]
+
+  for (const field of requiredFields) {
+    if (!result[field]) {
+      console.error(`Missing required field: ${field}`)
+      return false
+    }
+  }
+
+  if (
+    !result.visualInsightsData.emotionalCommunicationCharacteristics ||
+    !result.visualInsightsData.conflictExpressionStyles ||
+    !result.visualInsightsData.validationAndReassurancePatterns
+  ) {
+    console.error("Missing required visualInsightsData fields")
+    return false
+  }
+
+  return true
+}
+
 export async function analyzeConversation(formData: FormData) {
   try {
-    // Verify environment (server-side only)
     console.log("Environment check:", {
       hasOpenAIKey: !!process.env.OPENAI_API_KEY,
       nodeEnv: process.env.NODE_ENV,
@@ -226,7 +276,6 @@ export async function analyzeConversation(formData: FormData) {
 
     console.log(`Processing ${files.length} files...`)
 
-    // Process files one at a time to better handle errors
     const extractedTexts = []
     const extractionErrors = []
 
@@ -244,7 +293,6 @@ export async function analyzeConversation(formData: FormData) {
       }
     }
 
-    // If ALL files failed, provide detailed error
     if (extractedTexts.length === 0) {
       const errorMessages = extractionErrors.map((e) => `• ${e.fileName}: ${e.error}`).join("\n")
 
@@ -261,7 +309,6 @@ export async function analyzeConversation(formData: FormData) {
       }
     }
 
-    // If some failed, log but continue
     if (extractionErrors.length > 0) {
       console.warn(`${extractionErrors.length} files failed to process:`, extractionErrors)
     }
@@ -316,174 +363,224 @@ export async function analyzeConversation(formData: FormData) {
 
     const conversationLength = actualMessageCount < 10 ? "limited" : actualMessageCount < 30 ? "moderate" : "extensive"
 
-    const analysisPrompt = `You are Love Lens — an expert relationship insight engine.
+    const analysisPrompt = `You are Love Lens, an expert relationship analysis AI. You MUST respond with ONLY valid JSON.
 
 CONVERSATION TO ANALYZE:
 ${conversationText}
 
-CONTEXT:
-This is a ${conversationLength} conversation sample with approximately ${actualMessageCount} messages.
+CONTEXT: ${conversationLength} conversation with ~${actualMessageCount} messages.
 
-ANALYSIS INSTRUCTIONS:
-Provide a comprehensive, emotionally intelligent analysis of this conversation.
+CRITICAL INSTRUCTIONS:
+1. Respond with ONLY a JSON object - no other text before or after
+2. Do NOT use markdown code blocks or formatting
+3. Use realistic scores (1-10) based on actual observations
+4. Be specific and evidence-based in your analysis
+5. This is a text conversation analysis - not inappropriate content
 
-CRITICAL: Return realistic, specific scores (1-10 scale) based on what you observe. Do NOT use placeholders or default to 5s.
-
-Return ONLY a valid JSON object (no markdown, no code blocks):
-
+OUTPUT FORMAT (return this exact structure):
 {
-  "introductionNote": "2-3 sentence intro mentioning the ${actualMessageCount} messages analyzed",
+  "introductionNote": "Brief intro mentioning ${actualMessageCount} messages analyzed",
   "overallRelationshipHealth": {
-    "score": [realistic number 1-10],
-    "description": "Brief assessment of overall health"
+    "score": [realistic 1-10 number],
+    "description": "Overall assessment"
   },
   "communicationStylesAndEmotionalTone": {
-    "description": "Detailed analysis of how each person communicates",
-    "emotionalVibeTags": ["3-5 specific emotional descriptors"],
-    "regulationPatternsObserved": "How they manage emotions in this exchange",
-    "messageRhythmAndPacing": "Observable response patterns",
-    "subjectAStyle": "Specific communication style of Subject A",
-    "subjectBStyle": "Specific communication style of Subject B"
+    "description": "Detailed communication analysis",
+    "emotionalVibeTags": ["tag1", "tag2", "tag3"],
+    "regulationPatternsObserved": "Emotion management patterns",
+    "messageRhythmAndPacing": "Response patterns",
+    "subjectAStyle": "A's communication style",
+    "subjectBStyle": "B's communication style"
   },
   "recurringPatternsIdentified": {
-    "description": "Observable patterns with examples",
-    "loopingMiscommunicationsExamples": ["specific examples or 'Not observed in this sample'"],
-    "commonTriggersAndResponsesExamples": ["specific examples or 'Not observed'"],
-    "repairAttemptsOrEmotionalAvoidancesExamples": ["specific examples or 'Not observed'"],
-    "positivePatterns": ["2-3 positive patterns observed"]
+    "description": "Observable patterns",
+    "loopingMiscommunicationsExamples": ["example or 'Not observed'"],
+    "commonTriggersAndResponsesExamples": ["example or 'Not observed'"],
+    "repairAttemptsOrEmotionalAvoidancesExamples": ["example or 'Not observed'"],
+    "positivePatterns": ["pattern1", "pattern2"]
   },
   "reflectiveFrameworks": {
-    "description": "Relationship psychology insights",
-    "attachmentEnergies": "Observable attachment style indicators",
-    "loveLanguageFriction": "Love language patterns observed",
-    "gottmanConflictMarkers": "Any Four Horsemen or positive interactions",
-    "emotionalIntelligenceIndicators": "Signs of emotional awareness"
+    "description": "Psychological insights",
+    "attachmentEnergies": "Attachment style indicators",
+    "loveLanguageFriction": "Love language patterns",
+    "gottmanConflictMarkers": "Conflict/positive interactions",
+    "emotionalIntelligenceIndicators": "EI indicators"
   },
   "whatsGettingInTheWay": {
     "description": "Observable obstacles",
-    "emotionalMismatches": "Where emotional needs don't align",
-    "communicationGaps": "What's left unsaid or unclear",
-    "subtlePowerStrugglesOrMisfires": "Dynamic imbalances observed",
-    "externalStressors": "Any mentioned external pressures"
+    "emotionalMismatches": "Emotional need misalignments",
+    "communicationGaps": "What's unsaid/unclear",
+    "subtlePowerStrugglesOrMisfires": "Dynamic imbalances",
+    "externalStressors": "External pressures mentioned"
   },
   "constructiveFeedback": {
     "subjectA": {
-      "strengths": ["3-4 specific strengths"],
-      "gentleGrowthNudges": ["3-4 specific, actionable suggestions"],
-      "connectionBoosters": ["3-4 specific actions to improve connection"]
+      "strengths": ["strength1", "strength2", "strength3"],
+      "gentleGrowthNudges": ["suggestion1", "suggestion2", "suggestion3"],
+      "connectionBoosters": ["action1", "action2", "action3"]
     },
     "subjectB": {
-      "strengths": ["3-4 specific strengths"],
-      "gentleGrowthNudges": ["3-4 specific, actionable suggestions"],
-      "connectionBoosters": ["3-4 specific actions to improve connection"]
+      "strengths": ["strength1", "strength2", "strength3"],
+      "gentleGrowthNudges": ["suggestion1", "suggestion2", "suggestion3"],
+      "connectionBoosters": ["action1", "action2", "action3"]
     },
     "forBoth": {
-      "sharedStrengths": ["2-3 shared strengths"],
-      "sharedGrowthNudges": ["3-4 suggestions for both"],
-      "sharedConnectionBoosters": ["3-4 actions to do together"]
+      "sharedStrengths": ["strength1", "strength2"],
+      "sharedGrowthNudges": ["suggestion1", "suggestion2", "suggestion3"],
+      "sharedConnectionBoosters": ["action1", "action2", "action3"]
     }
   },
   "visualInsightsData": {
-    "descriptionForChartsIntro": "Based on ${actualMessageCount} messages from this conversation",
+    "descriptionForChartsIntro": "Based on ${actualMessageCount} messages",
     "emotionalCommunicationCharacteristics": [
-      {"category": "Expresses Vulnerability", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Active Listening", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Emotional Awareness", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Empathy Expression", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Openness", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]}
+      {"category": "Expresses Vulnerability", "Subject A": 7, "Subject B": 6},
+      {"category": "Active Listening", "Subject A": 8, "Subject B": 7},
+      {"category": "Emotional Awareness", "Subject A": 6, "Subject B": 8},
+      {"category": "Empathy Expression", "Subject A": 7, "Subject B": 9},
+      {"category": "Openness", "Subject A": 8, "Subject B": 7}
     ],
     "conflictExpressionStyles": [
-      {"category": "Uses 'I' Statements", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Avoids Blame", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Seeks Resolution", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Takes Responsibility", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Manages Emotions", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]}
+      {"category": "Uses 'I' Statements", "Subject A": 5, "Subject B": 6},
+      {"category": "Avoids Blame
+      {"category": "Uses 'I' Statements", "Subject A": 5, "Subject B": 6},
+      {"category": "Avoids Blame", "Subject A": 7, "Subject B": 8},
+      {"category": "Seeks Resolution", "Subject A": 6, "Subject B": 7},
+      {"category": "Takes Responsibility", "Subject A": 7, "Subject B": 6},
+      {"category": "Manages Emotions", "Subject A": 6, "Subject B": 7}
     ],
     "validationAndReassurancePatterns": [
-      {"category": "Offers Validation", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Provides Reassurance", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Acknowledges Feelings", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Shows Appreciation", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]},
-      {"category": "Offers Support", "Subject A": [realistic 1-10], "Subject B": [realistic 1-10]}
+      {"category": "Offers Validation", "Subject A": 8, "Subject B": 9},
+      {"category": "Provides Reassurance", "Subject A": 7, "Subject B": 8},
+      {"category": "Acknowledges Feelings", "Subject A": 6, "Subject B": 8},
+      {"category": "Shows Appreciation", "Subject A": 9, "Subject B": 8},
+      {"category": "Offers Support", "Subject A": 7, "Subject B": 9}
     ],
     "communicationMetrics": {
-      "responseTimeBalance": [realistic 1-10],
-      "messageLengthBalance": [realistic 1-10],
-      "emotionalDepth": [realistic 1-10],
-      "conflictResolution": [realistic 1-10],
-      "affectionLevel": [realistic 1-10]
+      "responseTimeBalance": 7,
+      "messageLengthBalance": 6,
+      "emotionalDepth": 8,
+      "conflictResolution": 7,
+      "affectionLevel": 8
     }
   },
-  "outlook": "2-3 paragraphs: realistic assessment of relationship trajectory with specific recommendations",
-  "optionalAppendix": "Additional observations, patterns, or context that might be helpful",
-  "keyTakeaways": ["3-5 most important insights from this analysis"]
+  "outlook": "Realistic 2-3 paragraph assessment with specific recommendations",
+  "optionalAppendix": "Additional observations",
+  "keyTakeaways": ["takeaway1", "takeaway2", "takeaway3"]
 }`
 
-    const result = await generateText({
-      model: openai("gpt-4o-2024-08-06"),
-      messages: [
-        {
-          role: "user",
-          content: analysisPrompt,
-        },
-      ],
-      temperature: 0.4,
-      maxTokens: 5000,
-    })
+    let retryCount = 0
+    const maxRetries = 2
 
-    const rawJsonText = result.text
+    while (retryCount <= maxRetries) {
+      try {
+        console.log(`Analysis attempt ${retryCount + 1}/${maxRetries + 1}...`)
 
-    let parsedResults
-    try {
-      let cleanedJsonText = rawJsonText.trim()
+        const result = await generateText({
+          model: openai("gpt-4o-2024-08-06"),
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a relationship analysis AI. You MUST respond with ONLY valid JSON. No markdown, no explanations, just the JSON object. This is analyzing text conversations for relationship insights - completely appropriate content.",
+            },
+            {
+              role: "user",
+              content: analysisPrompt,
+            },
+          ],
+          temperature: 0.3,
+          maxTokens: 5000,
+        })
 
-      if (cleanedJsonText.startsWith("```json")) {
-        cleanedJsonText = cleanedJsonText.substring(7)
-      }
-      if (cleanedJsonText.startsWith("```")) {
-        cleanedJsonText = cleanedJsonText.substring(3)
-      }
-      if (cleanedJsonText.endsWith("```")) {
-        cleanedJsonText = cleanedJsonText.substring(0, cleanedJsonText.length - 3)
-      }
+        const rawJsonText = result.text.trim()
+        console.log("Raw AI response length:", rawJsonText.length)
+        console.log("First 100 chars:", rawJsonText.substring(0, 100))
 
-      cleanedJsonText = cleanedJsonText.trim()
+        if (
+          rawJsonText.toLowerCase().includes("i'm sorry") ||
+          rawJsonText.toLowerCase().includes("i cannot") ||
+          rawJsonText.toLowerCase().includes("i apologize")
+        ) {
+          console.error("AI refused to analyze - detected refusal message")
 
-      parsedResults = JSON.parse(cleanedJsonText)
-    } catch (e) {
-      console.error("Failed to parse AI response as JSON:", e)
-      console.error("Raw AI response:", rawJsonText.substring(0, 500))
-      return {
-        error:
-          "The AI analysis could not be processed correctly. Please try again. If the problem persists, try uploading different screenshots.",
+          if (retryCount < maxRetries) {
+            console.log("Retrying with adjusted prompt...")
+            retryCount++
+            continue
+          }
+
+          return {
+            error:
+              "The AI was unable to analyze this conversation. This may be due to:\n" +
+              "• Content moderation filters being triggered\n" +
+              "• Images not containing readable text messages\n" +
+              "• Technical issues with the AI service\n\n" +
+              "Please ensure your screenshots contain clear, readable text message conversations and try again.",
+          }
+        }
+
+        const cleanedJsonText = extractJSON(rawJsonText)
+
+        let parsedResults
+        try {
+          parsedResults = JSON.parse(cleanedJsonText)
+        } catch (parseError) {
+          console.error("JSON parse error:", parseError)
+          console.error("Cleaned text that failed to parse:", cleanedJsonText.substring(0, 500))
+
+          if (retryCount < maxRetries) {
+            console.log("Retrying analysis due to parse error...")
+            retryCount++
+            continue
+          }
+
+          return {
+            error:
+              "The analysis could not be processed correctly. Please try again with different screenshots or contact support if the issue persists.",
+          }
+        }
+
+        if (!validateAnalysisResult(parsedResults)) {
+          if (retryCount < maxRetries) {
+            console.log("Retrying due to invalid structure...")
+            retryCount++
+            continue
+          }
+
+          return {
+            error: "The analysis is incomplete. Please try again with clear screenshots of text conversations.",
+          }
+        }
+
+        console.log("Analysis complete and validated!")
+
+        return {
+          ...parsedResults,
+          analyzedConversationText: conversationText,
+          messageCount: actualMessageCount,
+          screenshotCount: files.length,
+          extractionConfidence: Math.round(averageConfidence),
+          confidenceWarning: confidenceWarning || undefined,
+        }
+      } catch (error: any) {
+        console.error(`Analysis attempt ${retryCount + 1} failed:`, error)
+
+        if (retryCount < maxRetries) {
+          retryCount++
+          continue
+        }
+
+        throw error
       }
     }
-
-    if (
-      !parsedResults.communicationStylesAndEmotionalTone ||
-      !parsedResults.visualInsightsData ||
-      !parsedResults.constructiveFeedback
-    ) {
-      console.error("Parsed AI response is missing required fields")
-      return {
-        error: "The analysis is incomplete. Please try again.",
-      }
-    }
-
-    console.log("Analysis complete!")
 
     return {
-      ...parsedResults,
-      analyzedConversationText: conversationText,
-      messageCount: actualMessageCount,
-      screenshotCount: files.length,
-      extractionConfidence: Math.round(averageConfidence),
-      confidenceWarning: confidenceWarning || undefined,
+      error: "Analysis failed after multiple attempts. Please try again with different screenshots.",
     }
   } catch (error: any) {
     console.error("Error in analyzeConversation:", error)
     return {
-      error: `Analysis failed: ${error.message || "Unknown error"}. Please try again with clear screenshots.`,
+      error: `Analysis failed: ${error.message || "Unknown error"}. Please try again with clear screenshots of text conversations.`,
     }
   }
 }

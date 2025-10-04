@@ -5,11 +5,11 @@ import { Mail, Phone } from "lucide-react"
 export default function ContactPage() {
   return (
     <CompactPageLayout title="Contact Us" description="Get in touch with the Love Lens team">
-      <div className="grid gap-8 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <div>
-          <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4 text-purple-700">Get in Touch</h2>
-            <p className="mb-4 text-gray-700">
+          <section className="mb-6">
+            <h2 className="text-xl font-bold mb-3 text-purple-700">Get in Touch</h2>
+            <p className="mb-3 text-gray-700">
               We'd love to hear from you! Whether you have questions about Love Lens, need technical support, or want to
               share your feedback, our team is here to help.
             </p>
@@ -18,9 +18,9 @@ export default function ContactPage() {
             </p>
           </section>
 
-          <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4 text-purple-700">Contact Information</h2>
-            <div className="space-y-4">
+          <section className="mb-6">
+            <h2 className="text-xl font-bold mb-3 text-purple-700">Contact Information</h2>
+            <div className="space-y-3">
               <div className="flex items-start">
                 <Mail className="mr-3 h-5 w-5 text-purple-600 mt-0.5" />
                 <div>
@@ -44,7 +44,7 @@ export default function ContactPage() {
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-4 text-purple-700">Response Time</h2>
+            <h2 className="text-xl font-bold mb-3 text-purple-700">Response Time</h2>
             <p className="text-gray-700">
               We strive to respond to all inquiries within 24-48 hours during business days. For urgent matters, please
               contact us by phone.

@@ -6,9 +6,9 @@ export default function AboutPage() {
       title="About Love Lens"
       description="Learn about our mission, vision, and the team behind Love Lens"
     >
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">Our Mission</h2>
-        <p className="mb-4 text-gray-700">
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Mission</h2>
+        <p className="mb-3 text-gray-700">
           At Love Lens, our mission is to help couples build stronger, more fulfilling relationships through data-driven
           insights and emotional intelligence. We believe that understanding the patterns in how we communicate is the
           first step toward meaningful growth and deeper connection.
@@ -19,9 +19,9 @@ export default function AboutPage() {
         </p>
       </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">Our Vision</h2>
-        <p className="mb-4 text-gray-700">
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Vision</h2>
+        <p className="mb-3 text-gray-700">
           We envision a world where technology serves as a bridge to deeper human connection rather than a barrier. Love
           Lens represents our commitment to using AI ethically and responsibly to strengthen the bonds between partners.
         </p>
@@ -32,9 +32,9 @@ export default function AboutPage() {
         </p>
       </section>
 
-      <section className="mb-8">
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">Our Approach</h2>
-        <p className="mb-4 text-gray-700">
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Approach</h2>
+        <p className="mb-3 text-gray-700">
           Love Lens is built on a foundation of research-backed relationship science, including the Gottman Method,
           attachment theory, and modern communication studies. We combine this knowledge with advanced natural language
           processing to identify patterns that might otherwise go unnoticed.
@@ -46,9 +46,9 @@ export default function AboutPage() {
         </p>
       </section>
 
-      <section>
-        <h2 className="text-2xl font-bold mb-4 text-purple-700">Our Team</h2>
-        <p className="mb-4 text-gray-700">
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Team</h2>
+        <p className="mb-3 text-gray-700">
           Love Lens was founded by Lamar Newsome, a relationship coach with over 15 years of experience helping couples
           navigate communication challenges. After witnessing the same patterns emerge across hundreds of relationships,
           Lamar envisioned a tool that could help couples identify these patterns earlier and more objectively.

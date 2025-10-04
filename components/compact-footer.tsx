@@ -1,44 +1,40 @@
 import Link from "next/link"
-import Image from "next/image"
+import { Heart } from "lucide-react"
 
 export default function CompactFooter() {
+  const currentYear = new Date().getFullYear()
+
   return (
-    <footer className="bg-purple-900 text-white py-6">
-      <div className="container mx-auto px-4">
-        <div className="flex flex-col items-center justify-center text-center">
-          <div className="flex items-center mb-4">
-            <div className="relative w-8 h-8 mr-2">
-              <Image
-                src="/images/love-lens-logo.png"
-                alt="Love Lens Logo"
-                width={32}
-                height={32}
-                className="object-contain"
-              />
-            </div>
-            <h3 className="text-lg font-bold">Love Lens</h3>
+    <footer className="border-t bg-gray-50">
+      <div className="container mx-auto px-4 py-5">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-3">
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-sm bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              Love Lens
+            </h3>
+            <span className="text-xs text-gray-500">© {currentYear}</span>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-4">
-            <Link href="/about" className="text-sm text-purple-200 hover:text-pink-300 transition-colors">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link href="/about" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
               About
             </Link>
-            <Link href="/privacy" className="text-sm text-purple-200 hover:text-pink-300 transition-colors">
-              Privacy
+            <Link href="/faq" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
+              FAQ
             </Link>
-            <Link href="/terms" className="text-sm text-purple-200 hover:text-pink-300 transition-colors">
-              Terms
-            </Link>
-            <Link href="/contact" className="text-sm text-purple-200 hover:text-pink-300 transition-colors">
+            <Link href="/contact" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
               Contact
             </Link>
-            <Link href="/faq" className="text-sm text-purple-200 hover:text-pink-300 transition-colors">
-              FAQ
+            <Link href="/privacy" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
+              Privacy
+            </Link>
+            <Link href="/terms" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
+              Terms
             </Link>
           </div>
 
-          <div className="text-purple-300 text-xs">
-            <p>© {new Date().getFullYear()} Love Lens. All rights reserved.</p>
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            Made with <Heart className="h-3 w-3 text-red-500 fill-current" /> for relationships
           </div>
         </div>
       </div>
