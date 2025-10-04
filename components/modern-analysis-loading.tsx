@@ -61,10 +61,12 @@ export default function ModernAnalysisLoading({
             <h2 className="text-xl font-bold text-gray-900 mb-2 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
               {message}
             </h2>
-            <p className="text-gray-600 mb-6">Our AI is examining emotional patterns and relationship dynamics.</p>
+            <p className="text-gray-600 mb-6 text-sm">
+              Our AI is examining emotional patterns and relationship dynamics.
+            </p>
           </motion.div>
 
-          {progress !== undefined && progress > 0 && (
+          {progress > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}

@@ -2,13 +2,18 @@
 
 import { generateText } from "ai"
 import { openai } from "@ai-sdk/openai"
-import { Buffer } from "buffer"
 
 // Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
-  const bytes = await file.arrayBuffer()
-  const buffer = Buffer.from(bytes)
-  return buffer.toString("base64")
+  try {
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+    const base64 = buffer.toString("base64")
+    return base64
+  } catch (error) {
+    console.error("Error converting file to base64:", error)
+    throw new Error(`Failed to read file: ${file.name}`)
+  }
 }
 
 // Extract text from image using GPT-4 Vision with enhanced instructions
@@ -440,8 +445,6 @@ OUTPUT FORMAT (return this exact structure):
       {"category": "Openness", "Subject A": 8, "Subject B": 7}
     ],
     "conflictExpressionStyles": [
-      {"category": "Uses 'I' Statements", "Subject A": 5, "Subject B": 6},
-      {"category": "Avoids Blame
       {"category": "Uses 'I' Statements", "Subject A": 5, "Subject B": 6},
       {"category": "Avoids Blame", "Subject A": 7, "Subject B": 8},
       {"category": "Seeks Resolution", "Subject A": 6, "Subject B": 7},

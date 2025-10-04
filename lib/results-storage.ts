@@ -1,47 +1,70 @@
-// Utility for storing and retrieving analysis results
-// Using sessionStorage for temporary client-side storage
-
-export interface AnalysisResults {
-  [key: string]: any
-}
-
-export function storeResults(results: AnalysisResults): string {
-  if (typeof window === "undefined") return ""
-
-  const resultId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-
+export function saveResults(analysis: any): string {
   try {
-    sessionStorage.setItem(`love-lens-results-${resultId}`, JSON.stringify(results))
+    const resultId = `result_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem(resultId, JSON.stringify(analysis))
+      localStorage.setItem("latestResultId", resultId)
+      console.log("Results saved to localStorage with ID:", resultId)
+    }
+
     return resultId
   } catch (error) {
-    console.error("Error storing results:", error)
-    return ""
+    console.error("Error saving results:", error)
+    throw new Error("Failed to save analysis results")
   }
 }
 
-// Add saveResults as an alias for storeResults for backward compatibility
-export const saveResults = storeResults
+export function storeResults(analysis: any): string {
+  return saveResults(analysis)
+}
 
-export function getResults(resultId: string): AnalysisResults | null {
-  if (typeof window === "undefined") return null
-
+export function getResults(resultId?: string): any {
   try {
-    const stored = sessionStorage.getItem(`love-lens-results-${resultId}`)
-    if (stored) {
-      return JSON.parse(stored)
+    if (typeof window === "undefined") {
+      return null
     }
+
+    const id = resultId || localStorage.getItem("latestResultId")
+
+    if (!id) {
+      console.log("No result ID provided or found")
+      return null
+    }
+
+    const data = localStorage.getItem(id)
+
+    if (!data) {
+      console.log("No data found for result ID:", id)
+      return null
+    }
+
+    return JSON.parse(data)
   } catch (error) {
     console.error("Error retrieving results:", error)
+    return null
   }
-
-  return null
 }
 
-export function clearResults(resultId: string): void {
-  if (typeof window === "undefined") return
+export function getLatestResults(): any {
+  return getResults()
+}
 
+export function clearResults(resultId?: string): void {
   try {
-    sessionStorage.removeItem(`love-lens-results-${resultId}`)
+    if (typeof window === "undefined") {
+      return
+    }
+
+    if (resultId) {
+      localStorage.removeItem(resultId)
+    } else {
+      const latestId = localStorage.getItem("latestResultId")
+      if (latestId) {
+        localStorage.removeItem(latestId)
+      }
+      localStorage.removeItem("latestResultId")
+    }
   } catch (error) {
     console.error("Error clearing results:", error)
   }
