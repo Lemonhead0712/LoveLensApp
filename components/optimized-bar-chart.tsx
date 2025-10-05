@@ -18,7 +18,7 @@ const COLORS = {
   subjectB: "#ec4899",
 }
 
-export function OptimizedBarChart({ data, title }: OptimizedBarChartProps) {
+export default function OptimizedBarChart({ data, title }: OptimizedBarChartProps) {
   // Memoize chart data to prevent unnecessary recalculations
   const chartData = useMemo(() => {
     if (!data || !Array.isArray(data) || data.length === 0) {
@@ -123,5 +123,3 @@ export function OptimizedBarChart({ data, title }: OptimizedBarChartProps) {
     </Card>
   )
 }
-
-export default OptimizedBarChart

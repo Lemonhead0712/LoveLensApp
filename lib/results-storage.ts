@@ -1,39 +1,47 @@
-export interface StoredResults {
-  timestamp: number
-  results: any
+// Utility for storing and retrieving analysis results
+// Using sessionStorage for temporary client-side storage
+
+export interface AnalysisResults {
+  [key: string]: any
 }
 
-export function saveResults(results: any): void {
+export function storeResults(results: AnalysisResults): string {
+  if (typeof window === "undefined") return ""
+
+  const resultId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+
   try {
-    const stored: StoredResults = {
-      timestamp: Date.now(),
-      results,
-    }
-    sessionStorage.setItem("love-lens-results", JSON.stringify(stored))
-    console.log("Results saved successfully")
+    sessionStorage.setItem(`love-lens-results-${resultId}`, JSON.stringify(results))
+    return resultId
   } catch (error) {
-    console.error("Error saving results:", error)
-    throw new Error("Failed to save results")
+    console.error("Error storing results:", error)
+    return ""
   }
 }
 
-export function getResults(): any | null {
-  try {
-    const stored = sessionStorage.getItem("love-lens-results")
-    if (!stored) return null
+// Add saveResults as an alias for storeResults for backward compatibility
+export const saveResults = storeResults
 
-    const parsed: StoredResults = JSON.parse(stored)
-    return parsed.results
+export function getResults(resultId: string): AnalysisResults | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const stored = sessionStorage.getItem(`love-lens-results-${resultId}`)
+    if (stored) {
+      return JSON.parse(stored)
+    }
   } catch (error) {
     console.error("Error retrieving results:", error)
-    return null
   }
+
+  return null
 }
 
-export function clearResults(): void {
+export function clearResults(resultId: string): void {
+  if (typeof window === "undefined") return
+
   try {
-    sessionStorage.removeItem("love-lens-results")
-    console.log("Results cleared successfully")
+    sessionStorage.removeItem(`love-lens-results-${resultId}`)
   } catch (error) {
     console.error("Error clearing results:", error)
   }

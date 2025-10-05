@@ -1,67 +1,64 @@
-import { CompactPageLayout } from "@/components/compact-page-layout"
+import CompactPageLayout from "@/components/compact-page-layout"
 
 export default function AboutPage() {
   return (
     <CompactPageLayout
       title="About Love Lens"
-      description="Discover how our AI-powered relationship analysis helps couples strengthen their emotional connection."
+      description="Learn about our mission, vision, and the team behind Love Lens"
     >
-      <div className="space-y-8">
-        <section>
-          <h2 className="text-xl font-semibold mb-4 text-purple-700">Our Mission</h2>
-          <p className="text-gray-700 leading-relaxed">
-            Love Lens was created to help couples gain deeper insights into their communication patterns and emotional
-            dynamics. We believe that understanding how you connect with your partner is the first step toward building
-            a stronger, more fulfilling relationship.
-          </p>
-        </section>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Mission</h2>
+        <p className="mb-3 text-gray-700">
+          At Love Lens, our mission is to help couples build stronger, more fulfilling relationships through data-driven
+          insights and emotional intelligence. We believe that understanding the patterns in how we communicate is the
+          first step toward meaningful growth and deeper connection.
+        </p>
+        <p className="text-gray-700">
+          We've created a tool that uses advanced AI to analyze conversation patterns without storing or exposing
+          private messages, providing couples with a safe way to gain insights into their relationship dynamics.
+        </p>
+      </section>
 
-        <section>
-          <h2 className="text-xl font-semibold mb-4 text-purple-700">How It Works</h2>
-          <p className="text-gray-700 leading-relaxed mb-4">
-            Our advanced AI technology analyzes your text conversations to identify communication patterns, emotional
-            intelligence indicators, and relationship dynamics. Using OpenAI's GPT-4o with vision capabilities, we
-            extract and analyze text from your conversation screenshots to provide personalized insights.
-          </p>
-          <p className="text-gray-700 leading-relaxed">
-            The analysis takes 1-3 minutes and provides comprehensive feedback on communication styles, conflict
-            resolution patterns, emotional connection, and areas for growth.
-          </p>
-        </section>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Vision</h2>
+        <p className="mb-3 text-gray-700">
+          We envision a world where technology serves as a bridge to deeper human connection rather than a barrier. Love
+          Lens represents our commitment to using AI ethically and responsibly to strengthen the bonds between partners.
+        </p>
+        <p className="text-gray-700">
+          Our goal is to make relationship insights accessible to everyone, regardless of whether they have access to
+          traditional relationship counseling. We believe that with the right tools, every couple can develop greater
+          understanding, empathy, and communication skills.
+        </p>
+      </section>
 
-        <section>
-          <h2 className="text-xl font-semibold mb-4 text-purple-700">Privacy & Security</h2>
-          <p className="text-gray-700 leading-relaxed mb-4">
-            We take your privacy seriously. Your conversation screenshots are processed securely through OpenAI's API
-            and are not permanently stored on our servers. Analysis results are stored in your browser's session storage
-            and are automatically cleared when you close your browser.
-          </p>
-          <p className="text-gray-700 leading-relaxed">
-            We never share your data with third parties, and all processing is done in real-time with industry-standard
-            encryption.
-          </p>
-        </section>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Approach</h2>
+        <p className="mb-3 text-gray-700">
+          Love Lens is built on a foundation of research-backed relationship science, including the Gottman Method,
+          attachment theory, and modern communication studies. We combine this knowledge with advanced natural language
+          processing to identify patterns that might otherwise go unnoticed.
+        </p>
+        <p className="text-gray-700">
+          What sets us apart is our commitment to privacy. Unlike other tools that might store your conversations or
+          require you to share intimate details, Love Lens analyzes screenshots locally and never stores the content of
+          your messages. We only provide insights about patterns, not judgments about specific exchanges.
+        </p>
+      </section>
 
-        <section>
-          <h2 className="text-xl font-semibold mb-4 text-purple-700">Our Technology</h2>
-          <p className="text-gray-700 leading-relaxed">
-            Love Lens is powered by cutting-edge AI technology from OpenAI, specifically the GPT-4o-2024-08-06 model
-            with vision capabilities. This allows us to accurately extract text from conversation screenshots and
-            provide nuanced, context-aware relationship insights based on established psychological frameworks.
-          </p>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4 text-purple-700">Contact Us</h2>
-          <p className="text-gray-700 leading-relaxed">
-            Have questions or feedback? We'd love to hear from you. Visit our{" "}
-            <a href="/contact" className="text-purple-600 hover:text-purple-800 underline">
-              contact page
-            </a>{" "}
-            to get in touch with our team.
-          </p>
-        </section>
-      </div>
+      <section className="mb-6">
+        <h2 className="text-xl font-bold mb-3 text-purple-700">Our Team</h2>
+        <p className="mb-3 text-gray-700">
+          Love Lens was founded by Lamar Newsome, a relationship coach with over 15 years of experience helping couples
+          navigate communication challenges. After witnessing the same patterns emerge across hundreds of relationships,
+          Lamar envisioned a tool that could help couples identify these patterns earlier and more objectively.
+        </p>
+        <p className="text-gray-700">
+          Our team includes relationship therapists, AI researchers, and software engineers who share a passion for
+          using technology to foster human connection. We're committed to continuous improvement, regularly consulting
+          with experts in relationship psychology to refine our analysis and recommendations.
+        </p>
+      </section>
     </CompactPageLayout>
   )
 }

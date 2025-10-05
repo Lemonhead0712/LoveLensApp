@@ -5,24 +5,18 @@ import StreamlinedFeatures from "@/components/streamlined-features"
 import StreamlinedHowItWorks from "@/components/streamlined-how-it-works"
 import EnhancedCompactUpload from "@/components/enhanced-compact-upload"
 import CompactFooter from "@/components/compact-footer"
-import EnhancedScrollToTop from "@/components/enhanced-scroll-to-top"
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 via-white to-pink-50">
+    <main className="min-h-screen bg-white">
       <CompactHeader />
-      <main className="flex-grow">
-        <StreamlinedHero />
-        <StreamlinedFeatures />
-        <StreamlinedHowItWorks />
-        <Suspense fallback={<div className="py-12 text-center">Loading upload section...</div>}>
-          <EnhancedCompactUpload />
-        </Suspense>
-      </main>
-      <CompactFooter />
-      <Suspense fallback={null}>
-        <EnhancedScrollToTop />
+      <StreamlinedHero />
+      <StreamlinedFeatures />
+      <StreamlinedHowItWorks />
+      <Suspense fallback={<div className="py-20 text-center">Loading...</div>}>
+        <EnhancedCompactUpload />
       </Suspense>
-    </div>
+      <CompactFooter />
+    </main>
   )
 }
