@@ -8,7 +8,7 @@ interface CompactPageLayoutProps {
   children: React.ReactNode
 }
 
-export default function CompactPageLayout({ title, description, children }: CompactPageLayoutProps) {
+export function CompactPageLayout({ title, description, children }: CompactPageLayoutProps) {
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-purple-50 to-white">
       <CompactHeader />
@@ -25,3 +25,5 @@ export default function CompactPageLayout({ title, description, children }: Comp
     </div>
   )
 }
+
+export default CompactPageLayout

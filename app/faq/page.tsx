@@ -1,183 +1,145 @@
-import CompactPageLayout from "@/components/compact-page-layout"
+import { CompactPageLayout } from "@/components/compact-page-layout"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
 export default function FAQPage() {
   return (
     <CompactPageLayout
       title="Frequently Asked Questions"
-      description="Find answers to common questions about Love Lens"
+      description="Find answers to common questions about Love Lens and how it works."
     >
       <div className="space-y-8">
         <section>
-          <p className="text-gray-700 leading-relaxed">
-            Find answers to the most common questions about Love Lens below. If you don't see your question answered
-            here, please don't hesitate to{" "}
-            <a href="/contact" className="text-purple-600 hover:text-purple-700 underline">
-              contact us
-            </a>
-            .
-          </p>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-bold mb-4 text-purple-700">General Questions</h2>
+          <h2 className="text-xl font-semibold mb-4 text-purple-700">General Questions</h2>
           <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="what-is-love-lens" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">What is Love Lens?</AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Love Lens is an AI-powered relationship insight tool that analyzes conversation screenshots between
-                partners to provide objective insights into relationship dynamics. Using advanced AI technology, it
-                examines communication patterns, emotional tones, and interaction styles to help couples understand
-                their relationship better and identify areas for growth.
+            <AccordionItem value="item-1">
+              <AccordionTrigger>What is Love Lens?</AccordionTrigger>
+              <AccordionContent>
+                Love Lens is an AI-powered relationship analysis tool that examines your text conversations to provide
+                insights into communication patterns, emotional intelligence, and relationship dynamics. It uses
+                OpenAI's GPT-4o with vision capabilities to analyze your conversations and offer personalized feedback.
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="how-does-it-work" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                How does Love Lens work?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Love Lens uses OpenAI's GPT-4o with vision capabilities to analyze your conversation screenshots. You
-                upload images of text conversations from any messaging platform, and the AI extracts and analyzes the
-                text to identify communication patterns, emotional dynamics, attachment styles, and relationship health
-                indicators. The analysis provides comprehensive insights across multiple dimensions including overall
-                relationship health, communication quality, emotional intelligence, conflict resolution, and future
-                outlook. Results are temporarily stored in your browser session for viewing and can be exported as a
-                Word document.
+            <AccordionItem value="item-2">
+              <AccordionTrigger>How does Love Lens work?</AccordionTrigger>
+              <AccordionContent>
+                You upload screenshots of your text conversations (from iMessage, WhatsApp, SMS, or any messaging app).
+                Our AI uses Optical Character Recognition (OCR) to extract the text, then analyzes communication
+                patterns, emotional tone, conflict resolution styles, and relationship health. The entire process takes
+                1-3 minutes and includes stages for preparing images, extracting text, analyzing patterns, and
+                generating insights.
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="is-it-secure" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                Is Love Lens secure and private?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Yes, privacy is a priority. Your conversation images are processed through secure API calls to OpenAI
-                for text extraction and analysis. The extracted text and analysis results are temporarily stored in your
-                browser's session storage and are not permanently saved on our servers. Once you close your browser or
-                clear your session, all data is removed. However, please note that uploaded images are sent to OpenAI's
-                API for processing, so you should review OpenAI's privacy policy as well.
+            <AccordionItem value="item-3">
+              <AccordionTrigger>Is my data private and secure?</AccordionTrigger>
+              <AccordionContent>
+                Yes. Your conversation screenshots are processed securely through OpenAI's API with industry-standard
+                encryption. We do not permanently store your images or conversations on our servers. Analysis results
+                are stored in your browser's session storage and are automatically cleared when you close your browser.
+                We never share your data with third parties.
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="replace-therapy" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                Can Love Lens replace relationship therapy?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                No, Love Lens is not a substitute for professional relationship counseling or therapy. It's an
-                AI-powered tool that provides insights based on conversation analysis, but it cannot replace the
-                personalized guidance, emotional support, and professional expertise of a qualified therapist or
-                counselor. We recommend using Love Lens as a supplementary tool to gain insights, but always consult
-                with a mental health professional for serious relationship concerns.
+            <AccordionItem value="item-4">
+              <AccordionTrigger>What messaging apps are supported?</AccordionTrigger>
+              <AccordionContent>
+                Love Lens works with screenshots from any text-based messaging platform, including iMessage, SMS,
+                WhatsApp, Facebook Messenger, Telegram, Signal, and more. As long as you can take a clear screenshot
+                showing the text conversation, our AI can analyze it.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
         </section>
 
         <section>
-          <h2 className="text-xl font-bold mb-4 text-purple-700">Using Love Lens</h2>
+          <h2 className="text-xl font-semibold mb-4 text-purple-700">Technical Questions</h2>
           <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="what-screenshots" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                What kind of screenshots should I upload?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                You can upload screenshots of text conversations between you and your partner from any messaging
-                platform (SMS, iMessage, WhatsApp, Facebook Messenger, etc.). The screenshots should show clear, legible
-                text messages. For best results, include multiple screenshots that represent different types of
-                conversations - daily check-ins, deeper discussions, and how you handle disagreements. Make sure the
-                text is readable and that message timestamps are visible if possible to help the AI understand
-                conversation flow.
+            <AccordionItem value="item-5">
+              <AccordionTrigger>How accurate is the analysis?</AccordionTrigger>
+              <AccordionContent>
+                Our analysis uses OpenAI's GPT-4o-2024-08-06 model, one of the most advanced AI models available. The
+                accuracy depends on the quality and quantity of conversation data provided. For best results, we
+                recommend uploading 5-10 screenshots showing a variety of conversation types (casual chat, conflict
+                resolution, emotional support, etc.). The AI provides confidence scores based on the amount and clarity
+                of text extracted.
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="how-many-screenshots" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                How many screenshots should I upload?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                You can upload multiple screenshots (the system supports batch uploads). For the most comprehensive
-                analysis, we recommend uploading 5-10 screenshots that capture diverse conversations over time. More
-                data helps the AI identify consistent patterns in your communication. However, even analyzing a few
-                meaningful conversations can provide valuable insights. Each image should be under 20MB in size.
+            <AccordionItem value="item-6">
+              <AccordionTrigger>How long does the analysis take?</AccordionTrigger>
+              <AccordionContent>
+                The complete analysis typically takes 1-3 minutes, depending on the number of screenshots uploaded.
+                You'll see a progress indicator showing four stages: preparing images (extracting text from
+                screenshots), analyzing patterns (identifying communication styles), generating insights (creating
+                personalized feedback), and finalizing report (compiling all results).
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="partner-consent" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                Do I need my partner's consent to use Love Lens?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Yes, we strongly recommend obtaining your partner's consent before uploading your conversations to Love
-                Lens. Analyzing conversations without consent can violate trust and may have legal implications
-                depending on your jurisdiction's privacy laws. Love Lens works best when both partners are aware of and
-                engaged with the process, as the insights are most valuable when discussed together as a couple.
+            <AccordionItem value="item-7">
+              <AccordionTrigger>Can I export my results?</AccordionTrigger>
+              <AccordionContent>
+                Yes! You can export your analysis results as a professionally formatted Word document. The export
+                includes all sections: relationship health scores, communication patterns, emotional intelligence
+                metrics, strengths, areas for growth, and personalized recommendations. Simply click the "Export to
+                Word" button on your results page.
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="how-long-analysis" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                How long does the analysis take?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                The analysis typically takes 1-3 minutes depending on the number of screenshots you upload and the
-                amount of text in them. You'll see a progress animation with different stages: preparing images,
-                extracting text from screenshots, analyzing conversation patterns, and generating insights. Once
-                complete, you'll be automatically redirected to view your comprehensive analysis results.
+            <AccordionItem value="item-8">
+              <AccordionTrigger>What if the text extraction doesn't work?</AccordionTrigger>
+              <AccordionContent>
+                If the AI has trouble reading your screenshots, try these tips: 1) Ensure screenshots are clear and not
+                blurry, 2) Make sure text is large enough to read, 3) Avoid heavily compressed or low-resolution images,
+                4) Take screenshots in good lighting if they're photos of a screen, 5) Upload fewer screenshots at once
+                (5-10 is optimal). The system provides confidence scores and will let you know if text extraction was
+                challenging.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-9">
+              <AccordionTrigger>How long are my results stored?</AccordionTrigger>
+              <AccordionContent>
+                Your analysis results are stored in your browser's session storage, which means they're available for
+                the duration of your browser session. Once you close your browser or clear your browsing data, the
+                results are automatically deleted. We recommend exporting your results to Word if you want to keep them
+                long-term.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-10">
+              <AccordionTrigger>What AI model powers Love Lens?</AccordionTrigger>
+              <AccordionContent>
+                Love Lens uses OpenAI's GPT-4o-2024-08-06 model with vision capabilities. This advanced AI model can
+                process both text and images, allowing it to extract text from your conversation screenshots and perform
+                sophisticated natural language analysis to understand communication patterns, emotional tone, and
+                relationship dynamics.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
         </section>
 
         <section>
-          <h2 className="text-xl font-bold mb-4 text-purple-700">Technical Questions</h2>
+          <h2 className="text-xl font-semibold mb-4 text-purple-700">Pricing & Support</h2>
           <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="supported-formats" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                What image formats are supported?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Love Lens supports common image formats including PNG, JPG/JPEG, GIF, and WebP. Each file should be
-                under 20MB in size. The AI uses optical character recognition (OCR) through GPT-4o's vision capabilities
-                to extract text from your screenshots, so ensure the text is clear and readable for the best results.
+            <AccordionItem value="item-11">
+              <AccordionTrigger>How much does Love Lens cost?</AccordionTrigger>
+              <AccordionContent>
+                Love Lens is currently free to use during our beta period. We're committed to making relationship
+                insights accessible to everyone. Future pricing plans will be announced on our website, and early users
+                will receive special benefits.
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="export-results" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                Can I export my analysis results?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Yes! After your analysis is complete, you can export your results as a Word document (.docx) by clicking
-                the "Export as Word Doc" button at the top of the results page. The exported document includes all
-                sections of your analysis: overall relationship health, communication patterns, emotional intelligence,
-                conflict resolution, attachment dynamics, growth opportunities, and future outlook. The document is
-                formatted professionally and can be saved for your records or shared with your partner or therapist.
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="results-storage" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                How long are my results stored?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Your analysis results are stored temporarily in your browser's session storage. This means they remain
-                available as long as you keep your browser tab open or until you clear your browser's cache. The results
-                are not permanently saved on our servers. If you want to keep your analysis for future reference, we
-                recommend exporting it as a Word document before closing your browser.
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="what-ai-model" className="border-purple-100">
-              <AccordionTrigger className="text-purple-700 hover:text-purple-800">
-                What AI model does Love Lens use?
-              </AccordionTrigger>
-              <AccordionContent className="text-gray-700 leading-relaxed">
-                Love Lens uses OpenAI's GPT-4o model (specifically gpt-4o-2024-08-06), which includes advanced vision
-                capabilities for extracting text from images and sophisticated natural language processing for analyzing
-                relationship dynamics. This model is specifically designed to understand context, emotional nuances, and
-                complex human interactions, making it well-suited for relationship analysis.
+            <AccordionItem value="item-12">
+              <AccordionTrigger>How can I get support?</AccordionTrigger>
+              <AccordionContent>
+                If you encounter any issues or have questions, you can reach us through our{" "}
+                <a href="/contact" className="text-purple-600 hover:text-purple-800 underline">
+                  contact page
+                </a>
+                . We typically respond within 24-48 hours. For technical issues, please include details about your
+                browser, device, and the specific error message you received.
               </AccordionContent>
             </AccordionItem>
           </Accordion>

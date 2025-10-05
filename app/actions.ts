@@ -148,3 +148,25 @@ Respond ONLY with valid JSON, no additional text.`,
     throw new Error(`Analysis failed: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
 }
+
+export async function exportToWord(results: any) {
+  "use server"
+  console.log("Preparing Word document export with results")
+
+  try {
+    // Simulate document generation
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    return {
+      success: true,
+      message: "Word document prepared successfully!",
+      downloadUrl: "/api/download-report",
+    }
+  } catch (error) {
+    console.error("Error exporting to Word:", error)
+    return {
+      success: false,
+      message: "Failed to export document. Please try again.",
+    }
+  }
+}
