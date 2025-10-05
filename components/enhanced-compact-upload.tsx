@@ -41,7 +41,6 @@ export default function EnhancedCompactUpload() {
     setFiles((prev) => [...prev, ...newFiles])
     setError(null)
 
-    // Generate previews
     newFiles.forEach((file) => {
       const reader = new FileReader()
       reader.onloadend = () => {
@@ -82,24 +81,22 @@ export default function EnhancedCompactUpload() {
     setProgress(0)
 
     try {
-      // Step 1: Preparing
       setCurrentMessage("Preparing your images...")
       setProgress(15)
       await new Promise((resolve) => setTimeout(resolve, 800))
 
-      // Create FormData
       const formData = new FormData()
       files.forEach((file, index) => {
         formData.append(`file-${index}`, file)
       })
 
-      // Step 2: Extracting text
       setCurrentMessage("Extracting text from screenshots...")
       setProgress(35)
 
+      console.log("Calling analyzeConversation with", files.length, "files")
       const result = await analyzeConversation(formData)
+      console.log("Analysis result received:", result)
 
-      // Step 3: Analyzing patterns
       setCurrentMessage("Analyzing conversation patterns...")
       setProgress(65)
       await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -108,28 +105,28 @@ export default function EnhancedCompactUpload() {
         throw new Error(result.error)
       }
 
-      // Check for valid analysis results
-      if (!result || !result.overallRelationshipHealth) {
+      if (!result || typeof result.overallRelationshipHealth === "undefined") {
+        console.error("Invalid result structure:", result)
         throw new Error("Analysis completed but results are invalid. Please try again.")
       }
 
-      // Step 4: Generating insights
       setCurrentMessage("Generating relationship insights...")
       setProgress(85)
       await new Promise((resolve) => setTimeout(resolve, 800))
 
-      // Store results
+      console.log("Saving results to localStorage...")
       const resultId = saveResults(result)
+      console.log("Results saved with ID:", resultId)
 
       if (!resultId) {
-        throw new Error("Failed to store results")
+        throw new Error("Failed to generate result ID")
       }
 
       setProgress(100)
       setCurrentMessage("Complete!")
 
-      // Navigate to results
       await new Promise((resolve) => setTimeout(resolve, 500))
+      console.log("Navigating to results page with ID:", resultId)
       router.push(`/results?id=${resultId}`)
     } catch (error: any) {
       console.error("Analysis error:", error)

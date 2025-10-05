@@ -1,28 +1,24 @@
-import type { ReactNode } from "react"
-import { Card } from "@/components/ui/card"
-import CompactFooter from "@/components/compact-footer"
-import CompactHeader from "@/components/compact-header"
+import type React from "react"
+import CompactHeader from "./compact-header"
+import CompactFooter from "./compact-footer"
 
 interface CompactPageLayoutProps {
-  children: ReactNode
   title: string
-  description?: string
+  description: string
+  children: React.ReactNode
 }
 
-export default function CompactPageLayout({ children, title, description }: CompactPageLayoutProps) {
+export default function CompactPageLayout({ title, description, children }: CompactPageLayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 to-white">
+    <div className="flex flex-col min-h-screen bg-gradient-to-b from-purple-50 to-white">
       <CompactHeader />
       <main className="flex-grow">
-        <div className="container mx-auto px-4 py-6 md:py-10">
-          <div className="mb-5 md:mb-6 text-center">
-            <h1 className="mb-2 text-2xl md:text-3xl font-bold text-purple-700">{title}</h1>
-            {description && <p className="mx-auto max-w-2xl text-gray-600 text-base">{description}</p>}
+        <div className="container mx-auto px-4 py-12 max-w-5xl">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold mb-3 text-purple-800">{title}</h1>
+            <p className="text-gray-600">{description}</p>
           </div>
-
-          <Card className="mb-6 border-purple-100 p-5 md:p-6 shadow-md bg-white">
-            <div className="prose prose-purple max-w-none">{children}</div>
-          </Card>
+          <div className="bg-white rounded-lg shadow-md p-8">{children}</div>
         </div>
       </main>
       <CompactFooter />

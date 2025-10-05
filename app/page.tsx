@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import CompactHeader from "@/components/compact-header"
 import StreamlinedHero from "@/components/streamlined-hero"
 import StreamlinedFeatures from "@/components/streamlined-features"
@@ -14,10 +15,14 @@ export default function Home() {
         <StreamlinedHero />
         <StreamlinedFeatures />
         <StreamlinedHowItWorks />
-        <EnhancedCompactUpload />
+        <Suspense fallback={<div className="py-12 text-center">Loading upload section...</div>}>
+          <EnhancedCompactUpload />
+        </Suspense>
       </main>
       <CompactFooter />
-      <EnhancedScrollToTop />
+      <Suspense fallback={null}>
+        <EnhancedScrollToTop />
+      </Suspense>
     </div>
   )
 }
