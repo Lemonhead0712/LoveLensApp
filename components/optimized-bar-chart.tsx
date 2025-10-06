@@ -56,21 +56,29 @@ export default function OptimizedBarChart({ data, title }: OptimizedBarChartProp
         </CardHeader>
       )}
       <CardContent className="p-2 sm:p-4 md:p-6">
-        <ResponsiveContainer width="100%" height={350} className="sm:h-[380px] md:h-[400px]">
+        <ResponsiveContainer width="100%" height={380} className="sm:h-[420px] md:h-[450px]">
           <BarChart
             data={chartData}
-            layout="horizontal"
             margin={{
-              top: 10,
-              right: 10,
-              bottom: 10,
-              left: 80,
+              top: 20,
+              right: 20,
+              left: 20,
+              bottom: 80,
             }}
-            className="sm:ml-8 md:ml-16"
+            className="sm:mb-4 md:mb-6"
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={true} vertical={false} />
             <XAxis
-              type="number"
+              dataKey="category"
+              angle={-45}
+              textAnchor="end"
+              height={80}
+              interval={0}
+              tick={{ fontSize: 9, fill: "#4b5563", fontWeight: 500 }}
+              className="sm:text-[10px] md:text-xs"
+              stroke="#9ca3af"
+            />
+            <YAxis
               domain={[0, 10]}
               ticks={[0, 2, 4, 6, 8, 10]}
               tick={{ fontSize: 10, fill: "#4b5563", fontWeight: 500 }}
@@ -78,32 +86,18 @@ export default function OptimizedBarChart({ data, title }: OptimizedBarChartProp
               stroke="#9ca3af"
               label={{
                 value: "Score (0-10)",
-                position: "insideBottom",
-                offset: -5,
-                style: { fontSize: 10, fontWeight: 600, fill: "#374151" },
+                angle: -90,
+                position: "insideLeft",
+                style: { fontSize: 11, fontWeight: 600, fill: "#374151" },
                 className: "sm:text-xs md:text-sm",
               }}
-            />
-            <YAxis
-              type="category"
-              dataKey="category"
-              width={75}
-              className="sm:w-[120px] md:w-[150px]"
-              tick={{
-                fontSize: 9,
-                fill: "#4b5563",
-                fontWeight: 500,
-              }}
-              className="sm:text-[10px] md:text-xs"
-              stroke="#9ca3af"
-              tickLine={false}
             />
             <Tooltip
               contentStyle={{
                 backgroundColor: "white",
                 border: "1px solid #e5e7eb",
                 borderRadius: "12px",
-                padding: "8px 10px",
+                padding: "10px 12px",
                 fontSize: "11px",
                 boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
               }}
@@ -113,20 +107,19 @@ export default function OptimizedBarChart({ data, title }: OptimizedBarChartProp
             />
             <Legend
               wrapperStyle={{
-                paddingTop: "12px",
+                paddingTop: "16px",
                 fontSize: "11px",
                 fontWeight: 600,
               }}
-              className="sm:text-xs sm:pt-4 md:text-sm md:pt-5"
+              className="sm:text-xs sm:pt-5 md:text-sm md:pt-6"
               iconType="circle"
             />
             <Bar
               dataKey="A"
               name="Subject A"
               fill={COLORS.subjectA}
-              radius={[0, 6, 6, 0]}
-              barSize={16}
-              className="sm:h-5 md:h-6"
+              radius={[8, 8, 0, 0]}
+              maxBarSize={50}
               animationDuration={800}
               animationBegin={0}
             />
@@ -134,9 +127,8 @@ export default function OptimizedBarChart({ data, title }: OptimizedBarChartProp
               dataKey="B"
               name="Subject B"
               fill={COLORS.subjectB}
-              radius={[0, 6, 6, 0]}
-              barSize={16}
-              className="sm:h-5 md:h-6"
+              radius={[8, 8, 0, 0]}
+              maxBarSize={50}
               animationDuration={800}
               animationBegin={100}
             />

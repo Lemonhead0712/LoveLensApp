@@ -64,7 +64,7 @@ const CustomLabel = ({
   name: string
 }) => {
   const RADIAN = Math.PI / 180
-  const radius = outerRadius + 30
+  const radius = outerRadius + 25
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
   const y = cy + radius * Math.sin(-midAngle * RADIAN)
 
@@ -75,20 +75,23 @@ const CustomLabel = ({
       fill="#374151"
       textAnchor={x > cx ? "start" : "end"}
       dominantBaseline="central"
-      className="text-[9px] sm:text-[10px] md:text-xs font-medium"
+      className="text-[8px] sm:text-[9px] md:text-[10px] font-medium"
     >
-      {name.length > 15 ? name.substring(0, 13) + "..." : name} {(percent * 100).toFixed(0)}%
+      {name.length > 12 ? name.substring(0, 10) + "..." : name} {(percent * 100).toFixed(0)}%
     </text>
   )
 }
 
 const CustomLegend = ({ payload }: any) => {
   return (
-    <div className="flex flex-wrap justify-center gap-2 mt-4">
+    <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 mt-3 sm:mt-4 px-2">
       {payload.map((entry: any, index: number) => (
-        <div key={`legend-${index}`} className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-          <span className="text-xs text-gray-700">{entry.value}</span>
+        <div key={`legend-${index}`} className="flex items-center gap-1">
+          <div
+            className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full flex-shrink-0"
+            style={{ backgroundColor: entry.color }}
+          />
+          <span className="text-[10px] sm:text-xs text-gray-700 leading-tight">{entry.value}</span>
         </div>
       ))}
     </div>
@@ -117,7 +120,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     setIsExporting(true)
     setExportSuccess(false)
     try {
-      // Implement export logic here
       await new Promise((resolve) => setTimeout(resolve, 2000))
       setExportSuccess(true)
       setTimeout(() => setExportSuccess(false), 5000)
@@ -145,13 +147,12 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 p-3 sm:p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Header Section - Identical on mobile and web, just styled responsively */}
+        {/* Header Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center space-y-3 sm:space-y-4 mb-4 sm:mb-6 md:mb-8"
         >
-          {/* Title */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <Heart className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600 flex-shrink-0" />
             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent text-center">
@@ -159,7 +160,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </h1>
           </div>
 
-          {/* Confidence Warning - Shown on both views */}
           {results.confidenceWarning && (
             <Alert className="border-yellow-200 bg-yellow-50 max-w-3xl mx-auto">
               <div className="flex items-start gap-2">
@@ -171,7 +171,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </Alert>
           )}
 
-          {/* Metadata Badges - All shown on both views */}
           <div className="flex flex-wrap gap-2 sm:gap-3 justify-center items-center">
             <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
               <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
@@ -189,7 +188,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             )}
           </div>
 
-          {/* Export Button - Shown on both views */}
           <div className="flex justify-center pt-2">
             <Button
               onClick={handleExport}
@@ -211,7 +209,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </Button>
           </div>
 
-          {/* Export Success Message - Shown on both views */}
           {exportSuccess && (
             <Alert className="border-green-200 bg-green-50 max-w-md mx-auto">
               <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -222,7 +219,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           )}
         </motion.div>
 
-        {/* Relationship Health Score - Identical on both views */}
+        {/* Relationship Health Score */}
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
           <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
             <CardHeader className="pb-3 sm:pb-4 md:pb-6">
@@ -252,7 +249,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           </Card>
         </motion.div>
 
-        {/* Introduction Note - Identical on both views */}
+        {/* Introduction Note */}
         {results.introductionNote && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <Card>
@@ -263,10 +260,9 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           </motion.div>
         )}
 
-        {/* Tabbed Content - All tabs shown on both views */}
+        {/* Tabbed Content */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            {/* Tab Navigation - Scrollable on mobile, grid on desktop */}
             <div className="relative mb-4 sm:mb-6">
               <div className="overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
                 <TabsList className="inline-flex sm:grid w-auto sm:w-full min-w-max sm:min-w-0 sm:grid-cols-5 h-auto gap-1.5 sm:gap-2 bg-white/50 p-1.5 rounded-lg">
@@ -311,7 +307,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
             {/* Overview Tab Content */}
             <TabsContent value="overview" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
-              {/* Communication Styles - All content shown on both views */}
+              {/* Communication Styles */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -324,7 +320,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     {results.communicationStylesAndEmotionalTone?.description}
                   </p>
 
-                  {/* Emotional Tags - All shown */}
                   {results.communicationStylesAndEmotionalTone?.emotionalVibeTags && (
                     <div className="flex flex-wrap gap-1.5 sm:gap-2">
                       {results.communicationStylesAndEmotionalTone.emotionalVibeTags.map(
@@ -341,7 +336,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     </div>
                   )}
 
-                  {/* Subject Styles - Both shown, stacked on mobile, side-by-side on desktop */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
                     <div className="p-3 sm:p-4 bg-blue-50 rounded-lg">
                       <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">Subject A's Style</h4>
@@ -357,7 +351,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     </div>
                   </div>
 
-                  {/* Additional Communication Details - All shown */}
                   {results.communicationStylesAndEmotionalTone?.regulationPatternsObserved && (
                     <div className="p-3 sm:p-4 bg-gray-50 rounded-lg mt-3">
                       <h4 className="font-semibold text-gray-900 mb-2 text-sm sm:text-base">Regulation Patterns</h4>
@@ -378,7 +371,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Reflective Frameworks - All content shown */}
+              {/* Reflective Frameworks */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -392,7 +385,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   )}
 
                   <div className="space-y-2.5 sm:space-y-3">
-                    {/* All framework sections shown on both views */}
                     {results.reflectiveFrameworks?.attachmentEnergies && (
                       <div className="p-3 sm:p-4 bg-purple-50 rounded-lg">
                         <h4 className="font-semibold text-purple-900 mb-2 text-sm sm:text-base">Attachment Energies</h4>
@@ -437,11 +429,64 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Outlook - Moved to Overview Tab */}
+              <Card>
+                <CardHeader className="pb-3 sm:pb-4 md:pb-6">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    Outlook & Recommendations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
+                    {results.outlook}
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Optional Appendix - Moved to Overview Tab */}
+              {results.optionalAppendix && (
+                <Card>
+                  <CardHeader className="pb-3 sm:pb-4 md:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                      <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                      Additional Observations
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
+                      {results.optionalAppendix}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Key Takeaways - Moved to Overview Tab */}
+              {results.keyTakeaways && results.keyTakeaways.length > 0 && (
+                <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
+                  <CardHeader className="pb-3 sm:pb-4 md:pb-6">
+                    <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
+                      <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                      Key Takeaways
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2.5 sm:space-y-3">
+                      {results.keyTakeaways.map((takeaway: string, index: number) => (
+                        <li key={index} className="flex items-start gap-2.5 sm:gap-3">
+                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm sm:text-base text-gray-700">{takeaway}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             {/* Patterns Tab Content */}
             <TabsContent value="patterns" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
-              {/* Recurring Patterns - All content shown */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -456,7 +501,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     </p>
                   )}
 
-                  {/* All pattern sections shown */}
                   {results.recurringPatternsIdentified?.positivePatterns &&
                     results.recurringPatternsIdentified.positivePatterns.length > 0 && (
                       <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
@@ -536,7 +580,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* What's Getting in the Way - All content shown */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -549,7 +592,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     <p className="text-sm sm:text-base text-gray-700">{results.whatsGettingInTheWay.description}</p>
                   )}
 
-                  {/* All obstacle sections shown, stacked on mobile, side-by-side on desktop */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {results.whatsGettingInTheWay?.emotionalMismatches && (
                       <div className="p-3 sm:p-4 bg-red-50 rounded-lg">
@@ -599,14 +641,14 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   )}
                 </CardHeader>
                 <CardContent className="space-y-6 sm:space-y-7 md:space-y-8">
-                  {/* All charts shown on both views */}
+                  {/* Vertical Bar Charts */}
                   {results.visualInsightsData?.emotionalCommunicationCharacteristics &&
                     results.visualInsightsData.emotionalCommunicationCharacteristics.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">
                           Emotional Communication Characteristics
                         </h4>
-                        <div className="w-full overflow-x-auto">
+                        <div className="w-full">
                           <OptimizedBarChart
                             data={results.visualInsightsData.emotionalCommunicationCharacteristics}
                             title=""
@@ -621,23 +663,23 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         <h4 className="font-semibold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">
                           Conflict Expression Styles
                         </h4>
-                        <div className="w-full overflow-x-auto">
+                        <div className="w-full">
                           <OptimizedBarChart data={results.visualInsightsData.conflictExpressionStyles} title="" />
                         </div>
                       </div>
                     )}
 
-                  {/* Pie Charts - Both shown on both views */}
+                  {/* Pie Charts */}
                   {validationDataA.length > 0 && validationDataB.length > 0 && (
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">
                         Validation & Reassurance Patterns
                       </h4>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         {/* Subject A Pie Chart */}
                         <div className="space-y-2">
                           <p className="text-xs sm:text-sm font-medium text-center text-gray-600">Subject A</p>
-                          <ResponsiveContainer width="100%" height={300} className="sm:h-[320px]">
+                          <ResponsiveContainer width="100%" height={240} className="sm:h-[280px] md:h-[300px]">
                             <PieChart>
                               <Pie
                                 data={validationDataA}
@@ -645,8 +687,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                                 cy="50%"
                                 labelLine
                                 label={CustomLabel}
-                                outerRadius={85}
-                                className="sm:outerRadius-[95]"
+                                outerRadius={65}
+                                className="sm:outerRadius-[75] md:outerRadius-[85]"
                                 fill="#8884d8"
                                 dataKey="value"
                               >
@@ -662,7 +704,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         {/* Subject B Pie Chart */}
                         <div className="space-y-2">
                           <p className="text-xs sm:text-sm font-medium text-center text-gray-600">Subject B</p>
-                          <ResponsiveContainer width="100%" height={300} className="sm:h-[320px]">
+                          <ResponsiveContainer width="100%" height={240} className="sm:h-[280px] md:h-[300px]">
                             <PieChart>
                               <Pie
                                 data={validationDataB}
@@ -670,8 +712,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                                 cy="50%"
                                 labelLine
                                 label={CustomLabel}
-                                outerRadius={85}
-                                className="sm:outerRadius-[95]"
+                                outerRadius={65}
+                                className="sm:outerRadius-[75] md:outerRadius-[85]"
                                 fill="#8884d8"
                                 dataKey="value"
                               >
@@ -690,9 +732,9 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               </Card>
             </TabsContent>
 
-            {/* Professional Insights Tab - Content continues... */}
+            {/* Professional Insights Tab */}
             <TabsContent value="professional" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
-              {/* Attachment Theory - All content shown */}
+              {/* Attachment Theory */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -701,7 +743,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 sm:space-y-4">
-                  {/* Both subjects shown, stacked on mobile, side-by-side on desktop */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     {results.professionalInsights?.attachmentTheoryAnalysis?.subjectA && (
                       <div className="p-3 sm:p-4 bg-blue-50 rounded-lg space-y-2.5 sm:space-y-3">
@@ -783,7 +824,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Therapeutic Recommendations - All content shown */}
+              {/* Therapeutic Recommendations */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -792,7 +833,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 sm:space-y-4">
-                  {/* All recommendations shown, stacked on mobile, side-by-side on desktop */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     {results.professionalInsights?.therapeuticRecommendations?.immediateInterventions && (
                       <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
@@ -852,7 +892,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Clinical Exercises - All shown */}
+              {/* Clinical Exercises */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -861,7 +901,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 sm:space-y-5 md:space-y-6">
-                  {/* All exercise sections shown */}
                   {results.professionalInsights?.clinicalExercises?.communicationExercises && (
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-2.5 sm:mb-3 text-sm sm:text-base">
@@ -933,7 +972,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Prognosis - All content shown */}
+              {/* Prognosis */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -942,7 +981,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 sm:space-y-4">
-                  {/* All timeframe sections shown, stacked on mobile, grid on desktop */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
                     {results.professionalInsights?.prognosis?.shortTerm && (
                       <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
@@ -976,7 +1014,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     )}
                   </div>
 
-                  {/* Risk and protective factors, stacked on mobile, side-by-side on desktop */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     {results.professionalInsights?.prognosis?.riskFactors && (
                       <div className="p-3 sm:p-4 bg-red-50 rounded-lg">
@@ -1011,7 +1048,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Differential Considerations - All shown */}
+              {/* Differential Considerations */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -1062,7 +1099,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Trauma-Informed Observations - All shown */}
+              {/* Trauma-Informed Observations */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -1118,7 +1155,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5 sm:space-y-6 md:space-y-8">
-                  {/* Subject A Feedback - All shown */}
+                  {/* Subject A Feedback */}
                   <div className="space-y-3 sm:space-y-4">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900">For Subject A</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -1179,7 +1216,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     </div>
                   </div>
 
-                  {/* Subject B Feedback - All shown */}
+                  {/* Subject B Feedback */}
                   <div className="space-y-3 sm:space-y-4">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900">For Subject B</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -1240,7 +1277,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     </div>
                   </div>
 
-                  {/* Shared Feedback - All shown */}
+                  {/* Shared Feedback */}
                   <div className="space-y-3 sm:space-y-4">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900">For Both Partners</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -1307,66 +1344,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </TabsContent>
           </Tabs>
         </motion.div>
-
-        {/* Outlook - Shown on both views */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <Card>
-            <CardHeader className="pb-3 sm:pb-4 md:pb-6">
-              <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
-                Outlook & Recommendations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
-                {results.outlook}
-              </p>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Optional Appendix - Shown on both views when present */}
-        {results.optionalAppendix && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-            <Card>
-              <CardHeader className="pb-3 sm:pb-4 md:pb-6">
-                <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                  <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
-                  Additional Observations
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm sm:text-base text-gray-700 leading-relaxed whitespace-pre-line">
-                  {results.optionalAppendix}
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        {/* Key Takeaways - Shown on both views when present */}
-        {results.keyTakeaways && results.keyTakeaways.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-            <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
-              <CardHeader className="pb-3 sm:pb-4 md:pb-6">
-                <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                  <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
-                  Key Takeaways
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2.5 sm:space-y-3">
-                  {results.keyTakeaways.map((takeaway: string, index: number) => (
-                    <li key={index} className="flex items-start gap-2.5 sm:gap-3">
-                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm sm:text-base text-gray-700">{takeaway}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
       </div>
     </div>
   )
