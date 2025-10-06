@@ -1,5 +1,7 @@
 "use client"
 import { useState } from "react"
+import type React from "react"
+
 import { motion } from "framer-motion"
 import {
   Heart,
@@ -20,6 +22,7 @@ import {
   Calendar,
   Clock,
   RefreshCw,
+  Info,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -98,6 +101,26 @@ const CustomLegend = ({ payload }: any) => {
   )
 }
 
+const ChartInsight = ({
+  children,
+  type = "info",
+}: { children: React.ReactNode; type?: "info" | "positive" | "caution" }) => {
+  const bgColor = type === "positive" ? "bg-green-50" : type === "caution" ? "bg-amber-50" : "bg-blue-50"
+  const textColor = type === "positive" ? "text-green-900" : type === "caution" ? "text-amber-900" : "text-blue-900"
+  const iconColor = type === "positive" ? "text-green-600" : type === "caution" ? "text-amber-600" : "text-blue-600"
+
+  return (
+    <div
+      className={`${bgColor} rounded-lg p-3 sm:p-4 mt-4 border-l-4 ${type === "positive" ? "border-green-500" : type === "caution" ? "border-amber-500" : "border-blue-500"}`}
+    >
+      <div className="flex items-start gap-2.5">
+        <Info className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColor} flex-shrink-0 mt-0.5`} />
+        <p className={`text-xs sm:text-sm ${textColor} leading-relaxed`}>{children}</p>
+      </div>
+    </div>
+  )
+}
+
 export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisResultsProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [exportSuccess, setExportSuccess] = useState(false)
@@ -143,6 +166,95 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
       value: item["Subject B"],
       color: COLORS[index % COLORS.length],
     })) || []
+
+  // Calculate insights for emotional communication
+  const getEmotionalCommunicationInsight = () => {
+    if (!results.visualInsightsData?.emotionalCommunicationCharacteristics) return null
+
+    const data = results.visualInsightsData.emotionalCommunicationCharacteristics
+    const differences = data.map((item: any) => Math.abs(item["Subject A"] - item["Subject B"]))
+    const maxDiff = Math.max(...differences)
+    const maxDiffIndex = differences.indexOf(maxDiff)
+    const category = data[maxDiffIndex]?.category
+
+    if (maxDiff > 3) {
+      return {
+        type: "caution" as const,
+        text: `The largest difference appears in "${category}" (${maxDiff.toFixed(1)} points). This suggests an area where your emotional communication styles differ significantly. Consider discussing how each of you experiences and expresses emotions in this domain.`,
+      }
+    } else if (maxDiff < 2) {
+      return {
+        type: "positive" as const,
+        text: `Your emotional communication styles are remarkably aligned across all categories (maximum difference: ${maxDiff.toFixed(1)} points). This harmony in emotional expression is a strong foundation for your relationship.`,
+      }
+    }
+
+    return {
+      type: "info" as const,
+      text: `The chart shows moderate variation in emotional communication styles. The area with the greatest difference is "${category}" (${maxDiff.toFixed(1)} points). Understanding these differences can help you navigate emotional conversations more effectively.`,
+    }
+  }
+
+  // Calculate insights for conflict expression
+  const getConflictExpressionInsight = () => {
+    if (!results.visualInsightsData?.conflictExpressionStyles) return null
+
+    const data = results.visualInsightsData.conflictExpressionStyles
+    const avgScores = data.map((item: any) => ({
+      category: item.category,
+      avg: (item["Subject A"] + item["Subject B"]) / 2,
+    }))
+
+    const lowestCategory = avgScores.reduce((min: any, item: any) => (item.avg < min.avg ? item : min), avgScores[0])
+    const highestCategory = avgScores.reduce((max: any, item: any) => (item.avg > max.avg ? item : max), avgScores[0])
+
+    if (lowestCategory.avg < 4) {
+      return {
+        type: "caution" as const,
+        text: `Both partners score low on "${lowestCategory.category}" (average: ${lowestCategory.avg.toFixed(1)}/10). This may indicate a growth area in how you both handle conflicts. Consider working together to develop healthier conflict resolution strategies in this area.`,
+      }
+    } else if (highestCategory.avg > 7) {
+      return {
+        type: "positive" as const,
+        text: `You both excel at "${highestCategory.category}" (average: ${highestCategory.avg.toFixed(1)}/10). This strength can serve as a model for improving other aspects of conflict resolution. Recognize and reinforce this positive pattern.`,
+      }
+    }
+
+    return {
+      type: "info" as const,
+      text: `Your strongest conflict expression area is "${highestCategory.category}" (${highestCategory.avg.toFixed(1)}/10), while "${lowestCategory.category}" (${lowestCategory.avg.toFixed(1)}/10) could benefit from attention. Use your strengths to support growth in challenging areas.`,
+    }
+  }
+
+  // Calculate insights for validation patterns
+  const getValidationInsight = () => {
+    if (!validationDataA.length || !validationDataB.length) return null
+
+    const subjectAHighest = validationDataA.reduce(
+      (max: any, item: any) => (item.value > max.value ? item : max),
+      validationDataA[0],
+    )
+    const subjectBHighest = validationDataB.reduce(
+      (max: any, item: any) => (item.value > max.value ? item : max),
+      validationDataB[0],
+    )
+
+    if (subjectAHighest.name === subjectBHighest.name) {
+      return {
+        type: "positive" as const,
+        text: `Both partners primarily use "${subjectAHighest.name}" for validation and reassurance (Subject A: ${subjectAHighest.value}%, Subject B: ${subjectBHighest.value}%). This alignment in how you seek and provide emotional support is a significant relationship strength.`,
+      }
+    }
+
+    return {
+      type: "info" as const,
+      text: `Subject A relies most on "${subjectAHighest.name}" (${subjectAHighest.value}%) while Subject B favors "${subjectBHighest.name}" (${subjectBHighest.value}%). Understanding these different preferences can help you provide validation in ways that resonate most with your partner.`,
+    }
+  }
+
+  const emotionalInsight = getEmotionalCommunicationInsight()
+  const conflictInsight = getConflictExpressionInsight()
+  const validationInsight = getValidationInsight()
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 p-3 sm:p-4 md:p-8">
@@ -430,7 +542,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Outlook - Moved to Overview Tab */}
+              {/* Outlook */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -445,7 +557,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </CardContent>
               </Card>
 
-              {/* Optional Appendix - Moved to Overview Tab */}
+              {/* Optional Appendix */}
               {results.optionalAppendix && (
                 <Card>
                   <CardHeader className="pb-3 sm:pb-4 md:pb-6">
@@ -462,7 +574,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 </Card>
               )}
 
-              {/* Key Takeaways - Moved to Overview Tab */}
+              {/* Key Takeaways */}
               {results.keyTakeaways && results.keyTakeaways.length > 0 && (
                 <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
                   <CardHeader className="pb-3 sm:pb-4 md:pb-6">
@@ -627,7 +739,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </TabsContent>
 
             {/* Charts Tab Content */}
-            <TabsContent value="charts" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
+            <TabsContent value="charts" className="space-y-6 sm:space-y-7 md:space-y-8 mt-0">
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
@@ -640,8 +752,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     </CardDescription>
                   )}
                 </CardHeader>
-                <CardContent className="space-y-6 sm:space-y-7 md:space-y-8">
-                  {/* Vertical Bar Charts */}
+                <CardContent className="space-y-8 sm:space-y-10 md:space-y-12">
+                  {/* Emotional Communication Chart */}
                   {results.visualInsightsData?.emotionalCommunicationCharacteristics &&
                     results.visualInsightsData.emotionalCommunicationCharacteristics.length > 0 && (
                       <div>
@@ -654,9 +766,15 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                             title=""
                           />
                         </div>
+
+                        {/* Insight for Emotional Communication */}
+                        {emotionalInsight && (
+                          <ChartInsight type={emotionalInsight.type}>{emotionalInsight.text}</ChartInsight>
+                        )}
                       </div>
                     )}
 
+                  {/* Conflict Expression Chart */}
                   {results.visualInsightsData?.conflictExpressionStyles &&
                     results.visualInsightsData.conflictExpressionStyles.length > 0 && (
                       <div>
@@ -666,10 +784,15 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         <div className="w-full">
                           <OptimizedBarChart data={results.visualInsightsData.conflictExpressionStyles} title="" />
                         </div>
+
+                        {/* Insight for Conflict Expression */}
+                        {conflictInsight && (
+                          <ChartInsight type={conflictInsight.type}>{conflictInsight.text}</ChartInsight>
+                        )}
                       </div>
                     )}
 
-                  {/* Pie Charts */}
+                  {/* Validation Patterns Pie Charts */}
                   {validationDataA.length > 0 && validationDataB.length > 0 && (
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">
@@ -726,6 +849,11 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           </ResponsiveContainer>
                         </div>
                       </div>
+
+                      {/* Insight for Validation Patterns */}
+                      {validationInsight && (
+                        <ChartInsight type={validationInsight.type}>{validationInsight.text}</ChartInsight>
+                      )}
                     </div>
                   )}
                 </CardContent>
