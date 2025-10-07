@@ -126,6 +126,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const [exportSuccess, setExportSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
 
+  // Get custom names or default to Subject A/B
+  const nameA = results.subjectAName || "Subject A"
+  const nameB = results.subjectBName || "Subject B"
+
   if (results.error) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-purple-50 to-pink-50 p-4 md:p-8">
@@ -180,18 +184,18 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     if (maxDiff > 3) {
       return {
         type: "caution" as const,
-        text: `The largest difference appears in "${category}" (${maxDiff.toFixed(1)} points). This suggests an area where your emotional communication styles differ significantly. Consider discussing how each of you experiences and expresses emotions in this domain.`,
+        text: `The largest difference appears in "${category}" (${maxDiff.toFixed(1)} points). This suggests an area where ${nameA} and ${nameB}'s emotional communication styles differ significantly. Consider discussing how each of you experiences and expresses emotions in this domain.`,
       }
     } else if (maxDiff < 2) {
       return {
         type: "positive" as const,
-        text: `Your emotional communication styles are remarkably aligned across all categories (maximum difference: ${maxDiff.toFixed(1)} points). This harmony in emotional expression is a strong foundation for your relationship.`,
+        text: `${nameA} and ${nameB}'s emotional communication styles are remarkably aligned across all categories (maximum difference: ${maxDiff.toFixed(1)} points). This harmony in emotional expression is a strong foundation for your relationship.`,
       }
     }
 
     return {
       type: "info" as const,
-      text: `The chart shows moderate variation in emotional communication styles. The area with the greatest difference is "${category}" (${maxDiff.toFixed(1)} points). Understanding these differences can help you navigate emotional conversations more effectively.`,
+      text: `The chart shows moderate variation in emotional communication styles between ${nameA} and ${nameB}. The area with the greatest difference is "${category}" (${maxDiff.toFixed(1)} points). Understanding these differences can help you navigate emotional conversations more effectively.`,
     }
   }
 
@@ -211,18 +215,18 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     if (lowestCategory.avg < 4) {
       return {
         type: "caution" as const,
-        text: `Both partners score low on "${lowestCategory.category}" (average: ${lowestCategory.avg.toFixed(1)}/10). This may indicate a growth area in how you both handle conflicts. Consider working together to develop healthier conflict resolution strategies in this area.`,
+        text: `Both ${nameA} and ${nameB} score low on "${lowestCategory.category}" (average: ${lowestCategory.avg.toFixed(1)}/10). This may indicate a growth area in how you both handle conflicts. Consider working together to develop healthier conflict resolution strategies in this area.`,
       }
     } else if (highestCategory.avg > 7) {
       return {
         type: "positive" as const,
-        text: `You both excel at "${highestCategory.category}" (average: ${highestCategory.avg.toFixed(1)}/10). This strength can serve as a model for improving other aspects of conflict resolution. Recognize and reinforce this positive pattern.`,
+        text: `${nameA} and ${nameB} both excel at "${highestCategory.category}" (average: ${highestCategory.avg.toFixed(1)}/10). This strength can serve as a model for improving other aspects of conflict resolution. Recognize and reinforce this positive pattern.`,
       }
     }
 
     return {
       type: "info" as const,
-      text: `Your strongest conflict expression area is "${highestCategory.category}" (${highestCategory.avg.toFixed(1)}/10), while "${lowestCategory.category}" (${lowestCategory.avg.toFixed(1)}/10) could benefit from attention. Use your strengths to support growth in challenging areas.`,
+      text: `${nameA} and ${nameB}'s strongest conflict expression area is "${highestCategory.category}" (${highestCategory.avg.toFixed(1)}/10), while "${lowestCategory.category}" (${lowestCategory.avg.toFixed(1)}/10) could benefit from attention. Use your strengths to support growth in challenging areas.`,
     }
   }
 
@@ -242,13 +246,13 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     if (subjectAHighest.name === subjectBHighest.name) {
       return {
         type: "positive" as const,
-        text: `Both partners primarily use "${subjectAHighest.name}" for validation and reassurance (Subject A: ${subjectAHighest.value}%, Subject B: ${subjectBHighest.value}%). This alignment in how you seek and provide emotional support is a significant relationship strength.`,
+        text: `Both ${nameA} and ${nameB} primarily use "${subjectAHighest.name}" for validation and reassurance (${nameA}: ${subjectAHighest.value}%, ${nameB}: ${subjectBHighest.value}%). This alignment in how you seek and provide emotional support is a significant relationship strength.`,
       }
     }
 
     return {
       type: "info" as const,
-      text: `Subject A relies most on "${subjectAHighest.name}" (${subjectAHighest.value}%) while Subject B favors "${subjectBHighest.name}" (${subjectBHighest.value}%). Understanding these different preferences can help you provide validation in ways that resonate most with your partner.`,
+      text: `${nameA} relies most on "${subjectAHighest.name}" (${subjectAHighest.value}%) while ${nameB} favors "${subjectBHighest.name}" (${subjectBHighest.value}%). Understanding these different preferences can help you provide validation in ways that resonate most with your partner.`,
     }
   }
 
@@ -268,7 +272,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <Heart className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600 flex-shrink-0" />
             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent text-center">
-              Your Relationship Analysis
+              {nameA} & {nameB}'s Relationship Analysis
             </h1>
           </div>
 
@@ -450,13 +454,13 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
                     <div className="p-3 sm:p-4 bg-blue-50 rounded-lg">
-                      <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">Subject A's Style</h4>
+                      <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">{nameA}'s Style</h4>
                       <p className="text-xs sm:text-sm text-blue-800">
                         {results.communicationStylesAndEmotionalTone?.subjectAStyle}
                       </p>
                     </div>
                     <div className="p-3 sm:p-4 bg-pink-50 rounded-lg">
-                      <h4 className="font-semibold text-pink-900 mb-2 text-sm sm:text-base">Subject B's Style</h4>
+                      <h4 className="font-semibold text-pink-900 mb-2 text-sm sm:text-base">{nameB}'s Style</h4>
                       <p className="text-xs sm:text-sm text-pink-800">
                         {results.communicationStylesAndEmotionalTone?.subjectBStyle}
                       </p>
@@ -801,7 +805,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         {/* Subject A Pie Chart */}
                         <div className="space-y-2">
-                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">Subject A</p>
+                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{nameA}</p>
                           <ResponsiveContainer width="100%" height={240} className="sm:h-[280px] md:h-[300px]">
                             <PieChart>
                               <Pie
@@ -826,7 +830,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
                         {/* Subject B Pie Chart */}
                         <div className="space-y-2">
-                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">Subject B</p>
+                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{nameB}</p>
                           <ResponsiveContainer width="100%" height={240} className="sm:h-[280px] md:h-[300px]">
                             <PieChart>
                               <Pie
@@ -874,7 +878,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     {results.professionalInsights?.attachmentTheoryAnalysis?.subjectA && (
                       <div className="p-3 sm:p-4 bg-blue-50 rounded-lg space-y-2.5 sm:space-y-3">
-                        <h4 className="font-semibold text-blue-900 text-sm sm:text-base">Subject A</h4>
+                        <h4 className="font-semibold text-blue-900 text-sm sm:text-base">{nameA}</h4>
                         <div>
                           <p className="text-[10px] sm:text-xs font-medium text-blue-700 mb-1">Attachment Style</p>
                           <Badge className="bg-blue-600 text-xs">
@@ -899,16 +903,21 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           </div>
                         )}
                         {results.professionalInsights.attachmentTheoryAnalysis.subjectA.triggersAndDefenses && (
-                          <p className="text-xs sm:text-sm text-blue-800">
-                            {results.professionalInsights.attachmentTheoryAnalysis.subjectA.triggersAndDefenses}
-                          </p>
+                          <div>
+                            <p className="text-[10px] sm:text-xs font-medium text-blue-700 mb-1.5">
+                              Triggers & Defenses
+                            </p>
+                            <p className="text-xs sm:text-sm text-blue-800">
+                              {results.professionalInsights.attachmentTheoryAnalysis.subjectA.triggersAndDefenses}
+                            </p>
+                          </div>
                         )}
                       </div>
                     )}
 
                     {results.professionalInsights?.attachmentTheoryAnalysis?.subjectB && (
                       <div className="p-3 sm:p-4 bg-pink-50 rounded-lg space-y-2.5 sm:space-y-3">
-                        <h4 className="font-semibold text-pink-900 text-sm sm:text-base">Subject B</h4>
+                        <h4 className="font-semibold text-pink-900 text-sm sm:text-base">{nameB}</h4>
                         <div>
                           <p className="text-[10px] sm:text-xs font-medium text-pink-700 mb-1">Attachment Style</p>
                           <Badge className="bg-pink-600 text-xs">
@@ -933,9 +942,14 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           </div>
                         )}
                         {results.professionalInsights.attachmentTheoryAnalysis.subjectB.triggersAndDefenses && (
-                          <p className="text-xs sm:text-sm text-pink-800">
-                            {results.professionalInsights.attachmentTheoryAnalysis.subjectB.triggersAndDefenses}
-                          </p>
+                          <div>
+                            <p className="text-[10px] sm:text-xs font-medium text-pink-700 mb-1.5">
+                              Triggers & Defenses
+                            </p>
+                            <p className="text-xs sm:text-sm text-pink-800">
+                              {results.professionalInsights.attachmentTheoryAnalysis.subjectB.triggersAndDefenses}
+                            </p>
+                          </div>
                         )}
                       </div>
                     )}
@@ -1285,7 +1299,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 <CardContent className="space-y-5 sm:space-y-6 md:space-y-8">
                   {/* Subject A Feedback */}
                   <div className="space-y-3 sm:space-y-4">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For Subject A</h3>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {nameA}</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
                       {results.constructiveFeedback?.subjectA?.strengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
@@ -1346,7 +1360,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
                   {/* Subject B Feedback */}
                   <div className="space-y-3 sm:space-y-4">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For Subject B</h3>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {nameB}</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
                       {results.constructiveFeedback?.subjectB?.strengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">

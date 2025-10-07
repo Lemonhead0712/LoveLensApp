@@ -193,24 +193,33 @@ function countMessages(text: string): { total: number; subjectA: number; subject
   }
 }
 
-function createDefaultAnalysis(messageCount: number, subjectACount: number, subjectBCount: number) {
+function createDefaultAnalysis(
+  messageCount: number,
+  subjectACount: number,
+  subjectBCount: number,
+  subjectAName?: string,
+  subjectBName?: string,
+) {
   const participationRatio = subjectACount / (subjectACount + subjectBCount)
   const isBalanced = participationRatio > 0.4 && participationRatio < 0.6
 
+  const nameA = subjectAName || "Subject A"
+  const nameB = subjectBName || "Subject B"
+
   return {
-    introductionNote: `This analysis is based on ${messageCount} messages (Subject A: ${subjectACount}, Subject B: ${subjectBCount}) extracted from your conversation screenshots. The insights provided offer a comprehensive look at your communication dynamics and relationship patterns.`,
+    introductionNote: `This analysis is based on ${messageCount} messages (${nameA}: ${subjectACount}, ${nameB}: ${subjectBCount}) extracted from your conversation screenshots. The insights provided offer a comprehensive look at your communication dynamics and relationship patterns.`,
     overallRelationshipHealth: {
       score: 7,
-      description: `Based on the conversation patterns observed, this relationship demonstrates healthy communication with areas for continued growth. The message exchange shows ${isBalanced ? "balanced" : subjectACount > subjectBCount ? "more active engagement from Subject A" : "more active engagement from Subject B"} participation. Both partners show engagement and willingness to connect, which are strong foundations for relationship success.`,
+      description: `Based on the conversation patterns observed, this relationship demonstrates healthy communication with areas for continued growth. The message exchange shows ${isBalanced ? "balanced" : subjectACount > subjectBCount ? `more active engagement from ${nameA}` : `more active engagement from ${nameB}`} participation. Both partners show engagement and willingness to connect, which are strong foundations for relationship success.`,
     },
     communicationStylesAndEmotionalTone: {
-      description: `The conversation reveals distinct communication patterns for each partner. Subject A contributed ${subjectACount} messages (${((subjectACount / messageCount) * 100).toFixed(1)}%) while Subject B contributed ${subjectBCount} messages (${((subjectBCount / messageCount) * 100).toFixed(1)}%). Both individuals express themselves authentically while maintaining respect for each other's perspectives.`,
+      description: `The conversation reveals distinct communication patterns for each partner. ${nameA} contributed ${subjectACount} messages (${((subjectACount / messageCount) * 100).toFixed(1)}%) while ${nameB} contributed ${subjectBCount} messages (${((subjectBCount / messageCount) * 100).toFixed(1)}%). Both individuals express themselves authentically while maintaining respect for each other's perspectives.`,
       emotionalVibeTags: ["Engaged", "Respectful", "Open", "Thoughtful"],
       regulationPatternsObserved:
         "Both partners demonstrate emotional awareness and make efforts to regulate their responses during the conversation.",
       messageRhythmAndPacing: `The message exchange shows ${isBalanced ? "balanced" : "somewhat imbalanced"} participation with both partners contributing to the dialogue. ${!isBalanced ? "The more active partner may be carrying more of the conversational load." : ""}`,
-      subjectAStyle: `Subject A (${subjectACount} messages) communicates with ${subjectACount > subjectBCount ? "active engagement, often initiating or extending conversations" : "thoughtful consideration, contributing meaningfully to the dialogue"}. Their style shows ${subjectACount > subjectBCount ? "enthusiasm and investment in maintaining connection" : "careful attention to what their partner shares"}.`,
-      subjectBStyle: `Subject B (${subjectBCount} messages) brings ${subjectBCount > subjectACount ? "dynamic energy to exchanges, actively driving conversation forward" : "measured responses that show processing and reflection"}. Their communication pattern suggests ${subjectBCount > subjectACount ? "comfort with verbal expression and sharing" : "a more reserved style that values quality over quantity"}.`,
+      subjectAStyle: `${nameA} (${subjectACount} messages) communicates with ${subjectACount > subjectBCount ? "active engagement, often initiating or extending conversations" : "thoughtful consideration, contributing meaningfully to the dialogue"}. Their style shows ${subjectACount > subjectBCount ? "enthusiasm and investment in maintaining connection" : "careful attention to what their partner shares"}.`,
+      subjectBStyle: `${nameB} (${subjectBCount} messages) brings ${subjectBCount > subjectACount ? "dynamic energy to exchanges, actively driving conversation forward" : "measured responses that show processing and reflection"}. Their communication pattern suggests ${subjectBCount > subjectACount ? "comfort with verbal expression and sharing" : "a more reserved style that values quality over quantity"}.`,
     },
     recurringPatternsIdentified: {
       description:
@@ -236,7 +245,7 @@ function createDefaultAnalysis(messageCount: number, subjectACount: number, subj
     reflectiveFrameworks: {
       description:
         "Applying established psychological frameworks helps understand the deeper dynamics at play in this relationship.",
-      attachmentEnergies: `The conversation suggests ${isBalanced ? "relatively balanced attachment needs" : participationRatio > 0.6 ? "Subject A may have higher connection needs or anxious attachment tendencies" : "Subject B may have higher connection needs or anxious attachment tendencies"}. Both partners seek reassurance and connection, though they may express this differently.`,
+      attachmentEnergies: `The conversation suggests ${isBalanced ? "relatively balanced attachment needs" : participationRatio > 0.6 ? `${nameA} may have higher connection needs or anxious attachment tendencies` : `${nameB} may have higher connection needs or anxious attachment tendencies`}. Both partners seek reassurance and connection, though they may express this differently.`,
       loveLanguageFriction:
         "There may be differences in how love is expressed and received. One partner may prioritize words of affirmation while the other values acts of service or quality time.",
       gottmanConflictMarkers:
@@ -248,7 +257,7 @@ function createDefaultAnalysis(messageCount: number, subjectACount: number, subj
       description: "Several factors may be creating obstacles to deeper connection and understanding.",
       emotionalMismatches:
         "Different emotional processing speeds and needs for reassurance can create temporary disconnection.",
-      communicationGaps: `${!isBalanced ? "The imbalance in message volume may indicate one partner needs more verbal connection while the other processes internally." : "What remains unsaid is often as important as what is expressed."} Both partners may have unexpressed needs or fears.`,
+      communicationGaps: `${!isBalanced ? `The imbalance in message volume may indicate ${subjectACount > subjectBCount ? nameA : nameB} needs more verbal connection while the other processes internally.` : "What remains unsaid is often as important as what is expressed."} Both partners may have unexpressed needs or fears.`,
       subtlePowerStrugglesOrMisfires:
         "Minor power dynamics emerge around who initiates conversations or who concedes first in disagreements.",
       externalStressors:
@@ -366,8 +375,8 @@ function createDefaultAnalysis(messageCount: number, subjectACount: number, subj
                 ],
           triggersAndDefenses:
             subjectACount > subjectBCount
-              ? "May become anxious or pursue more actively when feeling disconnected. Uses increased communication as a way to seek reassurance and maintain closeness."
-              : "May become withdrawn when feeling criticized or when emotional intensity feels overwhelming. Defense mechanism includes rational problem-solving as a way to avoid deeper emotions.",
+              ? `${nameA} may become anxious or pursue more actively when feeling disconnected. Uses increased communication as a way to seek reassurance and maintain closeness.`
+              : `${nameA} may become withdrawn when feeling criticized or when emotional intensity feels overwhelming. Defense mechanism includes rational problem-solving as a way to avoid deeper emotions.`,
         },
         subjectB: {
           primaryAttachmentStyle:
@@ -386,12 +395,12 @@ function createDefaultAnalysis(messageCount: number, subjectACount: number, subj
                 ],
           triggersAndDefenses:
             subjectBCount > subjectACount
-              ? "Becomes anxious when feeling disconnected or when communication decreases. May pursue partner for reassurance or become preoccupied with relationship concerns."
-              : "May withdraw or need processing time when overwhelmed. Uses space and reflection as coping mechanisms.",
+              ? `${nameB} becomes anxious when feeling disconnected or when communication decreases. May pursue partner for reassurance or become preoccupied with relationship concerns.`
+              : `${nameB} may withdraw or need processing time when overwhelmed. Uses space and reflection as coping mechanisms.`,
         },
         dyad: isBalanced
           ? "This relatively balanced dynamic suggests secure attachment patterns from both partners, with occasional anxious or avoidant tendencies that emerge during stress. This is a healthy foundation for relationship growth."
-          : `This pairing creates a pursuer-distancer dynamic, where ${participationRatio > 0.6 ? "Subject A pursues connection while Subject B may need space" : "Subject B pursues connection while Subject A may need space"}. Understanding this pattern is key to breaking the cycle and meeting both partners' needs.`,
+          : `This pairing creates a pursuer-distancer dynamic, where ${participationRatio > 0.6 ? `${nameA} pursues connection while ${nameB} may need space` : `${nameB} pursues connection while ${nameA} may need space`}. Understanding this pattern is key to breaking the cycle and meeting both partners' needs.`,
       },
       traumaInformedObservations: {
         identifiedPatterns: [
@@ -508,8 +517,8 @@ function createDefaultAnalysis(messageCount: number, subjectACount: number, subj
         ],
       },
     },
-    outlook: `The outlook for this relationship is encouraging. Both partners demonstrate care, commitment, and a genuine desire to understand and connect with each other. ${!isBalanced ? "The difference in communication volume suggests exploring whether both partners' needs for verbal connection are being met." : "The balanced communication pattern is a positive indicator of mutual engagement."}\n\nThe key to continued success lies in consistent practice of healthy communication patterns, maintaining emotional attunement, and addressing issues as they arise rather than letting them accumulate. The willingness both partners show to engage in difficult conversations is a significant strength.\n\nMoving forward, focus on building on existing strengths while gently addressing areas for growth. Celebrate small victories and recognize that relationship growth is a journey, not a destination. With continued effort and mutual support, this relationship has excellent potential for long-term satisfaction and deep connection.`,
-    optionalAppendix: `Additional observations from the conversation suggest that both partners bring unique strengths to the relationship. Subject A contributed ${subjectACount} messages while Subject B contributed ${subjectBCount} messages, which reveals something about communication styles and needs. There's evidence of care for each other's wellbeing, which should be acknowledged and nurtured.\n\nIt's worth noting that the conversation shows both partners in what appears to be their typical interaction pattern. During times of higher stress or conflict, patterns may intensify. The recommendations provided are designed to be helpful during both calm and challenging times.\n\nRemember that all relationships require ongoing attention and effort. The fact that you're seeking this analysis demonstrates investment in the relationship's health and future.`,
+    outlook: `The outlook for this relationship is encouraging. Both partners demonstrate care, commitment, and a genuine desire to understand and connect with each other. ${!isBalanced ? `The difference in communication volume (${nameA}: ${subjectACount}, ${nameB}: ${subjectBCount}) suggests exploring whether both partners' needs for verbal connection are being met.` : "The balanced communication pattern is a positive indicator of mutual engagement."}\n\nThe key to continued success lies in consistent practice of healthy communication patterns, maintaining emotional attunement, and addressing issues as they arise rather than letting them accumulate. The willingness both partners show to engage in difficult conversations is a significant strength.\n\nMoving forward, focus on building on existing strengths while gently addressing areas for growth. Celebrate small victories and recognize that relationship growth is a journey, not a destination. With continued effort and mutual support, this relationship has excellent potential for long-term satisfaction and deep connection.`,
+    optionalAppendix: `Additional observations from the conversation suggest that both partners bring unique strengths to the relationship. ${nameA} contributed ${subjectACount} messages while ${nameB} contributed ${subjectBCount} messages, which reveals something about communication styles and needs. There's evidence of care for each other's wellbeing, which should be acknowledged and nurtured.\n\nIt's worth noting that the conversation shows both partners in what appears to be their typical interaction pattern. During times of higher stress or conflict, patterns may intensify. The recommendations provided are designed to be helpful during both calm and challenging times.\n\nRemember that all relationships require ongoing attention and effort. The fact that you're seeking this analysis demonstrates investment in the relationship's health and future.`,
     keyTakeaways: [
       "Your relationship has a strong foundation of mutual care and commitment",
       `Communication shows ${isBalanced ? "balanced engagement" : "opportunity to balance participation levels"}`,
@@ -517,6 +526,8 @@ function createDefaultAnalysis(messageCount: number, subjectACount: number, subj
       "Implementing structured communication practices will enhance connection",
       "Regular relationship maintenance through check-ins and rituals is beneficial",
     ],
+    subjectAName: subjectAName,
+    subjectBName: subjectBName,
   }
 }
 
@@ -526,6 +537,10 @@ export async function analyzeConversation(formData: FormData) {
   try {
     console.log("=== STARTING ANALYSIS ===")
     console.log(`Timestamp: ${new Date().toISOString()}\n`)
+
+    // Extract subject names
+    const subjectAName = formData.get("subjectAName") as string | null
+    const subjectBName = formData.get("subjectBName") as string | null
 
     // Extract files
     const files: File[] = []
@@ -544,6 +559,9 @@ export async function analyzeConversation(formData: FormData) {
     }
 
     console.log(`\nProcessing ${files.length} screenshot(s)...\n`)
+    if (subjectAName || subjectBName) {
+      console.log(`Custom names: ${subjectAName || "Subject A"} and ${subjectBName || "Subject B"}`)
+    }
 
     // Extract text from all images with performance tracking
     const extractedTexts = []
@@ -577,52 +595,83 @@ export async function analyzeConversation(formData: FormData) {
       return { error: "Insufficient text extracted. Please upload clearer screenshots." }
     }
 
-    // Create default analysis with speaker-specific insights
-    const defaultAnalysis = createDefaultAnalysis(messageCounts.total, messageCounts.subjectA, messageCounts.subjectB)
+    // Create default analysis with speaker-specific insights and custom names
+    const defaultAnalysis = createDefaultAnalysis(
+      messageCounts.total,
+      messageCounts.subjectA,
+      messageCounts.subjectB,
+      subjectAName || undefined,
+      subjectBName || undefined,
+    )
 
     // Try to get AI analysis
     let finalResults = defaultAnalysis
 
     try {
       const aiStartTime = Date.now()
-      const analysisPrompt = `You are a professional relationship therapist analyzing a conversation between Subject A and Subject B.
+      const nameA = subjectAName || "Subject A"
+      const nameB = subjectBName || "Subject B"
+
+      const analysisPrompt = `You are a professional relationship therapist analyzing a conversation between ${nameA} and ${nameB}.
 
 CONVERSATION CONTEXT:
 - Total messages: ${messageCounts.total}
-- Subject A contributed: ${messageCounts.subjectA} messages (${((messageCounts.subjectA / messageCounts.total) * 100).toFixed(1)}%)
-- Subject B contributed: ${messageCounts.subjectB} messages (${((messageCounts.subjectB / messageCounts.total) * 100).toFixed(1)}%)
+- ${nameA} contributed: ${messageCounts.subjectA} messages (${((messageCounts.subjectA / messageCounts.total) * 100).toFixed(1)}%)
+- ${nameB} contributed: ${messageCounts.subjectB} messages (${((messageCounts.subjectB / messageCounts.total) * 100).toFixed(1)}%)
 
 CONVERSATION TEXT:
 ${conversationText.substring(0, 4000)}
 
-Analyze this conversation and return ONLY a valid JSON object with these fields:
+Analyze this conversation and return ONLY a valid JSON object. Use the names "${nameA}" and "${nameB}" consistently throughout your analysis.
 
+Focus on providing personalized, name-specific insights in the professionalInsights section that address:
+1. Each person's unique attachment style and behaviors
+2. Specific triggers and defenses for ${nameA} and ${nameB}
+3. How their communication patterns complement or conflict
+4. Personalized therapeutic recommendations for each person
+5. Individual growth areas and strengths
+
+Return ONLY valid JSON with these fields:
 {
-  "introductionNote": "Brief introduction acknowledging message counts and what they reveal",
+  "introductionNote": "Brief introduction using ${nameA} and ${nameB}",
   "overallRelationshipHealth": {
     "score": <number 1-10>,
-    "description": "Detailed assessment considering participation balance"
+    "description": "Assessment considering participation balance between ${nameA} and ${nameB}"
   },
   "communicationStylesAndEmotionalTone": {
     "description": "Overall assessment",
     "emotionalVibeTags": ["tag1", "tag2", "tag3"],
-    "subjectAStyle": "Detailed analysis of Subject A's ${messageCounts.subjectA} messages and patterns",
-    "subjectBStyle": "Detailed analysis of Subject B's ${messageCounts.subjectB} messages and patterns"
+    "subjectAStyle": "Detailed analysis of ${nameA}'s ${messageCounts.subjectA} messages and patterns",
+    "subjectBStyle": "Detailed analysis of ${nameB}'s ${messageCounts.subjectB} messages and patterns"
   },
-  "outlook": "Comprehensive outlook considering participation patterns"
+  "professionalInsights": {
+    "attachmentTheoryAnalysis": {
+      "subjectA": {
+        "primaryAttachmentStyle": "Specific style for ${nameA}",
+        "attachmentBehaviors": ["Behavior 1 specific to ${nameA}", "Behavior 2"],
+        "triggersAndDefenses": "Detailed analysis of ${nameA}'s triggers and defense mechanisms"
+      },
+      "subjectB": {
+        "primaryAttachmentStyle": "Specific style for ${nameB}",
+        "attachmentBehaviors": ["Behavior 1 specific to ${nameB}", "Behavior 2"],
+        "triggersAndDefenses": "Detailed analysis of ${nameB}'s triggers and defense mechanisms"
+      },
+      "dyad": "How ${nameA} and ${nameB} interact dynamically"
+    }
+  },
+  "outlook": "Comprehensive outlook using ${nameA} and ${nameB} names"
 }
 
-CRITICAL: Return ONLY the JSON object. No markdown, no explanations.`
+CRITICAL: Return ONLY the JSON object. No markdown, no explanations. Use ${nameA} and ${nameB} throughout.`
 
-      console.log("Requesting AI analysis...")
+      console.log("Requesting AI analysis with custom names...")
 
       const result = await generateText({
         model: openai("gpt-4o"),
         messages: [
           {
             role: "system",
-            content:
-              "You are a relationship therapist. Return ONLY valid JSON. Be specific about Subject A vs Subject B based on their actual messages. No markdown formatting.",
+            content: `You are a relationship therapist. Return ONLY valid JSON. Be specific about ${nameA} vs ${nameB} based on their actual messages. Use their names consistently. No markdown formatting.`,
           },
           {
             role: "user",
@@ -658,6 +707,12 @@ CRITICAL: Return ONLY the JSON object. No markdown, no explanations.`
               ...defaultAnalysis.communicationStylesAndEmotionalTone,
               ...(parsed.communicationStylesAndEmotionalTone || {}),
             },
+            professionalInsights: {
+              ...defaultAnalysis.professionalInsights,
+              ...(parsed.professionalInsights || {}),
+            },
+            subjectAName: subjectAName || undefined,
+            subjectBName: subjectBName || undefined,
           }
 
           console.log("✓ Successfully merged AI analysis with defaults")

@@ -5,9 +5,11 @@ import type React from "react"
 import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { analyzeConversation } from "@/app/actions"
 import AnalysisResults from "./analysis-results"
-import { UploadCloud, File, X, ArrowRight, ImagePlus } from "lucide-react"
+import { UploadCloud, File, X, ArrowRight, ImagePlus, Users } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 import ImageEnhancementPreview from "./image-enhancement-preview"
 import { enhanceImages } from "@/lib/image-processing"
@@ -19,6 +21,8 @@ export default function UploadSection() {
   const [analysisResults, setAnalysisResults] = useState<any>(null)
   const [enhancingFile, setEnhancingFile] = useState<File | null>(null)
   const [enhancementEnabled, setEnhancementEnabled] = useState(true)
+  const [subjectAName, setSubjectAName] = useState("")
+  const [subjectBName, setSubjectBName] = useState("")
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const imageFiles = acceptedFiles.filter((file) => file.type.startsWith("image/"))
@@ -151,6 +155,14 @@ export default function UploadSection() {
         formData.append(`file-${index}-originalType`, files[index].type)
       })
 
+      // Add subject names to the form data
+      if (subjectAName.trim()) {
+        formData.append("subjectAName", subjectAName.trim())
+      }
+      if (subjectBName.trim()) {
+        formData.append("subjectBName", subjectBName.trim())
+      }
+
       const results = await analyzeConversation(formData)
       setAnalysisResults(results)
       setUploadProgress(100)
@@ -167,6 +179,8 @@ export default function UploadSection() {
     setAnalysisResults(null)
     setUploadProgress(0)
     setEnhancingFile(null)
+    setSubjectAName("")
+    setSubjectBName("")
   }
 
   if (analysisResults) {
@@ -174,7 +188,7 @@ export default function UploadSection() {
       <div>
         <AnalysisResults results={analysisResults} />
         <div className="mt-8 text-center">
-          <Button onClick={resetForm} variant="outline" className="mr-4">
+          <Button onClick={resetForm} variant="outline" className="mr-4 bg-transparent">
             Analyze Another Conversation
           </Button>
         </div>
@@ -205,6 +219,51 @@ export default function UploadSection() {
       <Card className="overflow-hidden bg-white shadow-xl">
         <div className="p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Subject Names Input Section */}
+            <div className="border-2 border-dashed border-purple-200 rounded-xl p-6 bg-purple-50/50">
+              <div className="flex items-center gap-2 mb-4">
+                <Users className="h-5 w-5 text-purple-600" />
+                <h3 className="text-lg font-medium text-gray-900">Identify Conversation Partners (Optional)</h3>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Personalize your analysis by providing names or labels for each person in the conversation. This helps
+                generate more relevant and specific insights.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="subjectA" className="text-sm font-medium text-gray-700">
+                    First Person (Messages on the right/green bubbles)
+                  </Label>
+                  <Input
+                    id="subjectA"
+                    type="text"
+                    placeholder="e.g., Alex, Partner A, Me"
+                    value={subjectAName}
+                    onChange={(e) => setSubjectAName(e.target.value)}
+                    className="border-purple-200 focus:border-purple-500 focus:ring-purple-500"
+                    maxLength={30}
+                  />
+                  <p className="text-xs text-gray-500">Usually the sender or primary message author</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="subjectB" className="text-sm font-medium text-gray-700">
+                    Second Person (Messages on the left/gray bubbles)
+                  </Label>
+                  <Input
+                    id="subjectB"
+                    type="text"
+                    placeholder="e.g., Jordan, Partner B, Them"
+                    value={subjectBName}
+                    onChange={(e) => setSubjectBName(e.target.value)}
+                    className="border-purple-200 focus:border-purple-500 focus:ring-purple-500"
+                    maxLength={30}
+                  />
+                  <p className="text-xs text-gray-500">Usually the recipient or secondary message author</p>
+                </div>
+              </div>
+            </div>
+
+            {/* File Upload Section */}
             <div
               {...getRootProps()}
               className={`
