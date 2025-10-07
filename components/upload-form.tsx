@@ -5,6 +5,8 @@ import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { analyzeConversation } from "@/app/actions"
 import AnalysisResults from "./analysis-results"
 import { UploadCloud } from "lucide-react"
@@ -14,6 +16,8 @@ export default function UploadForm() {
   const [isUploading, setIsUploading] = useState(false)
   const [analysisResults, setAnalysisResults] = useState<any>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [subject1Name, setSubject1Name] = useState("")
+  const [subject2Name, setSubject2Name] = useState("")
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -55,6 +59,8 @@ export default function UploadForm() {
       files.forEach((file, index) => {
         formData.append(`file-${index}`, file)
       })
+      if (subject1Name) formData.append("subject1Name", subject1Name)
+      if (subject2Name) formData.append("subject2Name", subject2Name)
 
       const results = await analyzeConversation(formData)
       setAnalysisResults(results)
@@ -72,6 +78,8 @@ export default function UploadForm() {
   const resetForm = () => {
     setFiles([])
     setAnalysisResults(null)
+    setSubject1Name("")
+    setSubject2Name("")
   }
 
   if (analysisResults) {
@@ -79,7 +87,7 @@ export default function UploadForm() {
       <div>
         <AnalysisResults results={analysisResults} />
         <div className="mt-8 text-center">
-          <Button onClick={resetForm} variant="outline" className="mr-4">
+          <Button onClick={resetForm} variant="outline" className="mr-4 bg-transparent">
             Analyze Another Conversation
           </Button>
         </div>
@@ -142,6 +150,39 @@ export default function UploadForm() {
             </ul>
           </div>
         )}
+
+        <div className="space-y-4 pt-4 border-t">
+          <div>
+            <h3 className="font-medium text-gray-900 mb-3">Customize Names (Optional)</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Enter custom names for the conversation participants. Leave blank to use default labels.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="subject1-name">First Person</Label>
+              <Input
+                id="subject1-name"
+                type="text"
+                placeholder="e.g., Alex"
+                value={subject1Name}
+                onChange={(e) => setSubject1Name(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subject2-name">Second Person</Label>
+              <Input
+                id="subject2-name"
+                type="text"
+                placeholder="e.g., Jordan"
+                value={subject2Name}
+                onChange={(e) => setSubject2Name(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
+        </div>
 
         <div className="flex justify-center">
           <Button

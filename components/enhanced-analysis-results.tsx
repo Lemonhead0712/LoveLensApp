@@ -126,9 +126,12 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const [exportSuccess, setExportSuccess] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
 
-  // Get custom names or default to Subject A/B
-  const nameA = results.subjectAName || "Subject A"
-  const nameB = results.subjectBName || "Subject B"
+  // 1. Update the imports at the top to add the subjectALabel and subjectBLabel from results:
+  const subjectALabel = results.subjectALabel || "Subject A"
+  const subjectBLabel = results.subjectBLabel || "Subject B"
+
+  console.log("[v0] EnhancedAnalysisResults labels:", { subjectALabel, subjectBLabel })
+  console.log("[v0] Chart data sample:", results.visualInsightsData?.emotionalCommunicationCharacteristics?.[0])
 
   if (results.error) {
     return (
@@ -157,26 +160,30 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     }
   }
 
+  // 2. Update all chart data transformations to use the dynamic labels:
   const validationDataA =
     results.visualInsightsData?.validationAndReassurancePatterns?.map((item: any, index: number) => ({
       name: item.category,
-      value: item["Subject A"],
+      value: item[subjectALabel],
       color: COLORS[index % COLORS.length],
     })) || []
 
   const validationDataB =
     results.visualInsightsData?.validationAndReassurancePatterns?.map((item: any, index: number) => ({
       name: item.category,
-      value: item["Subject B"],
+      value: item[subjectBLabel],
       color: COLORS[index % COLORS.length],
     })) || []
+
+  console.log("[v0] Validation data A:", validationDataA)
+  console.log("[v0] Validation data B:", validationDataB)
 
   // Calculate insights for emotional communication
   const getEmotionalCommunicationInsight = () => {
     if (!results.visualInsightsData?.emotionalCommunicationCharacteristics) return null
 
     const data = results.visualInsightsData.emotionalCommunicationCharacteristics
-    const differences = data.map((item: any) => Math.abs(item["Subject A"] - item["Subject B"]))
+    const differences = data.map((item: any) => Math.abs(item[subjectALabel] - item[subjectBLabel]))
     const maxDiff = Math.max(...differences)
     const maxDiffIndex = differences.indexOf(maxDiff)
     const category = data[maxDiffIndex]?.category
@@ -184,18 +191,18 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     if (maxDiff > 3) {
       return {
         type: "caution" as const,
-        text: `The largest difference appears in "${category}" (${maxDiff.toFixed(1)} points). This suggests an area where ${nameA} and ${nameB}'s emotional communication styles differ significantly. Consider discussing how each of you experiences and expresses emotions in this domain.`,
+        text: `The largest difference appears in "${category}" (${maxDiff.toFixed(1)} points). This suggests an area where your emotional communication styles differ significantly. Consider discussing how each of you experiences and expresses emotions in this domain.`,
       }
     } else if (maxDiff < 2) {
       return {
         type: "positive" as const,
-        text: `${nameA} and ${nameB}'s emotional communication styles are remarkably aligned across all categories (maximum difference: ${maxDiff.toFixed(1)} points). This harmony in emotional expression is a strong foundation for your relationship.`,
+        text: `Your emotional communication styles are remarkably aligned across all categories (maximum difference: ${maxDiff.toFixed(1)} points). This harmony in emotional expression is a strong foundation for your relationship.`,
       }
     }
 
     return {
       type: "info" as const,
-      text: `The chart shows moderate variation in emotional communication styles between ${nameA} and ${nameB}. The area with the greatest difference is "${category}" (${maxDiff.toFixed(1)} points). Understanding these differences can help you navigate emotional conversations more effectively.`,
+      text: `The chart shows moderate variation in emotional communication styles. The area with the greatest difference is "${category}" (${maxDiff.toFixed(1)} points). Understanding these differences can help you navigate emotional conversations more effectively.`,
     }
   }
 
@@ -206,7 +213,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     const data = results.visualInsightsData.conflictExpressionStyles
     const avgScores = data.map((item: any) => ({
       category: item.category,
-      avg: (item["Subject A"] + item["Subject B"]) / 2,
+      avg: (item[subjectALabel] + item[subjectBLabel]) / 2,
     }))
 
     const lowestCategory = avgScores.reduce((min: any, item: any) => (item.avg < min.avg ? item : min), avgScores[0])
@@ -215,18 +222,18 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     if (lowestCategory.avg < 4) {
       return {
         type: "caution" as const,
-        text: `Both ${nameA} and ${nameB} score low on "${lowestCategory.category}" (average: ${lowestCategory.avg.toFixed(1)}/10). This may indicate a growth area in how you both handle conflicts. Consider working together to develop healthier conflict resolution strategies in this area.`,
+        text: `Both partners score low on "${lowestCategory.category}" (average: ${lowestCategory.avg.toFixed(1)}/10). This may indicate a growth area in how you both handle conflicts. Consider working together to develop healthier conflict resolution strategies in this area.`,
       }
     } else if (highestCategory.avg > 7) {
       return {
         type: "positive" as const,
-        text: `${nameA} and ${nameB} both excel at "${highestCategory.category}" (average: ${highestCategory.avg.toFixed(1)}/10). This strength can serve as a model for improving other aspects of conflict resolution. Recognize and reinforce this positive pattern.`,
+        text: `You both excel at "${highestCategory.category}" (average: ${highestCategory.avg.toFixed(1)}/10). This strength can serve as a model for improving other aspects of conflict resolution. Recognize and reinforce this positive pattern.`,
       }
     }
 
     return {
       type: "info" as const,
-      text: `${nameA} and ${nameB}'s strongest conflict expression area is "${highestCategory.category}" (${highestCategory.avg.toFixed(1)}/10), while "${lowestCategory.category}" (${lowestCategory.avg.toFixed(1)}/10) could benefit from attention. Use your strengths to support growth in challenging areas.`,
+      text: `Your strongest conflict expression area is "${highestCategory.category}" (${highestCategory.avg.toFixed(1)}/10), while "${lowestCategory.category}" (${lowestCategory.avg.toFixed(1)}/10) could benefit from attention. Use your strengths to support growth in challenging areas.`,
     }
   }
 
@@ -246,13 +253,13 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     if (subjectAHighest.name === subjectBHighest.name) {
       return {
         type: "positive" as const,
-        text: `Both ${nameA} and ${nameB} primarily use "${subjectAHighest.name}" for validation and reassurance (${nameA}: ${subjectAHighest.value}%, ${nameB}: ${subjectBHighest.value}%). This alignment in how you seek and provide emotional support is a significant relationship strength.`,
+        text: `Both partners primarily use "${subjectAHighest.name}" for validation and reassurance (${subjectALabel}: ${subjectAHighest.value}%, ${subjectBLabel}: ${subjectBHighest.value}%). This alignment in how you seek and provide emotional support is a significant relationship strength.`,
       }
     }
 
     return {
       type: "info" as const,
-      text: `${nameA} relies most on "${subjectAHighest.name}" (${subjectAHighest.value}%) while ${nameB} favors "${subjectBHighest.name}" (${subjectBHighest.value}%). Understanding these different preferences can help you provide validation in ways that resonate most with your partner.`,
+      text: `${subjectALabel} relies most on "${subjectAHighest.name}" (${subjectAHighest.value}%) while ${subjectBLabel} favors "${subjectBHighest.name}" (${subjectBHighest.value}%). Understanding these different preferences can help you provide validation in ways that resonate most with your partner.`,
     }
   }
 
@@ -272,7 +279,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <Heart className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600 flex-shrink-0" />
             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent text-center">
-              {nameA} & {nameB}'s Relationship Analysis
+              Your Relationship Analysis
             </h1>
           </div>
 
@@ -454,13 +461,13 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
                     <div className="p-3 sm:p-4 bg-blue-50 rounded-lg">
-                      <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">{nameA}'s Style</h4>
+                      <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">{subjectALabel}'s Style</h4>
                       <p className="text-xs sm:text-sm text-blue-800">
                         {results.communicationStylesAndEmotionalTone?.subjectAStyle}
                       </p>
                     </div>
                     <div className="p-3 sm:p-4 bg-pink-50 rounded-lg">
-                      <h4 className="font-semibold text-pink-900 mb-2 text-sm sm:text-base">{nameB}'s Style</h4>
+                      <h4 className="font-semibold text-pink-900 mb-2 text-sm sm:text-base">{subjectBLabel}'s Style</h4>
                       <p className="text-xs sm:text-sm text-pink-800">
                         {results.communicationStylesAndEmotionalTone?.subjectBStyle}
                       </p>
@@ -802,11 +809,12 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       <h4 className="font-semibold text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base">
                         Validation & Reassurance Patterns
                       </h4>
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
                         {/* Subject A Pie Chart */}
-                        <div className="space-y-2">
-                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{nameA}</p>
-                          <ResponsiveContainer width="100%" height={240} className="sm:h-[280px] md:h-[300px]">
+                        <div className="space-y-3">
+                          {/* 3. Update the Subject Name labels in the charts sections */}
+                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{subjectALabel}</p>
+                          <ResponsiveContainer width="100%" height={280} className="sm:h-[320px] md:h-[360px]">
                             <PieChart>
                               <Pie
                                 data={validationDataA}
@@ -814,8 +822,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                                 cy="50%"
                                 labelLine
                                 label={CustomLabel}
-                                outerRadius={65}
-                                className="sm:outerRadius-[75] md:outerRadius-[85]"
+                                outerRadius={70}
+                                className="sm:outerRadius-[80] md:outerRadius-[90]"
                                 fill="#8884d8"
                                 dataKey="value"
                               >
@@ -829,9 +837,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         </div>
 
                         {/* Subject B Pie Chart */}
-                        <div className="space-y-2">
-                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{nameB}</p>
-                          <ResponsiveContainer width="100%" height={240} className="sm:h-[280px] md:h-[300px]">
+                        <div className="space-y-3">
+                          {/* 3. Update the Subject Name labels in the charts sections */}
+                          <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{subjectBLabel}</p>
+                          <ResponsiveContainer width="100%" height={280} className="sm:h-[320px] md:h-[360px]">
                             <PieChart>
                               <Pie
                                 data={validationDataB}
@@ -839,8 +848,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                                 cy="50%"
                                 labelLine
                                 label={CustomLabel}
-                                outerRadius={65}
-                                className="sm:outerRadius-[75] md:outerRadius-[85]"
+                                outerRadius={70}
+                                className="sm:outerRadius-[80] md:outerRadius-[90]"
                                 fill="#8884d8"
                                 dataKey="value"
                               >
@@ -878,7 +887,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     {results.professionalInsights?.attachmentTheoryAnalysis?.subjectA && (
                       <div className="p-3 sm:p-4 bg-blue-50 rounded-lg space-y-2.5 sm:space-y-3">
-                        <h4 className="font-semibold text-blue-900 text-sm sm:text-base">{nameA}</h4>
+                        {/* 5. In the Professional Insights tab, update all section headers that reference subjects: */}
+                        <h4 className="font-semibold text-blue-900 text-sm sm:text-base">{subjectALabel}</h4>
                         <div>
                           <p className="text-[10px] sm:text-xs font-medium text-blue-700 mb-1">Attachment Style</p>
                           <Badge className="bg-blue-600 text-xs">
@@ -903,21 +913,17 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           </div>
                         )}
                         {results.professionalInsights.attachmentTheoryAnalysis.subjectA.triggersAndDefenses && (
-                          <div>
-                            <p className="text-[10px] sm:text-xs font-medium text-blue-700 mb-1.5">
-                              Triggers & Defenses
-                            </p>
-                            <p className="text-xs sm:text-sm text-blue-800">
-                              {results.professionalInsights.attachmentTheoryAnalysis.subjectA.triggersAndDefenses}
-                            </p>
-                          </div>
+                          <p className="text-xs sm:text-sm text-blue-800">
+                            {results.professionalInsights.attachmentTheoryAnalysis.subjectA.triggersAndDefenses}
+                          </p>
                         )}
                       </div>
                     )}
 
                     {results.professionalInsights?.attachmentTheoryAnalysis?.subjectB && (
                       <div className="p-3 sm:p-4 bg-pink-50 rounded-lg space-y-2.5 sm:space-y-3">
-                        <h4 className="font-semibold text-pink-900 text-sm sm:text-base">{nameB}</h4>
+                        {/* 5. In the Professional Insights tab, update all section headers that reference subjects: */}
+                        <h4 className="font-semibold text-pink-900 text-sm sm:text-base">{subjectBLabel}</h4>
                         <div>
                           <p className="text-[10px] sm:text-xs font-medium text-pink-700 mb-1">Attachment Style</p>
                           <Badge className="bg-pink-600 text-xs">
@@ -942,14 +948,9 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           </div>
                         )}
                         {results.professionalInsights.attachmentTheoryAnalysis.subjectB.triggersAndDefenses && (
-                          <div>
-                            <p className="text-[10px] sm:text-xs font-medium text-pink-700 mb-1.5">
-                              Triggers & Defenses
-                            </p>
-                            <p className="text-xs sm:text-sm text-pink-800">
-                              {results.professionalInsights.attachmentTheoryAnalysis.subjectB.triggersAndDefenses}
-                            </p>
-                          </div>
+                          <p className="text-xs sm:text-sm text-pink-800">
+                            {results.professionalInsights.attachmentTheoryAnalysis.subjectB.triggersAndDefenses}
+                          </p>
                         )}
                       </div>
                     )}
@@ -1299,7 +1300,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 <CardContent className="space-y-5 sm:space-y-6 md:space-y-8">
                   {/* Subject A Feedback */}
                   <div className="space-y-3 sm:space-y-4">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {nameA}</h3>
+                    {/* 4. Update the feedback section headers to use dynamic labels */}
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {subjectALabel}</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
                       {results.constructiveFeedback?.subjectA?.strengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
@@ -1360,7 +1362,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
                   {/* Subject B Feedback */}
                   <div className="space-y-3 sm:space-y-4">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {nameB}</h3>
+                    {/* 4. Update the feedback section headers to use dynamic labels */}
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {subjectBLabel}</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
                       {results.constructiveFeedback?.subjectB?.strengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">

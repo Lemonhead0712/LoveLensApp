@@ -5,11 +5,11 @@ import type React from "react"
 import { useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { analyzeConversation } from "@/app/actions"
 import AnalysisResults from "./analysis-results"
-import { UploadCloud, File, X, ArrowRight, ImagePlus, Users } from "lucide-react"
+import { UploadCloud, File, X, ArrowRight, ImagePlus, User } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 import ImageEnhancementPreview from "./image-enhancement-preview"
 import { enhanceImages } from "@/lib/image-processing"
@@ -155,7 +155,7 @@ export default function UploadSection() {
         formData.append(`file-${index}-originalType`, files[index].type)
       })
 
-      // Add subject names to the form data
+      // Add subject names to formData
       if (subjectAName.trim()) {
         formData.append("subjectAName", subjectAName.trim())
       }
@@ -219,51 +219,43 @@ export default function UploadSection() {
       <Card className="overflow-hidden bg-white shadow-xl">
         <div className="p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Subject Names Input Section */}
-            <div className="border-2 border-dashed border-purple-200 rounded-xl p-6 bg-purple-50/50">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="h-5 w-5 text-purple-600" />
-                <h3 className="text-lg font-medium text-gray-900">Identify Conversation Partners (Optional)</h3>
+            {/* Subject Name Inputs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="space-y-2">
+                <Label htmlFor="subject-a" className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <User className="w-4 h-4 text-purple-600" />
+                  Subject A Name (Sender / Right side)
+                </Label>
+                <Input
+                  id="subject-a"
+                  type="text"
+                  placeholder="e.g., Alex, Partner 1, Me"
+                  value={subjectAName}
+                  onChange={(e) => setSubjectAName(e.target.value)}
+                  className="bg-white"
+                  maxLength={30}
+                />
+                <p className="text-xs text-gray-500">Optional: Customize how we refer to the sender</p>
               </div>
-              <p className="text-sm text-gray-600 mb-4">
-                Personalize your analysis by providing names or labels for each person in the conversation. This helps
-                generate more relevant and specific insights.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="subjectA" className="text-sm font-medium text-gray-700">
-                    First Person (Messages on the right/green bubbles)
-                  </Label>
-                  <Input
-                    id="subjectA"
-                    type="text"
-                    placeholder="e.g., Alex, Partner A, Me"
-                    value={subjectAName}
-                    onChange={(e) => setSubjectAName(e.target.value)}
-                    className="border-purple-200 focus:border-purple-500 focus:ring-purple-500"
-                    maxLength={30}
-                  />
-                  <p className="text-xs text-gray-500">Usually the sender or primary message author</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="subjectB" className="text-sm font-medium text-gray-700">
-                    Second Person (Messages on the left/gray bubbles)
-                  </Label>
-                  <Input
-                    id="subjectB"
-                    type="text"
-                    placeholder="e.g., Jordan, Partner B, Them"
-                    value={subjectBName}
-                    onChange={(e) => setSubjectBName(e.target.value)}
-                    className="border-purple-200 focus:border-purple-500 focus:ring-purple-500"
-                    maxLength={30}
-                  />
-                  <p className="text-xs text-gray-500">Usually the recipient or secondary message author</p>
-                </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="subject-b" className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <User className="w-4 h-4 text-pink-600" />
+                  Subject B Name (Receiver / Left side)
+                </Label>
+                <Input
+                  id="subject-b"
+                  type="text"
+                  placeholder="e.g., Jordan, Partner 2, Them"
+                  value={subjectBName}
+                  onChange={(e) => setSubjectBName(e.target.value)}
+                  className="bg-white"
+                  maxLength={30}
+                />
+                <p className="text-xs text-gray-500">Optional: Customize how we refer to the receiver</p>
               </div>
             </div>
 
-            {/* File Upload Section */}
             <div
               {...getRootProps()}
               className={`

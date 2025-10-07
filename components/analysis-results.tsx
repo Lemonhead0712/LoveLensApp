@@ -11,7 +11,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import BarChartDisplay from "./bar-chart-display"
-import { exportToWord } from "@/app/actions"
 import {
   MessageSquareQuote,
   Zap,
@@ -27,6 +26,40 @@ import {
 
 interface AnalysisResultsProps {
   results: AnalysisResultsData
+}
+
+async function exportToWord(results: any) {
+  try {
+    console.log("[v0] Starting Word document export")
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/api/export-word`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(results),
+    })
+
+    if (!response.ok) {
+      throw new Error("Failed to generate Word document")
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `relationship-analysis-${Date.now()}.docx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+
+    console.log("[v0] Word document export complete")
+    return { success: true }
+  } catch (error) {
+    console.error("[v0] Export error:", error)
+    throw error
+  }
 }
 
 const ConfidenceWarning = ({ warning }: { warning?: string }) => {

@@ -139,6 +139,4 @@ export interface AnalysisResults {
   extractionConfidence?: number
   confidenceWarning?: string
   error?: string
-  subjectAName?: string
-  subjectBName?: string
 }

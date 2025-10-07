@@ -9,6 +9,8 @@ import { Upload, X, ImageIcon, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { analyzeConversation } from "@/app/actions"
 import { storeResults } from "@/lib/results-storage"
 import ModernAnalysisLoading from "@/components/modern-analysis-loading"
@@ -19,6 +21,8 @@ export default function EnhancedCompactUpload() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [subject1Name, setSubject1Name] = useState("")
+  const [subject2Name, setSubject2Name] = useState("")
   const router = useRouter()
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -89,6 +93,8 @@ export default function EnhancedCompactUpload() {
       files.forEach((file, index) => {
         formData.append(`file-${index}`, file)
       })
+      if (subject1Name) formData.append("subjectAName", subject1Name)
+      if (subject2Name) formData.append("subjectBName", subject2Name)
 
       console.log("Starting analysis with", files.length, "files")
       const results = await analyzeConversation(formData)
@@ -105,11 +111,9 @@ export default function EnhancedCompactUpload() {
         return
       }
 
-      // Store results and navigate
       const resultId = storeResults(results)
       console.log("Results stored with ID:", resultId)
 
-      // Small delay to show 100% completion
       setTimeout(() => {
         console.log("Navigating to results page")
         router.push(`/results?id=${resultId}`)
@@ -215,6 +219,45 @@ export default function EnhancedCompactUpload() {
                         <p className="text-xs text-gray-600 mt-1 truncate">{file.name}</p>
                       </motion.div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {files.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Customize Names (Optional)</h4>
+                  <p className="text-xs text-gray-600 mb-4">
+                    Enter custom names for the conversation participants. Leave blank to use default labels.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="subject1-name" className="text-sm font-medium text-gray-700">
+                        First Person
+                      </Label>
+                      <Input
+                        id="subject1-name"
+                        type="text"
+                        placeholder="e.g., Alex"
+                        value={subject1Name}
+                        onChange={(e) => setSubject1Name(e.target.value)}
+                        disabled={isAnalyzing}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="subject2-name" className="text-sm font-medium text-gray-700">
+                        Second Person
+                      </Label>
+                      <Input
+                        id="subject2-name"
+                        type="text"
+                        placeholder="e.g., Jordan"
+                        value={subject2Name}
+                        onChange={(e) => setSubject2Name(e.target.value)}
+                        disabled={isAnalyzing}
+                        className="w-full"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
