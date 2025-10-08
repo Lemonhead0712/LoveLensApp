@@ -26,7 +26,6 @@ async function extractTextFromImage(
   }
 }> {
   const startTime = Date.now()
-  console.log(`[Image ${imageIndex + 1}] Starting extraction from: ${file.name}`)
 
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OpenAI API key not configured")
@@ -35,8 +34,6 @@ async function extractTextFromImage(
   try {
     const base64Image = await fileToBase64(file)
 
-    const extractionStart = Date.now()
-    // Enhanced prompt with detailed visual cue instructions for accurate message attribution
     const result = await generateText({
       model: openai("gpt-4o"),
       messages: [
@@ -195,11 +192,7 @@ Now extract the conversation from this screenshot using the enhanced attribution
       maxTokens: 3000,
     })
 
-    const extractionTime = Date.now() - extractionStart
     const extractedText = result.text
-
-    console.log(`[Image ${imageIndex + 1}] Extraction completed in ${extractionTime}ms`)
-    console.log(`[Image ${imageIndex + 1}] Extracted text length: ${extractedText.length} characters`)
 
     let platform = "unknown"
     let platformConfidence = 0.5
@@ -241,20 +234,11 @@ Now extract the conversation from this screenshot using the enhanced attribution
     const unknownCount = unknownMatches.length
     const totalMessages = speakerACount + speakerBCount + unknownCount
 
-    console.log(
-      `[Image ${imageIndex + 1}] Speaker detection: Person A=${speakerACount}, Person B=${speakerBCount}, Unknown=${unknownCount}`,
-    )
-    console.log(`[Image ${imageIndex + 1}] Platform: ${platform} (confidence: ${platformConfidence})`)
-    console.log(`[Image ${imageIndex + 1}] Attribution confidence: ${confidenceMean}`)
-
-    // Calculate overall confidence
     let confidence = confidenceMean
     if (totalMessages > 0) {
-      // Adjust confidence based on unknown ratio
       if (unknownRatio > 0.05) {
-        confidence *= 0.8 // Reduce confidence if too many unknowns
+        confidence *= 0.8
       }
-      // Boost confidence if both speakers are present
       if (speakerACount > 0 && speakerBCount > 0) {
         confidence = Math.min(confidence * 1.1, 1.0)
       }
@@ -309,17 +293,13 @@ function normalizeSpeakers(
   const subjectAMessages: string[] = []
   const subjectBMessages: string[] = []
 
-  // Combine all extracted texts and normalize speaker labels
   const normalizedText = extractedTexts
     .map((extracted) => {
       let text = extracted.text
 
-      // Replace Person A with custom label (uploader - right-aligned messages)
       text = text.replace(/\[Person A\]/gi, `[${labelA}]`)
-      // Replace Person B with custom label (other participant - left-aligned messages)
       text = text.replace(/\[Person B\]/gi, `[${labelB}]`)
 
-      // Track messages for statistics
       const aMatches = text.match(new RegExp(`\\[${labelA}\\]:\\s*"([^"]+)"`, "gi")) || []
       const bMatches = text.match(new RegExp(`\\[${labelB}\\]:\\s*"([^"]+)"`, "gi")) || []
 
@@ -334,7 +314,6 @@ function normalizeSpeakers(
     })
     .join("\n\n")
 
-  // Calculate statistics
   const subjectAStats = {
     messageCount: subjectAMessages.length,
     avgLength:
@@ -373,7 +352,6 @@ function parseConversationToMessages(
 ): Array<{ id: string; speaker: "A" | "B" | "unknown"; text: string }> {
   const messages: Array<{ id: string; speaker: "A" | "B" | "unknown"; text: string }> = []
 
-  // Match all message patterns: [Label]: "text"
   const messagePattern = /\[(.*?)\]:\s*"([^"]+)"/g
   let match
   let messageId = 0
@@ -569,7 +547,6 @@ function transformAnalysisToUIFormat(
           attachmentBehaviors: commStyles.subject_b?.strengths || ["Communication present"],
           triggersAndDefenses: commStyles.subject_b?.style_shifts || "Patterns observed under stress.",
         },
-        // Use AI-generated dyad pattern if available, otherwise fall back to summary or 'balanced'
         dyad: attachment.pattern || attachment.summary || "balanced",
       },
 
@@ -694,7 +671,6 @@ async function generateAIAnalysis(
   platform: string,
 ): Promise<any> {
   try {
-    // Parse conversation into structured messages
     const messages = parseConversationToMessages(conversationText, subjectALabel, subjectBLabel)
 
     console.log(`[v0] Parsed ${messages.length} messages for AI analysis`)
@@ -871,27 +847,20 @@ IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code bl
       temperature: 0.25, // Low variability for consistency
     })
 
-    console.log(`[v0] Received AI analysis response (${result.text.length} chars)`)
-
     let aiAnalysis
     try {
       let jsonText = result.text.trim()
 
-      // Remove markdown code blocks if present
       if (jsonText.startsWith("```")) {
-        console.log("[v0] Removing markdown code blocks from response")
         jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "")
       }
 
-      // Try to find JSON object in the response
       const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         jsonText = jsonMatch[0]
       }
 
-      // Parse the JSON
       aiAnalysis = JSON.parse(jsonText)
-      console.log(`[v0] Successfully parsed AI analysis`)
 
       if (!aiAnalysis.subjects || !aiAnalysis.metrics || !aiAnalysis.attribution) {
         throw new Error("AI response missing required top-level fields")
@@ -908,20 +877,16 @@ IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code bl
       console.log(`[v0] AI analysis validated successfully`)
     } catch (parseError) {
       console.error("[v0] Failed to parse AI response as JSON:", parseError)
-      console.log("[v0] First 1000 chars of raw response:", result.text.substring(0, 1000))
-      console.log("[v0] Last 500 chars of raw response:", result.text.substring(Math.max(0, result.text.length - 500)))
       throw new Error(
         `AI returned invalid JSON response: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
       )
     }
 
-    // Transform AI analysis to UI format
     return transformAnalysisToUIFormat(aiAnalysis, subjectALabel, subjectBLabel, conversationText)
   } catch (error) {
     console.error("[v0] AI analysis failed:", error)
     console.log("[v0] Falling back to default analysis")
 
-    // Fallback to basic analysis if AI fails
     return {
       overallScore: 7.5,
       summary: `Analysis of communication patterns between ${subjectALabel} and ${subjectBLabel}.`,
@@ -995,7 +960,6 @@ IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code bl
             attachmentBehaviors: ["Communication present"],
             triggersAndDefenses: "Patterns observed.",
           },
-          // Fallback for dyad if AI fails
           dyad: "balanced",
         },
         therapeuticRecommendations: {
@@ -1058,13 +1022,11 @@ export async function analyzeConversation(formData: FormData) {
   try {
     console.log("[v0] Starting conversation analysis")
 
-    // Extract custom names from formData
     const subjectAName = formData.get("subjectAName") as string | null
     const subjectBName = formData.get("subjectBName") as string | null
 
     console.log(`[v0] Custom names: ${subjectAName || "none"} and ${subjectBName || "none"}`)
 
-    // Extract files from formData
     const files: File[] = []
     let fileIndex = 0
     while (true) {
@@ -1080,7 +1042,6 @@ export async function analyzeConversation(formData: FormData) {
       return { error: "No files provided" }
     }
 
-    // Extract text from all images with enhanced attribution
     const extractedTexts = await Promise.all(files.map((file, index) => extractTextFromImage(file, index)))
 
     const totalUnknownRatio =
@@ -1094,7 +1055,6 @@ export async function analyzeConversation(formData: FormData) {
     console.log(`[v0]   Average confidence: ${(avgConfidence * 100).toFixed(1)}%`)
     console.log(`[v0]   Uncertain messages: ${allUncertainIds.length}`)
 
-    // Normalize speaker labels across all extracted texts
     const { normalizedText, subjectALabel, subjectBLabel, speakerStats } = normalizeSpeakers(
       extractedTexts,
       subjectAName,

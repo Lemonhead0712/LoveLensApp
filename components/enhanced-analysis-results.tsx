@@ -67,7 +67,7 @@ const CustomLabel = ({
   name: string
 }) => {
   const RADIAN = Math.PI / 180
-  const radius = outerRadius + 25
+  const radius = outerRadius + 30 // Increased from 25 to 30 for better label spacing
   const x = cx + radius * Math.cos(-midAngle * RADIAN)
   const y = cy + radius * Math.sin(-midAngle * RADIAN)
 
@@ -130,9 +130,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const subjectALabel = results.subjectALabel || "Subject A"
   const subjectBLabel = results.subjectBLabel || "Subject B"
 
-  console.log("[v0] EnhancedAnalysisResults labels:", { subjectALabel, subjectBLabel })
-  console.log("[v0] Chart data sample:", results.visualInsightsData?.emotionalCommunicationCharacteristics?.[0])
-
   if (results.error) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-purple-50 to-pink-50 p-4 md:p-8">
@@ -174,9 +171,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
       value: item[subjectBLabel],
       color: COLORS[index % COLORS.length],
     })) || []
-
-  console.log("[v0] Validation data A:", validationDataA)
-  console.log("[v0] Validation data B:", validationDataB)
 
   // Calculate insights for emotional communication
   const getEmotionalCommunicationInsight = () => {
@@ -814,7 +808,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         <div className="space-y-3">
                           {/* 3. Update the Subject Name labels in the charts sections */}
                           <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{subjectALabel}</p>
-                          <ResponsiveContainer width="100%" height={280} className="sm:h-[320px] md:h-[360px]">
+                          <ResponsiveContainer width="100%" height={300} className="sm:h-[340px] md:h-[380px]">
                             <PieChart>
                               <Pie
                                 data={validationDataA}
@@ -822,8 +816,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                                 cy="50%"
                                 labelLine
                                 label={CustomLabel}
-                                outerRadius={70}
-                                className="sm:outerRadius-[80] md:outerRadius-[90]"
+                                outerRadius={75} // Increased from 70 to 75 for better proportion
+                                className="sm:outerRadius-[85] md:outerRadius-[95]"
                                 fill="#8884d8"
                                 dataKey="value"
                               >
@@ -840,7 +834,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         <div className="space-y-3">
                           {/* 3. Update the Subject Name labels in the charts sections */}
                           <p className="text-xs sm:text-sm font-medium text-center text-gray-600">{subjectBLabel}</p>
-                          <ResponsiveContainer width="100%" height={280} className="sm:h-[320px] md:h-[360px]">
+                          <ResponsiveContainer width="100%" height={300} className="sm:h-[340px] md:h-[380px]">
                             <PieChart>
                               <Pie
                                 data={validationDataB}
@@ -848,8 +842,8 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                                 cy="50%"
                                 labelLine
                                 label={CustomLabel}
-                                outerRadius={70}
-                                className="sm:outerRadius-[80] md:outerRadius-[90]"
+                                outerRadius={75} // Increased from 70 to 75 for better proportion
+                                className="sm:outerRadius-[85] md:outerRadius-[95]"
                                 fill="#8884d8"
                                 dataKey="value"
                               >
