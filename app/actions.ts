@@ -5,21 +5,63 @@ import { openai } from "@ai-sdk/openai"
 
 async function fileToBase64(file: File): Promise<string> {
   try {
-    // Method 1: Try bytes() if available (Next.js 14+)
-    if (typeof file.bytes === "function") {
-      const bytes = await file.bytes()
-      const buffer = Buffer.from(bytes)
-      return `data:${file.type};base64,${buffer.toString("base64")}`
+    console.log(`[v0] Reading file: ${file.name} (${file.size} bytes, type: ${file.type})`)
+
+    if (!file || !file.size) {
+      throw new Error("Invalid file: file is empty or undefined")
     }
 
-    // Method 2: Try arrayBuffer (standard Web API)
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    return `data:${file.type};base64,${buffer.toString("base64")}`
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error(
+        `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
+      )
+    }
+
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`File "${file.name}" is not an image (type: ${file.type})`)
+    }
+
+    let buffer: Buffer | null = null
+    let method = "unknown"
+
+    // Method 1: Try arrayBuffer first (most reliable in Next.js server actions)
+    try {
+      console.log(`[v0] Attempting arrayBuffer() method for ${file.name}`)
+      const arrayBuffer = await file.arrayBuffer()
+      buffer = Buffer.from(arrayBuffer)
+      method = "arrayBuffer"
+      console.log(`[v0] Successfully read ${file.name} using arrayBuffer()`)
+    } catch (arrayBufferError) {
+      console.warn(`[v0] arrayBuffer() failed for ${file.name}:`, arrayBufferError)
+
+      // Method 2: Try bytes() if available (Next.js 14+)
+      try {
+        if (typeof (file as any).bytes === "function") {
+          console.log(`[v0] Attempting bytes() method for ${file.name}`)
+          const bytes = await (file as any).bytes()
+          buffer = Buffer.from(bytes)
+          method = "bytes"
+          console.log(`[v0] Successfully read ${file.name} using bytes()`)
+        }
+      } catch (bytesError) {
+        console.warn(`[v0] bytes() failed for ${file.name}:`, bytesError)
+      }
+    }
+
+    if (!buffer) {
+      throw new Error(
+        `Unable to read file "${file.name}". All reading methods failed. This may be due to browser security restrictions or file access permissions.`,
+      )
+    }
+
+    const base64 = buffer.toString("base64")
+    console.log(`[v0] Converted ${file.name} to base64 (${base64.length} chars) using ${method}`)
+
+    return `data:${file.type};base64,${base64}`
   } catch (error) {
-    console.error("[v0] Error converting file to base64:", error)
+    console.error(`[v0] Error converting file "${file.name}" to base64:`, error)
     throw new Error(
-      `Failed to read file "${file.name}". Please ensure the file is accessible and try again. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      `Failed to read file "${file.name}": ${error instanceof Error ? error.message : "Unknown error"}. Please try uploading a different image or refresh the page and try again.`,
     )
   }
 }

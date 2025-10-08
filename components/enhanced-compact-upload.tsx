@@ -78,6 +78,21 @@ export default function EnhancedCompactUpload() {
     setError(null)
 
     try {
+      for (const file of files) {
+        if (!file || !file.size) {
+          setError(`One or more files are invalid. Please remove and re-upload them.`)
+          setIsAnalyzing(false)
+          return
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          setError(
+            `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
+          )
+          setIsAnalyzing(false)
+          return
+        }
+      }
+
       // Simulate progress
       const progressInterval = setInterval(() => {
         setProgress((prev) => {
@@ -96,31 +111,44 @@ export default function EnhancedCompactUpload() {
       if (subject1Name) formData.append("subjectAName", subject1Name)
       if (subject2Name) formData.append("subjectBName", subject2Name)
 
-      console.log("Starting analysis with", files.length, "files")
+      console.log("[v0] Starting analysis with", files.length, "files")
+      console.log("[v0] File details:", files.map((f) => `${f.name} (${f.size} bytes)`).join(", "))
+
       const results = await analyzeConversation(formData)
 
       clearInterval(progressInterval)
       setProgress(100)
 
-      console.log("Analysis complete, results:", results)
+      console.log("[v0] Analysis complete")
 
       if (results.error) {
-        console.error("Analysis error:", results.error)
+        console.error("[v0] Analysis error:", results.error)
         setError(results.error)
         setIsAnalyzing(false)
         return
       }
 
       const resultId = storeResults(results)
-      console.log("Results stored with ID:", resultId)
+      console.log("[v0] Results stored with ID:", resultId)
 
       setTimeout(() => {
-        console.log("Navigating to results page")
+        console.log("[v0] Navigating to results page")
         router.push(`/results?id=${resultId}`)
       }, 500)
     } catch (err: any) {
-      console.error("Error during analysis:", err)
-      setError(err.message || "An unexpected error occurred. Please try again.")
+      console.error("[v0] Error during analysis:", err)
+      let errorMessage = "An unexpected error occurred. Please try again."
+
+      if (err.message?.includes("file could not be read")) {
+        errorMessage =
+          "Unable to read one or more files. Please try refreshing the page and uploading your images again."
+      } else if (err.message?.includes("too large")) {
+        errorMessage = err.message
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+
+      setError(errorMessage)
       setIsAnalyzing(false)
     }
   }
