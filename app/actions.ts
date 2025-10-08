@@ -5,21 +5,22 @@ import { openai } from "@ai-sdk/openai"
 
 async function fileToBase64(file: File): Promise<string> {
   try {
-    // Convert File to Buffer using the bytes() method which is more reliable in server actions
-    const bytes = await file.bytes()
-    const buffer = Buffer.from(bytes)
+    // Method 1: Try bytes() if available (Next.js 14+)
+    if (typeof file.bytes === "function") {
+      const bytes = await file.bytes()
+      const buffer = Buffer.from(bytes)
+      return `data:${file.type};base64,${buffer.toString("base64")}`
+    }
+
+    // Method 2: Try arrayBuffer (standard Web API)
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
     return `data:${file.type};base64,${buffer.toString("base64")}`
   } catch (error) {
     console.error("[v0] Error converting file to base64:", error)
-    // Fallback: try arrayBuffer method
-    try {
-      const arrayBuffer = await file.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
-      return `data:${file.type};base64,${buffer.toString("base64")}`
-    } catch (fallbackError) {
-      console.error("[v0] Fallback method also failed:", fallbackError)
-      throw new Error(`Failed to read file: ${error instanceof Error ? error.message : "Unknown error"}`)
-    }
+    throw new Error(
+      `Failed to read file "${file.name}". Please ensure the file is accessible and try again. Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
   }
 }
 
@@ -56,145 +57,33 @@ async function extractTextFromImage(
           content: [
             {
               type: "text",
-              text: `You are analyzing a messaging conversation screenshot with ENHANCED SPEAKER ATTRIBUTION.
+              text: `Extract conversation from this messaging screenshot. Use these rules:
 
-═══════════════════════════════════════════════════════════════════════════════
-CRITICAL: FIXED NAMING CONVENTION (IMMUTABLE)
-═══════════════════════════════════════════════════════════════════════════════
-• The uploader's messages (device owner) = **Person A** (Subject A)
-• The recipient's messages (other participant) = **Person B** (Subject B)
-• This mapping is FIXED and NEVER changes regardless of content or style
+SPEAKER LABELS (FIXED):
+- RIGHT-aligned messages = [Person A] (device owner/uploader)
+- LEFT-aligned messages = [Person B] (other participant)
+- NEVER swap these labels
 
-═══════════════════════════════════════════════════════════════════════════════
-STEP 1: PLATFORM DETECTION
-═══════════════════════════════════════════════════════════════════════════════
-Identify the messaging platform based on visual signatures:
+PLATFORM DETECTION:
+Identify: imessage, android, whatsapp, messenger, or unknown
+Look for: bubble colors, UI elements, status bars
 
-**iOS/iMessage:**
-- Blue bubbles (iMessage) or green bubbles (SMS) on RIGHT
-- Gray bubbles on LEFT
-- Rounded corners, clean design
-- Status bar with signal/battery icons
+OUTPUT FORMAT:
+[Person A]: "message text"
+[Person B]: "message text"
+[Unknown]: "text" (only if confidence < 60%)
 
-**WhatsApp:**
-- Green bubbles (#25D366 or similar) on RIGHT
-- White/light gray bubbles on LEFT
-- Checkmarks for message status
-- Green header bar
-
-**Android Messages:**
-- Blue/purple bubbles on RIGHT
-- Gray/white bubbles on LEFT
-- Material Design style
-- Colorful header
-
-**Facebook Messenger / Instagram:**
-- Blue gradient bubbles on RIGHT
-- Gray bubbles on LEFT
-- Profile pictures visible
-- Messenger/Instagram UI elements
-
-**Platform Confidence:** Rate 0.0-1.0 based on how clearly you can identify the platform.
-
-═══════════════════════════════════════════════════════════════════════════════
-STEP 2: BUBBLE FEATURE EXTRACTION
-═══════════════════════════════════════════════════════════════════════════════
-For EACH message bubble, extract:
-
-1. **Text Content:** The actual message text
-2. **Horizontal Position:** LEFT or RIGHT side of screen
-3. **Bubble Color:** Describe the color (e.g., "blue", "gray", "green", "white")
-4. **Tail/Pointer Direction:** Does the bubble tail point LEFT or RIGHT?
-5. **Avatar Presence:** Is there a profile picture? If yes, on which side?
-6. **Timestamp Grouping:** Messages sent close together in time
-
-═══════════════════════════════════════════════════════════════════════════════
-STEP 3: ENSEMBLE VOTING FOR SPEAKER ATTRIBUTION
-═══════════════════════════════════════════════════════════════════════════════
-Apply these rules in order (each is a "vote"):
-
-**Vote 1 - Horizontal Position (STRONGEST SIGNAL):**
-- RIGHT side → Person A (uploader/device owner)
-- LEFT side → Person B (other participant)
-
-**Vote 2 - Color by Platform:**
-- iOS: Blue/Green → Person A, Gray → Person B
-- WhatsApp: Green → Person A, White/Gray → Person B
-- Android: Blue/Purple → Person A, Gray → Person B
-- Messenger: Blue → Person A, Gray → Person B
-
-**Vote 3 - Tail Direction:**
-- Tail points RIGHT → Person A
-- Tail points LEFT → Person B
-
-**Vote 4 - Avatar Position:**
-- Avatar on LEFT → Message is from Person B
-- Avatar on RIGHT → Message is from Person A
-- No avatar → Neutral vote
-
-**Vote 5 - Row Consistency:**
-- Messages in same timestamp group likely from same speaker
-
-**Confidence Calculation:**
-- Count agreeing votes / total votes
-- Multiply by platform confidence
-- If final confidence < 0.6 → Mark as "unknown"
-
-═══════════════════════════════════════════════════════════════════════════════
-STEP 4: OUTPUT FORMAT
-═══════════════════════════════════════════════════════════════════════════════
-For each message, use this EXACT format:
-
-[Person A]: "message text here"
-[Person B]: "message text here"
-[Unknown]: "message text here" (only if confidence < 0.6)
-
-**CRITICAL RULES:**
-✓ RIGHT-aligned messages = [Person A]
-✓ LEFT-aligned messages = [Person B]
-✓ NEVER swap these labels
-✓ NEVER use generic labels like "Sender" or "User"
-✓ Use [Unknown] ONLY when confidence < 0.6
-✓ Capture complete message text accurately
-✓ Preserve conversation order and context
-
-═══════════════════════════════════════════════════════════════════════════════
-STEP 5: METADATA (Include at the end)
-═══════════════════════════════════════════════════════════════════════════════
-After all messages, add:
-
+After messages, add:
 ---METADATA---
-Platform: [imessage|android|whatsapp|messenger|unknown]
+Platform: [platform]
 Platform Confidence: [0.0-1.0]
 Total Messages: [count]
 Person A Messages: [count]
 Person B Messages: [count]
 Unknown Messages: [count]
 Average Confidence: [0.0-1.0]
-Uncertain Message IDs: [list if any]
 
-═══════════════════════════════════════════════════════════════════════════════
-EXAMPLE OUTPUT:
-═══════════════════════════════════════════════════════════════════════════════
-
-[Person A]: "Hey, how are you doing?"
-[Person B]: "I'm good! How about you?"
-[Person A]: "Great! Want to grab coffee later?"
-[Person B]: "Sure, what time works for you?"
-[Person A]: "How about 3pm?"
-[Person B]: "Perfect, see you then!"
-
----METADATA---
-Platform: imessage
-Platform Confidence: 0.95
-Total Messages: 6
-Person A Messages: 3
-Person B Messages: 3
-Unknown Messages: 0
-Average Confidence: 0.92
-Uncertain Message IDs: none
-
-Now extract the conversation from this screenshot using the enhanced attribution system.`,
+Extract accurately, preserve order, capture complete text.`,
             },
             {
               type: "image",
@@ -203,7 +92,7 @@ Now extract the conversation from this screenshot using the enhanced attribution
           ],
         },
       ],
-      maxTokens: 3000,
+      maxTokens: 2000, // Reduced from 3000 for faster response
     })
 
     const extractedText = result.text
@@ -211,7 +100,7 @@ Now extract the conversation from this screenshot using the enhanced attribution
     let platform = "unknown"
     let platformConfidence = 0.5
     let unknownRatio = 0
-    let uncertainIds: string[] = []
+    const uncertainIds: string[] = []
     let confidenceMean = 0.5
 
     const metadataMatch = extractedText.match(/---METADATA---\s*([\s\S]*?)(?:\n\n|$)/)
@@ -222,7 +111,6 @@ Now extract the conversation from this screenshot using the enhanced attribution
       const totalMatch = metadata.match(/Total Messages:\s*(\d+)/i)
       const unknownMatch = metadata.match(/Unknown Messages:\s*(\d+)/i)
       const avgConfMatch = metadata.match(/Average Confidence:\s*([\d.]+)/i)
-      const uncertainMatch = metadata.match(/Uncertain Message IDs:\s*(.+)/i)
 
       if (platformMatch) platform = platformMatch[1].toLowerCase()
       if (platformConfMatch) platformConfidence = Number.parseFloat(platformConfMatch[1])
@@ -232,10 +120,6 @@ Now extract the conversation from this screenshot using the enhanced attribution
         const total = Number.parseInt(totalMatch[1])
         const unknown = Number.parseInt(unknownMatch[1])
         unknownRatio = total > 0 ? unknown / total : 0
-      }
-
-      if (uncertainMatch && uncertainMatch[1] !== "none") {
-        uncertainIds = uncertainMatch[1].split(",").map((id) => id.trim())
       }
     }
 
@@ -269,7 +153,7 @@ Now extract the conversation from this screenshot using the enhanced attribution
       platform,
       attributionStats: {
         unknownRatio,
-        uncertainIds,
+        uncertainIds: [],
         confidenceMean,
       },
     }
@@ -789,176 +673,67 @@ async function generateAIAnalysis(
         console.log(`[v0] Retry attempt ${attempt}/${maxRetries}`)
       }
 
-      const systemPrompt = `You are LoveLens — a professional relationship analysis engine grounded in psychology and communication science.
+      const systemPrompt = `You are LoveLens — analyze relationship communication patterns.
 
-SCOPE & NON-NEGOTIABLES
-- NO UI/LAYOUT CHANGES: Do not add or remove fields. Produce JSON exactly in the schema below so existing charts bind correctly.
-- SPEAKER RULES: Subject A = uploader (always "A"). Subject B = partner (always "B"). Use ONLY the provided \`speaker\` labels ("A","B","unknown"). Never infer or swap based on content.
+INPUTS:
+- Subject A: "${subjectALabel}" (uploader)
+- Subject B: "${subjectBLabel}" (partner)
+- Platform: "${platform}"
+- Messages: ${JSON.stringify(messages.slice(0, 50), null, 2)}${messages.length > 50 ? `\n... and ${messages.length - 50} more messages` : ""}
 
-INPUTS PROVIDED
-- subject_a: "${subjectALabel}" (uploader name)
-- subject_b: "${subjectBLabel}" (partner name)
-- platform: "${platform}"
-- messages: ${JSON.stringify(messages, null, 2)}
-  * You must not quote or paraphrase message text. Analyze patterns only.
-- (You may assume low-variance decoding on the calling side.)
+RULES:
+- Use ONLY provided speaker labels (A/B)
+- Tone values sum to ≈1.0
+- All 1-10 scores are integers
+- 2-3 sentence summaries with behavioral evidence
+- 3-5 items for strengths/growth
 
-TONE
-- Warm, professional, emotionally literate (coach-style), not clinical. Balanced: always include strengths and growth opportunities.
+ANCHORS:
+Reactivity (1-10): 1-2=calm, 5-6=noticeable spikes, 9-10=persistent escalation
+Ownership (1-10): 1-2=avoids, 5-6=mixed, 9-10=proactive
+Blame (1-10): 1-2=avoids blame, 5-6=mixed, 9-10=persistent
+Repair (1-10): 1-2=none, 5-6=some, 9-10=timely/effective
+Validation (1-10): 1-3=rare, 4-6=inconsistent, 7-8=consistent, 9-10=frequent
 
-CONSISTENCY ADDENDUM (v1.2)
-- Tone proportions (positive/negative/neutral) each in [0,1], sum ≈ 1.00.
-- All 1–10 scores are integers and follow anchors below.
-- Use only provided speaker labels; exclude "unknown" from per-subject metrics but include in global tallies.
-- Self-verify with the checklist before finalizing.
-
-DEPTH GUARANTEES (without changing schema)
-- Every \`summary\` field: **2–3 sentences** with specific, behavior-based insights (no quotes).
-- Every \`comparative_summary\`: **3–4 sentences** that explain alignment, friction points, and the situational triggers for shifts.
-- Each \`strengths\` and \`growth_opportunities\` list: **3–5 concise, actionable items** (behavior-based, no clichés).
-- Describe **patterns AND triggers** (e.g., "tends to escalate when reassurance is delayed," "becomes concise after repeated explanations").
-- If evidence is thin, set neutral scores but still provide a careful, transparent rationale (e.g., "limited data; patterns inferred cautiously").
-
-ANCHORS (apply exactly)
-Reactivity (1–10)
-1–2 calm under provocation; 3–4 rare spikes; 5–6 noticeable spikes, recovers with prompts; 7–8 frequent spikes, slow recovery; 9–10 persistent escalation.
-
-Ownership (1–10)
-1–2 avoids responsibility; 3–4 minimal under pressure; 5–6 mixed; 7–8 regularly owns contribution; 9–10 proactive ownership with next steps.
-
-Blame (1–10) (reverse-good)
-1–2 avoids blame, "I" frames; 3–4 occasional blame; 5–6 mixed/cyclical; 7–8 frequent blaming; 9–10 persistent externalizing.
-
-Repair Attempts (1–10)
-1–2 none; 3–4 infrequent/poorly timed; 5–6 some/mixed impact; 7–8 regular/often effective; 9–10 timely, specific, reliable.
-
-Validation (Support, Reassurance, Appreciation; each 1–10)
-1–3 rare; 4–6 present but inconsistent; 7–8 consistent/clear; 9–10 frequent, timely, well-matched.
-
-Attachment energies (behavioral, not diagnostic)
-secure = steady tone, direct needs, flexible repair
-anxious = pursuit, protest, reassurance seeking under uncertainty
-avoidant = distance, shutdown or topic shift under stress
-mixed = varies by trigger/context
-
-STYLE & NUANCE RULES
-- Report both the **baseline style** and the **style shifts** (when/why their tone/length changes).
-- Always ground explanations in **interaction patterns** (initiate/respond, pacing, repair timing), not personality labels.
-
-OUTPUT FORMAT — RETURN **ONLY** VALID JSON (no prose outside JSON):
-
+OUTPUT (JSON only, no markdown):
 {
-  "subjects": {
-    "A": { "name": "${subjectALabel}" },
-    "B": { "name": "${subjectBLabel}" }
-  },
+  "subjects": {"A": {"name": "${subjectALabel}"}, "B": {"name": "${subjectBLabel}"}},
   "metrics": {
-    "emotional_tone": {
-      "positive": 0.0,
-      "negative": 0.0,
-      "neutral": 0.0,
-      "summary": "2–3 sentences explaining balance and notable shifts"
-    },
+    "emotional_tone": {"positive": 0.0, "negative": 0.0, "neutral": 0.0, "summary": "2-3 sentences"},
     "communication_styles": {
-      "subject_a": {
-        "baseline_style": "concise/detailed etc. with behavioral specifics",
-        "style_shifts": "when/why A changes tone/length (triggers)",
-        "strengths": ["3–5 behavior-based items"],
-        "growth_opportunities": ["3–5 actionable items"]
-      },
-      "subject_b": {
-        "baseline_style": "…",
-        "style_shifts": "…",
-        "strengths": ["3–5 items"],
-        "growth_opportunities": ["3–5 items"]
-      },
-      "comparative_summary": "3–4 sentences on alignment, friction, and situational dynamics"
+      "subject_a": {"baseline_style": "description", "style_shifts": "when/why", "strengths": ["3-5 items"], "growth_opportunities": ["3-5 items"]},
+      "subject_b": {"baseline_style": "description", "style_shifts": "when/why", "strengths": ["3-5 items"], "growth_opportunities": ["3-5 items"]},
+      "comparative_summary": "3-4 sentences"
     },
     "conflict": {
-      "subject_a": {
-        "reactivity": 1,
-        "ownership": 1,
-        "blame": 1,
-        "repair_attempts": 1,
-        "summary": "2–3 sentences on escalation/de-escalation patterns and timing of repairs"
-      },
-      "subject_b": {
-        "reactivity": 1,
-        "ownership": 1,
-        "blame": 1,
-        "repair_attempts": 1,
-        "summary": "2–3 sentences"
-      },
-      "comparative_summary": "3–4 sentences highlighting pursue/withdraw dynamics, timing mismatches, and triggers"
+      "subject_a": {"reactivity": 5, "ownership": 5, "blame": 5, "repair_attempts": 5, "summary": "2-3 sentences"},
+      "subject_b": {"reactivity": 5, "ownership": 5, "blame": 5, "repair_attempts": 5, "summary": "2-3 sentences"},
+      "comparative_summary": "3-4 sentences"
     },
     "validation": {
-      "subject_a": {
-        "support": 1,
-        "reassurance": 1,
-        "appreciation": 1,
-        "summary": "2–3 sentences on consistency, fit, and timing of validation"
-      },
-      "subject_b": {
-        "support": 1,
-        "reassurance": 1,
-        "appreciation": 1,
-        "summary": "2–3 sentences"
-      },
-      "comparative_summary": "3–4 sentences on balance/imbalance and how it affects regulation"
+      "subject_a": {"support": 5, "reassurance": 5, "appreciation": 5, "summary": "2-3 sentences"},
+      "subject_b": {"support": 5, "reassurance": 5, "appreciation": 5, "summary": "2-3 sentences"},
+      "comparative_summary": "3-4 sentences"
     },
-    "attachment": {
-      "A_style": "secure|anxious|avoidant|mixed",
-      "B_style": "secure|anxious|avoidant|mixed",
-      "pattern": "pursue-withdraw|mutual-pursuit|mutual-withdrawal|balanced",
-      "summary": "2–3 sentences on behavioral attachment interplay (no diagnoses)"
-    },
-    "regulation_and_rhythm": {
-      "regulation_patterns": "2–3 sentences on how each manages stress and repair timing",
-      "rhythm_pacing": "2–3 sentences on initiation/response cadence, pacing asymmetry, message-length balance"
-    }
+    "attachment": {"A_style": "secure|anxious|avoidant|mixed", "B_style": "secure|anxious|avoidant|mixed", "pattern": "balanced|pursue-withdraw|etc", "summary": "2-3 sentences"},
+    "regulation_and_rhythm": {"regulation_patterns": "2-3 sentences", "rhythm_pacing": "2-3 sentences"}
   },
   "comparative_insights": {
-    "strengths": ["3–5 concise, specific, behavior-based strengths the dyad can build on"],
-    "growth_opportunities": ["3–5 actionable, respectful improvements matched to patterns"],
-    "alignment_gaps": [
-      { "dimension": "listening|repair_attempts|clarity|etc.", "A": 1, "B": 1, "note": "1 sentence on the gap and a practical nudge" }
-    ]
+    "strengths": ["3-5 items"],
+    "growth_opportunities": ["3-5 items"],
+    "alignment_gaps": [{"dimension": "listening", "A": 5, "B": 5, "note": "1 sentence"}]
   },
-  "attribution": {
-    "platform": "${platform}",
-    "unknown_ratio": 0.0,
-    "uncertain_ids": [],
-    "needs_review": false
-  }
-}
-
-SELF-CHECKLIST (must pass before returning):
-- JSON matches schema exactly; no extra fields, no missing fields.
-- Tone values in [0,1] and sum ≈ 1.00.
-- All 1–10 scores are integers and follow anchors.
-- Every summary and comparative summary meets required sentence counts with concrete, behavior-based language.
-- Strengths and growth lists each have 3–5 clear, actionable items.
-- Speaker labels used exactly as provided; "unknown" excluded from per-subject metrics.
-
-IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code blocks, no explanatory text.`
-
-      console.log(`[v0] Sending ${messages.length} messages to AI for analysis`)
+  "attribution": {"platform": "${platform}", "unknown_ratio": 0.0, "uncertain_ids": [], "needs_review": false}
+}`
 
       const result = await generateText({
         model: openai("gpt-4o"),
         messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          {
-            role: "user",
-            content:
-              "Analyze the conversation and provide a comprehensive JSON response following all anchors, depth guarantees, and consistency rules. Remember: respond with ONLY valid JSON, no markdown code blocks, no extra text.",
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: "Analyze and return JSON only." },
         ],
-        maxTokens: 6000,
-        temperature: 0.25, // Low variability for consistency
+        maxTokens: 4000, // Reduced from 6000 for faster response
+        temperature: 0.3, // Slightly increased from 0.25 for faster generation
       })
 
       let aiAnalysis
@@ -966,7 +741,6 @@ IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code bl
         let jsonText = result.text.trim()
 
         if (jsonText.startsWith("```")) {
-          console.log("[v0] Removing markdown code blocks from AI response")
           jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "")
         }
 
@@ -974,44 +748,35 @@ IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code bl
         if (jsonMatch) {
           jsonText = jsonMatch[0]
         } else {
-          console.error("[v0] No JSON object found in AI response")
-          console.error("[v0] Response preview:", jsonText.substring(0, 200))
-          throw new Error("AI response does not contain a valid JSON object")
+          throw new Error("No JSON object found in response")
         }
 
         aiAnalysis = JSON.parse(jsonText)
 
         const validation = validateAIResponse(aiAnalysis)
         if (!validation.valid) {
-          console.warn("[v0] AI response validation warnings:")
-          validation.errors.forEach((err) => console.warn(`[v0]   - ${err}`))
+          console.warn("[v0] Validation warnings:", validation.errors.join(", "))
 
-          // If critical fields are missing, throw error to retry
           if (validation.errors.some((e) => e.includes("Missing required field"))) {
-            throw new Error(`Invalid response structure: ${validation.errors.join(", ")}`)
+            throw new Error(`Invalid structure: ${validation.errors.join(", ")}`)
           }
         }
 
         aiAnalysis = sanitizeAnalysisResponse(aiAnalysis)
-        console.log("[v0] AI response validated and sanitized successfully")
 
-        // Success - return the analysis
         return transformAnalysisToUIFormat(aiAnalysis, subjectALabel, subjectBLabel, conversationText)
       } catch (parseError) {
         const errorMsg = parseError instanceof Error ? parseError.message : "Unknown parsing error"
         console.error(`[v0] Attempt ${attempt + 1} failed:`, errorMsg)
 
         if (result.text) {
-          console.error("[v0] Response start:", result.text.substring(0, 150))
-          console.error("[v0] Response end:", result.text.substring(Math.max(0, result.text.length - 150)))
+          console.error("[v0] Response preview:", result.text.substring(0, 200))
         }
 
         lastError = new Error(`JSON parsing failed: ${errorMsg}`)
 
-        // If this isn't the last attempt, wait before retrying
         if (attempt < maxRetries) {
-          const waitTime = 1000 * Math.pow(2, attempt) // Exponential backoff: 1s, 2s
-          console.log(`[v0] Waiting ${waitTime}ms before retry...`)
+          const waitTime = 1000 * Math.pow(2, attempt)
           await new Promise((resolve) => setTimeout(resolve, waitTime))
           continue
         }
@@ -1021,21 +786,16 @@ IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code bl
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown error during AI analysis")
 
-      // If this is the last attempt, fall through to the fallback
       if (attempt === maxRetries) {
-        console.error("[v0] All retry attempts exhausted")
         break
       }
 
-      // Otherwise, wait and retry
       const waitTime = 1000 * Math.pow(2, attempt)
-      console.log(`[v0] Waiting ${waitTime}ms before retry...`)
       await new Promise((resolve) => setTimeout(resolve, waitTime))
     }
   }
 
-  console.error("[v0] AI analysis failed after all retries:", lastError)
-  console.log("[v0] Falling back to default analysis structure")
+  console.error("[v0] AI analysis failed after retries, using fallback")
 
   return {
     overallScore: 7.5,
