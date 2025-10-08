@@ -24,11 +24,11 @@ const OptimizedBarChart: React.FC<OptimizedBarChartProps> = ({ data }) => {
           top: 5,
           right: 30,
           left: 20,
-          bottom: 5,
+          bottom: 60, // Increased bottom margin to accommodate diagonal labels
         }}
       >
         <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="category" />
+        <XAxis dataKey="category" angle={-45} textAnchor="end" height={80} interval={0} />
         <YAxis />
         <Tooltip />
         <Legend />
