@@ -4,9 +4,23 @@ import { generateText } from "ai"
 import { openai } from "@ai-sdk/openai"
 
 async function fileToBase64(file: File): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
-  return `data:${file.type};base64,${buffer.toString("base64")}`
+  try {
+    // Convert File to Buffer using the bytes() method which is more reliable in server actions
+    const bytes = await file.bytes()
+    const buffer = Buffer.from(bytes)
+    return `data:${file.type};base64,${buffer.toString("base64")}`
+  } catch (error) {
+    console.error("[v0] Error converting file to base64:", error)
+    // Fallback: try arrayBuffer method
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      return `data:${file.type};base64,${buffer.toString("base64")}`
+    } catch (fallbackError) {
+      console.error("[v0] Fallback method also failed:", fallbackError)
+      throw new Error(`Failed to read file: ${error instanceof Error ? error.message : "Unknown error"}`)
+    }
+  }
 }
 
 async function extractTextFromImage(
@@ -265,6 +279,100 @@ Now extract the conversation from this screenshot using the enhanced attribution
       `Failed to extract text from image ${imageIndex + 1}: ${error instanceof Error ? error.message : "Unknown error"}`,
     )
   }
+}
+
+function validateAIResponse(data: any): { valid: boolean; errors: string[] } {
+  const errors: string[] = []
+
+  // Check required top-level fields
+  const required = ["subjects", "metrics", "attribution"]
+  for (const key of required) {
+    if (!(key in data)) {
+      errors.push(`Missing required field: ${key}`)
+    }
+  }
+
+  // Validate tone values sum to ~1.0
+  const tone = data.metrics?.emotional_tone
+  if (tone) {
+    const sum = (tone.positive || 0) + (tone.negative || 0) + (tone.neutral || 0)
+    if (Math.abs(sum - 1.0) > 0.15) {
+      errors.push(`Tone values sum to ${sum.toFixed(2)}, expected ≈1.00`)
+    }
+  }
+
+  // Validate 1-10 scales are integers in range
+  const conflict = data.metrics?.conflict
+  if (conflict) {
+    for (const subject of ["subject_a", "subject_b"]) {
+      const subjectData = conflict[subject]
+      if (subjectData) {
+        const scores = [
+          { name: "reactivity", value: subjectData.reactivity },
+          { name: "ownership", value: subjectData.ownership },
+          { name: "blame", value: subjectData.blame },
+          { name: "repair_attempts", value: subjectData.repair_attempts },
+        ]
+        for (const score of scores) {
+          if (!Number.isInteger(score.value) || score.value < 1 || score.value > 10) {
+            errors.push(`${subject}.${score.name} must be integer 1-10, got ${score.value}`)
+          }
+        }
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
+}
+
+function sanitizeAnalysisResponse(aiAnalysis: any): any {
+  const sanitized = JSON.parse(JSON.stringify(aiAnalysis)) // Deep clone
+
+  // Helper to clamp values
+  const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(val)))
+
+  // Sanitize conflict scores (1-10 integers)
+  if (sanitized.metrics?.conflict) {
+    for (const subject of ["subject_a", "subject_b"]) {
+      const c = sanitized.metrics.conflict[subject]
+      if (c) {
+        c.reactivity = clamp(c.reactivity || 5, 1, 10)
+        c.ownership = clamp(c.ownership || 5, 1, 10)
+        c.blame = clamp(c.blame || 5, 1, 10)
+        c.repair_attempts = clamp(c.repair_attempts || 5, 1, 10)
+      }
+    }
+  }
+
+  // Sanitize validation scores (1-10 integers)
+  if (sanitized.metrics?.validation) {
+    for (const subject of ["subject_a", "subject_b"]) {
+      const v = sanitized.metrics.validation[subject]
+      if (v) {
+        v.support = clamp(v.support || 5, 1, 10)
+        v.reassurance = clamp(v.reassurance || 5, 1, 10)
+        v.appreciation = clamp(v.appreciation || 5, 1, 10)
+      }
+    }
+  }
+
+  // Normalize tone values to sum to 1.0
+  const tone = sanitized.metrics?.emotional_tone
+  if (tone) {
+    const sum = (tone.positive || 0) + (tone.negative || 0) + (tone.neutral || 0)
+    if (sum > 0) {
+      tone.positive = Number(((tone.positive || 0) / sum).toFixed(3))
+      tone.negative = Number(((tone.negative || 0) / sum).toFixed(3))
+      tone.neutral = Number(((tone.neutral || 0) / sum).toFixed(3))
+    } else {
+      // Default to neutral if all zeros
+      tone.positive = 0.33
+      tone.negative = 0.33
+      tone.neutral = 0.34
+    }
+  }
+
+  return sanitized
 }
 
 function normalizeSpeakers(
@@ -670,12 +778,18 @@ async function generateAIAnalysis(
   conversationText: string,
   platform: string,
 ): Promise<any> {
-  try {
-    const messages = parseConversationToMessages(conversationText, subjectALabel, subjectBLabel)
+  const maxRetries = 2
+  let lastError: Error | null = null
 
-    console.log(`[v0] Parsed ${messages.length} messages for AI analysis`)
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const messages = parseConversationToMessages(conversationText, subjectALabel, subjectBLabel)
 
-    const systemPrompt = `You are LoveLens — a professional relationship analysis engine grounded in psychology and communication science.
+      if (attempt > 0) {
+        console.log(`[v0] Retry attempt ${attempt}/${maxRetries}`)
+      }
+
+      const systemPrompt = `You are LoveLens — a professional relationship analysis engine grounded in psychology and communication science.
 
 SCOPE & NON-NEGOTIABLES
 - NO UI/LAYOUT CHANGES: Do not add or remove fields. Produce JSON exactly in the schema below so existing charts bind correctly.
@@ -828,193 +942,228 @@ SELF-CHECKLIST (must pass before returning):
 
 IMPORTANT: Respond with ONLY the JSON object. No markdown formatting, no code blocks, no explanatory text.`
 
-    console.log(`[v0] Sending ${messages.length} messages to AI for analysis`)
+      console.log(`[v0] Sending ${messages.length} messages to AI for analysis`)
 
-    const result = await generateText({
-      model: openai("gpt-4o"),
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content:
-            "Analyze the conversation and provide a comprehensive JSON response following all anchors, depth guarantees, and consistency rules. Remember: respond with ONLY valid JSON, no markdown code blocks, no extra text.",
-        },
-      ],
-      maxTokens: 6000,
-      temperature: 0.25, // Low variability for consistency
-    })
+      const result = await generateText({
+        model: openai("gpt-4o"),
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
+          },
+          {
+            role: "user",
+            content:
+              "Analyze the conversation and provide a comprehensive JSON response following all anchors, depth guarantees, and consistency rules. Remember: respond with ONLY valid JSON, no markdown code blocks, no extra text.",
+          },
+        ],
+        maxTokens: 6000,
+        temperature: 0.25, // Low variability for consistency
+      })
 
-    let aiAnalysis
-    try {
-      let jsonText = result.text.trim()
+      let aiAnalysis
+      try {
+        let jsonText = result.text.trim()
 
-      if (jsonText.startsWith("```")) {
-        jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "")
-      }
-
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        jsonText = jsonMatch[0]
-      }
-
-      aiAnalysis = JSON.parse(jsonText)
-
-      if (!aiAnalysis.subjects || !aiAnalysis.metrics || !aiAnalysis.attribution) {
-        throw new Error("AI response missing required top-level fields")
-      }
-
-      const tone = aiAnalysis.metrics.emotional_tone
-      if (tone) {
-        const toneSum = (tone.positive || 0) + (tone.negative || 0) + (tone.neutral || 0)
-        if (Math.abs(toneSum - 1.0) > 0.1) {
-          console.warn(`[v0] Tone values sum to ${toneSum.toFixed(2)}, expected ≈1.00`)
+        if (jsonText.startsWith("```")) {
+          console.log("[v0] Removing markdown code blocks from AI response")
+          jsonText = jsonText.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "")
         }
+
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          jsonText = jsonMatch[0]
+        } else {
+          console.error("[v0] No JSON object found in AI response")
+          console.error("[v0] Response preview:", jsonText.substring(0, 200))
+          throw new Error("AI response does not contain a valid JSON object")
+        }
+
+        aiAnalysis = JSON.parse(jsonText)
+
+        const validation = validateAIResponse(aiAnalysis)
+        if (!validation.valid) {
+          console.warn("[v0] AI response validation warnings:")
+          validation.errors.forEach((err) => console.warn(`[v0]   - ${err}`))
+
+          // If critical fields are missing, throw error to retry
+          if (validation.errors.some((e) => e.includes("Missing required field"))) {
+            throw new Error(`Invalid response structure: ${validation.errors.join(", ")}`)
+          }
+        }
+
+        aiAnalysis = sanitizeAnalysisResponse(aiAnalysis)
+        console.log("[v0] AI response validated and sanitized successfully")
+
+        // Success - return the analysis
+        return transformAnalysisToUIFormat(aiAnalysis, subjectALabel, subjectBLabel, conversationText)
+      } catch (parseError) {
+        const errorMsg = parseError instanceof Error ? parseError.message : "Unknown parsing error"
+        console.error(`[v0] Attempt ${attempt + 1} failed:`, errorMsg)
+
+        if (result.text) {
+          console.error("[v0] Response start:", result.text.substring(0, 150))
+          console.error("[v0] Response end:", result.text.substring(Math.max(0, result.text.length - 150)))
+        }
+
+        lastError = new Error(`JSON parsing failed: ${errorMsg}`)
+
+        // If this isn't the last attempt, wait before retrying
+        if (attempt < maxRetries) {
+          const waitTime = 1000 * Math.pow(2, attempt) // Exponential backoff: 1s, 2s
+          console.log(`[v0] Waiting ${waitTime}ms before retry...`)
+          await new Promise((resolve) => setTimeout(resolve, waitTime))
+          continue
+        }
+
+        throw lastError
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Unknown error during AI analysis")
+
+      // If this is the last attempt, fall through to the fallback
+      if (attempt === maxRetries) {
+        console.error("[v0] All retry attempts exhausted")
+        break
       }
 
-      console.log(`[v0] AI analysis validated successfully`)
-    } catch (parseError) {
-      console.error("[v0] Failed to parse AI response as JSON:", parseError)
-      throw new Error(
-        `AI returned invalid JSON response: ${parseError instanceof Error ? parseError.message : "Unknown error"}`,
-      )
+      // Otherwise, wait and retry
+      const waitTime = 1000 * Math.pow(2, attempt)
+      console.log(`[v0] Waiting ${waitTime}ms before retry...`)
+      await new Promise((resolve) => setTimeout(resolve, waitTime))
     }
+  }
 
-    return transformAnalysisToUIFormat(aiAnalysis, subjectALabel, subjectBLabel, conversationText)
-  } catch (error) {
-    console.error("[v0] AI analysis failed:", error)
-    console.log("[v0] Falling back to default analysis")
+  console.error("[v0] AI analysis failed after all retries:", lastError)
+  console.log("[v0] Falling back to default analysis structure")
 
-    return {
-      overallScore: 7.5,
-      summary: `Analysis of communication patterns between ${subjectALabel} and ${subjectBLabel}.`,
-      overallRelationshipHealth: {
-        score: 7,
-        description: "Relationship shows both strengths and areas for growth.",
-      },
-      introductionNote: `This analysis examines the communication dynamics between ${subjectALabel} and ${subjectBLabel}.`,
-      communicationStylesAndEmotionalTone: {
-        description: "Communication patterns observed in the conversation.",
-        emotionalVibeTags: ["Caring", "Authentic"],
-        subjectAStyle: `${subjectALabel}'s communication style.`,
-        subjectBStyle: `${subjectBLabel}'s communication style.`,
-        regulationPatternsObserved: "Emotional regulation patterns present.",
-        messageRhythmAndPacing: "Message rhythm patterns noted.",
-      },
-      reflectiveFrameworks: {
-        description: "Psychological frameworks reveal communication patterns.",
-        attachmentEnergies: "Attachment patterns observed.",
-        loveLanguageFriction: "Communication style differences noted.",
-        gottmanConflictMarkers: "Conflict dynamics observed.",
-        emotionalIntelligenceIndicators: "Emotional awareness present.",
-      },
-      recurringPatternsIdentified: {
-        description: "Patterns emerge in conversation dynamics.",
-        positivePatterns: ["Genuine care", "Willingness to communicate"],
-        loopingMiscommunicationsExamples: ["Areas for improvement identified"],
-        commonTriggersAndResponsesExamples: ["Patterns observed"],
-        repairAttemptsOrEmotionalAvoidancesExamples: ["Repair attempts present"],
-      },
-      whatsGettingInTheWay: {
-        description: "Factors creating friction.",
-        emotionalMismatches: "Different needs observed.",
-        communicationGaps: "Style differences present.",
-        subtlePowerStrugglesOrMisfires: "Dynamics to address.",
-      },
-      outlook: `The relationship shows potential for growth.`,
-      visualInsightsData: {
-        descriptionForChartsIntro: "Charts visualize key patterns.",
-        emotionalCommunicationCharacteristics: [
-          { category: "Expresses Vulnerability", [subjectALabel]: 6, [subjectBLabel]: 7 },
-          { category: "Shows Empathy", [subjectALabel]: 7, [subjectBLabel]: 7 },
-          { category: "Uses Humor", [subjectALabel]: 5, [subjectBLabel]: 6 },
-          { category: "Shares Feelings", [subjectALabel]: 6, [subjectBLabel]: 7 },
-          { category: "Asks Questions", [subjectALabel]: 6, [subjectBLabel]: 6 },
-        ],
-        conflictExpressionStyles: [
-          { category: "Defensive Responses", [subjectALabel]: 5, [subjectBLabel]: 5 },
-          { category: "Blame Language", [subjectALabel]: 4, [subjectBLabel]: 4 },
-          { category: "Withdrawal", [subjectALabel]: 5, [subjectBLabel]: 5 },
-          { category: "Escalation", [subjectALabel]: 4, [subjectBLabel]: 4 },
-          { category: "Repair Attempts", [subjectALabel]: 6, [subjectBLabel]: 6 },
-        ],
-        validationAndReassurancePatterns: [
-          { category: "Acknowledges Feelings", [subjectALabel]: 70, [subjectBLabel]: 70 },
-          { category: "Offers Reassurance", [subjectALabel]: 60, [subjectBLabel]: 60 },
-          { category: "Validates Perspective", [subjectALabel]: 60, [subjectBLabel]: 65 },
-          { category: "Dismisses Concerns", [subjectALabel]: 15, [subjectBLabel]: 15 },
-          { category: "Neutral/Unclear", [subjectALabel]: 15, [subjectBLabel]: 15 },
-        ],
-      },
-      professionalInsights: {
-        attachmentTheoryAnalysis: {
-          subjectA: {
-            primaryAttachmentStyle: "mixed",
-            attachmentBehaviors: ["Communication present"],
-            triggersAndDefenses: "Patterns observed.",
-          },
-          subjectB: {
-            primaryAttachmentStyle: "mixed",
-            attachmentBehaviors: ["Communication present"],
-            triggersAndDefenses: "Patterns observed.",
-          },
-          dyad: "balanced",
-        },
-        therapeuticRecommendations: {
-          immediateInterventions: ["Practice active listening", "Establish check-ins"],
-          longTermGoals: ["Build secure attachment", "Enhance regulation"],
-          suggestedModalities: ["EFT", "Gottman Method"],
-        },
-        clinicalExercises: {
-          communicationExercises: [{ title: "Speaker-Listener", description: "Reflect back", frequency: "3x/week" }],
-          emotionalRegulationPractices: [{ title: "Grounding", description: "5-4-3-2-1", frequency: "As needed" }],
-          relationshipRituals: [{ title: "Weekly Check-in", description: "30 minutes", frequency: "Weekly" }],
-        },
-        prognosis: {
-          shortTerm: "Improved communication within 1-3 months.",
-          mediumTerm: "Strengthened patterns by 6-12 months.",
-          longTerm: "Strong potential for resilient relationship.",
-          riskFactors: ["Areas requiring attention"],
-          protectiveFactors: ["Genuine care"],
-        },
-        differentialConsiderations: {
-          individualTherapyConsiderations: "Individual therapy may benefit both.",
-          couplesTherapyReadiness: "Ready for couples therapy.",
-          externalResourcesNeeded: ["Books", "Apps"],
-        },
-        traumaInformedObservations: {
-          identifiedPatterns: ["Patterns observed"],
-          copingMechanisms: "Strategies present.",
-          safetyAndTrust: "Foundation exists.",
-        },
-      },
-      constructiveFeedback: {
+  return {
+    overallScore: 7.5,
+    summary: `Analysis of communication patterns between ${subjectALabel} and ${subjectBLabel}.`,
+    overallRelationshipHealth: {
+      score: 7,
+      description: "Relationship shows both strengths and areas for growth.",
+    },
+    introductionNote: `This analysis examines the communication dynamics between ${subjectALabel} and ${subjectBLabel}.`,
+    communicationStylesAndEmotionalTone: {
+      description: "Communication patterns observed in the conversation.",
+      emotionalVibeTags: ["Caring", "Authentic"],
+      subjectAStyle: `${subjectALabel}'s communication style.`,
+      subjectBStyle: `${subjectBLabel}'s communication style.`,
+      regulationPatternsObserved: "Emotional regulation patterns present.",
+      messageRhythmAndPacing: "Message rhythm patterns noted.",
+    },
+    reflectiveFrameworks: {
+      description: "Psychological frameworks reveal communication patterns.",
+      attachmentEnergies: "Attachment patterns observed.",
+      loveLanguageFriction: "Communication style differences noted.",
+      gottmanConflictMarkers: "Conflict dynamics observed.",
+      emotionalIntelligenceIndicators: "Emotional awareness present.",
+    },
+    recurringPatternsIdentified: {
+      description: "Patterns emerge in conversation dynamics.",
+      positivePatterns: ["Genuine care", "Willingness to communicate"],
+      loopingMiscommunicationsExamples: ["Areas for improvement identified"],
+      commonTriggersAndResponsesExamples: ["Patterns observed"],
+      repairAttemptsOrEmotionalAvoidancesExamples: ["Repair attempts present"],
+    },
+    whatsGettingInTheWay: {
+      description: "Factors creating friction.",
+      emotionalMismatches: "Different needs observed.",
+      communicationGaps: "Style differences present.",
+      subtlePowerStrugglesOrMisfires: "Dynamics to address.",
+    },
+    outlook: `The relationship shows potential for growth.`,
+    visualInsightsData: {
+      descriptionForChartsIntro: "Charts visualize key patterns.",
+      emotionalCommunicationCharacteristics: [
+        { category: "Expresses Vulnerability", [subjectALabel]: 6, [subjectBLabel]: 7 },
+        { category: "Shows Empathy", [subjectALabel]: 7, [subjectBLabel]: 7 },
+        { category: "Uses Humor", [subjectALabel]: 5, [subjectBLabel]: 6 },
+        { category: "Shares Feelings", [subjectALabel]: 6, [subjectBLabel]: 7 },
+        { category: "Asks Questions", [subjectALabel]: 6, [subjectBLabel]: 6 },
+      ],
+      conflictExpressionStyles: [
+        { category: "Defensive Responses", [subjectALabel]: 5, [subjectBLabel]: 5 },
+        { category: "Blame Language", [subjectALabel]: 4, [subjectBLabel]: 4 },
+        { category: "Withdrawal", [subjectALabel]: 5, [subjectBLabel]: 5 },
+        { category: "Escalation", [subjectALabel]: 4, [subjectBLabel]: 4 },
+        { category: "Repair Attempts", [subjectALabel]: 6, [subjectBLabel]: 6 },
+      ],
+      validationAndReassurancePatterns: [
+        { category: "Acknowledges Feelings", [subjectALabel]: 70, [subjectBLabel]: 70 },
+        { category: "Offers Reassurance", [subjectALabel]: 60, [subjectBLabel]: 60 },
+        { category: "Validates Perspective", [subjectALabel]: 60, [subjectBLabel]: 65 },
+        { category: "Dismisses Concerns", [subjectALabel]: 15, [subjectBLabel]: 15 },
+        { category: "Neutral/Unclear", [subjectALabel]: 15, [subjectBLabel]: 15 },
+      ],
+    },
+    professionalInsights: {
+      attachmentTheoryAnalysis: {
         subjectA: {
-          strengths: ["Communication present"],
-          gentleGrowthNudges: ["Areas for growth"],
-          connectionBoosters: ["Share appreciation"],
+          primaryAttachmentStyle: "mixed",
+          attachmentBehaviors: ["Communication present"],
+          triggersAndDefenses: "Patterns observed.",
         },
         subjectB: {
-          strengths: ["Communication present"],
-          gentleGrowthNudges: ["Areas for growth"],
-          connectionBoosters: ["Initiate check-ins"],
+          primaryAttachmentStyle: "mixed",
+          attachmentBehaviors: ["Communication present"],
+          triggersAndDefenses: "Patterns observed.",
         },
-        forBoth: {
-          sharedStrengths: ["Genuine care"],
-          sharedGrowthNudges: ["Communication development"],
-          sharedConnectionBoosters: ["Create rituals"],
-        },
+        dyad: "balanced",
       },
-      keyTakeaways: ["Genuine care present", "Communication can be enhanced", "Strong potential for growth"],
-      optionalAppendix: "Consider working with a licensed therapist.",
-      subjectALabel,
-      subjectBLabel,
-      messageCount: conversationText.split(/\[.*?\]/).length - 1,
-      extractionConfidence: 75,
-      processingTimeMs: 3500,
-    }
+      therapeuticRecommendations: {
+        immediateInterventions: ["Practice active listening", "Establish check-ins"],
+        longTermGoals: ["Build secure attachment", "Enhance regulation"],
+        suggestedModalities: ["EFT", "Gottman Method"],
+      },
+      clinicalExercises: {
+        communicationExercises: [{ title: "Speaker-Listener", description: "Reflect back", frequency: "3x/week" }],
+        emotionalRegulationPractices: [{ title: "Grounding", description: "5-4-3-2-1", frequency: "As needed" }],
+        relationshipRituals: [{ title: "Weekly Check-in", description: "30 minutes", frequency: "Weekly" }],
+      },
+      prognosis: {
+        shortTerm: "Improved communication within 1-3 months.",
+        mediumTerm: "Strengthened patterns by 6-12 months.",
+        longTerm: "Strong potential for resilient relationship.",
+        riskFactors: ["Areas requiring attention"],
+        protectiveFactors: ["Genuine care"],
+      },
+      differentialConsiderations: {
+        individualTherapyConsiderations: "Individual therapy may benefit both.",
+        couplesTherapyReadiness: "Ready for couples therapy.",
+        externalResourcesNeeded: ["Books", "Apps"],
+      },
+      traumaInformedObservations: {
+        identifiedPatterns: ["Patterns observed"],
+        copingMechanisms: "Strategies present.",
+        safetyAndTrust: "Foundation exists.",
+      },
+    },
+    constructiveFeedback: {
+      subjectA: {
+        strengths: ["Communication present"],
+        gentleGrowthNudges: ["Areas for growth"],
+        connectionBoosters: ["Share appreciation"],
+      },
+      subjectB: {
+        strengths: ["Communication present"],
+        gentleGrowthNudges: ["Areas for growth"],
+        connectionBoosters: ["Initiate check-ins"],
+      },
+      forBoth: {
+        sharedStrengths: ["Genuine care"],
+        sharedGrowthNudges: ["Communication development"],
+        sharedConnectionBoosters: ["Create rituals"],
+      },
+    },
+    keyTakeaways: ["Genuine care present", "Communication can be enhanced", "Strong potential for growth"],
+    optionalAppendix: "Consider working with a licensed therapist.",
+    subjectALabel,
+    subjectBLabel,
+    messageCount: conversationText.split(/\[.*?\]/).length - 1,
+    extractionConfidence: 75,
+    processingTimeMs: 3500,
   }
 }
 
