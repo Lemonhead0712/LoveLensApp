@@ -3,11 +3,17 @@
 import { generateText } from "ai"
 import { openai } from "@ai-sdk/openai"
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs),
+  )
+  return Promise.race([promise, timeoutPromise])
+}
+
 async function fileToBase64(file: File): Promise<string> {
   try {
     console.log(`[v0] Reading file: ${file.name} (${file.size} bytes, type: ${file.type})`)
 
-    // Validate file
     if (!file || !file.size) {
       throw new Error("Invalid file: file is empty or undefined")
     }
@@ -25,28 +31,57 @@ async function fileToBase64(file: File): Promise<string> {
     let buffer: Buffer | null = null
     let method = "unknown"
 
-    // Try arrayBuffer (most reliable in Next.js server actions)
     try {
-      const arrayBuffer = await file.arrayBuffer()
+      const arrayBuffer = await withTimeout(file.arrayBuffer(), 10000, "File reading")
       buffer = Buffer.from(arrayBuffer)
       method = "arrayBuffer"
     } catch (error) {
-      console.warn(`[v0] arrayBuffer() failed, trying alternatives:`, error)
+      console.warn(`[v0] arrayBuffer() failed:`, error)
 
       // Fallback: try bytes() if available
       if (typeof (file as any).bytes === "function") {
         try {
-          const bytes = await (file as any).bytes()
+          const bytes = await withTimeout((file as any).bytes(), 10000, "File reading (bytes)")
           buffer = Buffer.from(bytes)
           method = "bytes"
         } catch (bytesError) {
           console.warn(`[v0] bytes() also failed:`, bytesError)
         }
       }
+
+      // Final fallback: try stream reading
+      if (!buffer && typeof (file as any).stream === "function") {
+        try {
+          const stream = (file as any).stream()
+          const reader = stream.getReader()
+          const chunks: Uint8Array[] = []
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            chunks.push(value)
+          }
+
+          const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
+          const combined = new Uint8Array(totalLength)
+          let offset = 0
+          for (const chunk of chunks) {
+            combined.set(chunk, offset)
+            offset += chunk.length
+          }
+
+          buffer = Buffer.from(combined)
+          method = "stream"
+        } catch (streamError) {
+          console.warn(`[v0] stream() also failed:`, streamError)
+        }
+      }
     }
 
     if (!buffer) {
-      throw new Error(`Unable to read file "${file.name}". Please try refreshing the page and uploading again.`)
+      throw new Error(
+        `Unable to read file "${file.name}". This may be a browser compatibility issue. Please try: (1) refreshing the page, (2) using a different browser, or (3) re-uploading the image.`,
+      )
     }
 
     const base64 = buffer.toString("base64")
@@ -73,21 +108,24 @@ async function extractTextFromImage(
   const startTime = Date.now()
 
   if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OpenAI API key not configured")
+    throw new Error(
+      "OpenAI API key not configured. Please add OPENAI_API_KEY to your environment variables in your Vercel project settings.",
+    )
   }
 
   try {
     const base64Image = await fileToBase64(file)
 
-    const result = await generateText({
-      model: openai("gpt-4o"),
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Extract conversation from this messaging screenshot with maximum accuracy.
+    const result = await withTimeout(
+      generateText({
+        model: openai("gpt-4o"),
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Extract conversation from this messaging screenshot with maximum accuracy.
 
 SPEAKER ATTRIBUTION RULES:
 - RIGHT-aligned bubbles = [Person A] (device owner/uploader)
@@ -105,17 +143,20 @@ Total Messages: [count]
 Average Confidence: [0.0-1.0]
 
 Extract ALL visible text in chronological order.`,
-            },
-            {
-              type: "image",
-              image: base64Image,
-            },
-          ],
-        },
-      ],
-      maxTokens: 2000,
-      temperature: 0.2,
-    })
+              },
+              {
+                type: "image",
+                image: base64Image,
+              },
+            ],
+          },
+        ],
+        maxTokens: 2000,
+        temperature: 0.2,
+      }),
+      60000, // 60 second timeout
+      "OCR extraction",
+    )
 
     const extractedText = result.text
     const processingTime = Date.now() - startTime
@@ -146,7 +187,19 @@ Extract ALL visible text in chronological order.`,
     }
   } catch (error) {
     console.error(`[Image ${imageIndex + 1}] Extraction failed:`, error)
-    throw error
+
+    if (error instanceof Error) {
+      if (error.message.includes("timed out")) {
+        throw new Error(
+          `Image ${imageIndex + 1} processing timed out. This image may be too large or complex. Try uploading a smaller or clearer screenshot.`,
+        )
+      }
+      if (error.message.includes("API key")) {
+        throw error // Pass through API key errors
+      }
+    }
+
+    throw new Error(`Failed to process image ${imageIndex + 1}. Please try uploading a different screenshot.`)
   }
 }
 
@@ -201,37 +254,37 @@ CRITICAL SPEAKER ATTRIBUTION RULES - NEVER VIOLATE:
 
 ANALYSIS DEPTH REQUIREMENTS:
 
-**OVERVIEW TAB** - Use observational, narrative language:
-- Communication Styles: 3-4 detailed paragraphs describing each person's unique communication signature, emotional expression patterns, and relational tendencies. Use rich, descriptive language.
+**OVERVIEW TAB** - Use observational, narrative language (2-3 sentences per section):
+- Communication Styles: 2-3 concise sentences capturing each person's unique communication signature and emotional expression patterns
 - Emotional Vibe Tags: 5-7 specific, evocative tags that capture the relationship's emotional atmosphere
-- Individual Styles: 4-5 sentences per person with specific behavioral examples
-- Regulation Patterns: 3-4 sentences describing how emotions are managed in the conversation
-- Message Rhythm: 3-4 sentences analyzing pacing, response times, and conversational flow
+- Individual Styles: 2-3 sentences per person with specific behavioral examples
+- Regulation Patterns: 2-3 sentences describing how emotions are managed
+- Message Rhythm: 2-3 sentences analyzing pacing and conversational flow
 
-**PATTERNS TAB** - Use dynamic, pattern-recognition language:
-- Recurring Patterns: Comprehensive description (4-5 sentences) of cyclical dynamics
-- Positive Patterns: 4-6 specific examples of constructive behaviors
-- Looping Miscommunications: 3-5 detailed examples of recurring misunderstandings
-- Common Triggers: 4-6 specific trigger-response patterns with context
-- Repair Attempts: 3-5 examples of how conflicts are resolved or avoided
+**PATTERNS TAB** - Use dynamic, pattern-recognition language (2-3 sentences per section):
+- Recurring Patterns: 2-3 sentences describing cyclical dynamics
+- Positive Patterns: 4-6 specific examples (brief phrases, not full sentences)
+- Looping Miscommunications: 3-5 concise examples of recurring misunderstandings
+- Common Triggers: 4-6 specific trigger-response patterns (brief descriptions)
+- Repair Attempts: 3-5 examples of conflict resolution behaviors
 
 **CHARTS TAB** - Use analytical, data-driven language:
-- Provide rich contextual descriptions for each chart
+- Provide contextual descriptions for each chart
 - Emotional Communication: Rate 5 categories (1-10 scale) with nuanced differences
 - Conflict Expression: Rate 5 categories (1-10 scale) showing distinct patterns
 - Validation Patterns: Percentage breakdown (must sum to 100%) across 5 categories
 
-**PROFESSIONAL TAB** - Use clinical, therapeutic language:
-- Attachment Theory: Detailed analysis (5-6 sentences per person) with specific attachment style, 4-5 observable behaviors, and triggers/defenses
+**PROFESSIONAL TAB** - Use clinical, therapeutic language (4-5 sentences per major section):
+- Attachment Theory: 4-5 sentences per person analyzing attachment style, observable behaviors, and triggers
 - Therapeutic Recommendations: 4-5 immediate interventions, 4-5 long-term goals, 5-7 suggested modalities
-- Clinical Exercises: 3-4 communication exercises, 3-4 emotional regulation practices, 3-4 relationship rituals (each with title, description, frequency)
-- Prognosis: Detailed short-term (3-4 sentences), medium-term (3-4 sentences), long-term (3-4 sentences) outlooks, plus 4-5 risk factors and 4-5 protective factors
-- Differential Considerations: 3-4 sentences each for individual therapy, couples readiness, and 4-5 external resources
-- Trauma-Informed: 4-5 identified patterns, 3-4 sentences on coping mechanisms, 3-4 sentences on safety/trust
+- Clinical Exercises: 3-4 exercises per category (each with title, 2-3 sentence description, frequency)
+- Prognosis: 4-5 sentences each for short-term, medium-term, long-term outlooks, plus 4-5 risk/protective factors
+- Differential Considerations: 4-5 sentences per subsection
+- Trauma-Informed: 4-5 identified patterns, 4-5 sentences total on coping and safety
 
-**FEEDBACK TAB** - Use supportive, growth-oriented language:
-- For each person: 4-6 specific strengths, 4-6 gentle growth nudges, 4-6 connection boosters
-- For both: 4-5 shared strengths, 4-5 shared growth nudges, 4-5 shared connection boosters
+**FEEDBACK TAB** - Use supportive, growth-oriented language (2-3 sentences per section):
+- For each person: 4-6 specific strengths, 4-6 gentle growth nudges, 4-6 connection boosters (all brief, 1-2 sentences each)
+- For both: 4-5 shared items per category (brief, 1-2 sentences each)
 
 LANGUAGE VARIATION REQUIREMENTS:
 - Overview: Observational, narrative, flowing prose
@@ -240,21 +293,22 @@ LANGUAGE VARIATION REQUIREMENTS:
 - Professional: Clinical, therapeutic, diagnostic language
 - Feedback: Supportive, growth-oriented, actionable language
 
-Use distinct vocabulary and sentence structures in each section. Avoid repetition across tabs. Provide specific examples from the conversation to support every insight.
+Use distinct vocabulary and sentence structures in each section. Avoid repetition across tabs. Provide specific examples from the conversation to support insights. Be concise while maintaining depth—every sentence should carry meaningful insight.
 
 Return a comprehensive JSON object with all sections fully populated with rich, detailed, varied content.`
 
   try {
-    const result = await generateText({
-      model: openai("gpt-4o"),
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Analyze this conversation with exceptional depth and varied language across all sections. Remember: ${subjectALabel} is the uploader (Person A, right-aligned), ${subjectBLabel} is the partner (Person B, left-aligned).
+    const result = await withTimeout(
+      generateText({
+        model: openai("gpt-4o"),
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `Analyze this conversation with exceptional depth and varied language across all sections. Remember: ${subjectALabel} is the uploader (Person A, right-aligned), ${subjectBLabel} is the partner (Person B, left-aligned).
 
 Provide comprehensive analysis with:
-- Rich, detailed descriptions (3-6 sentences per section)
+- Rich, detailed descriptions (2-3 sentences per section in Overview/Patterns/Feedback, 4-5 sentences in Professional)
 - Specific examples from the conversation
 - Varied vocabulary across different tabs
 - Clinical depth in professional insights
@@ -262,11 +316,14 @@ Provide comprehensive analysis with:
 
 Conversation:
 ${conversationText}`,
-        },
-      ],
-      maxTokens: 6000,
-      temperature: 0.4,
-    })
+          },
+        ],
+        maxTokens: 6000,
+        temperature: 0.4,
+      }),
+      120000, // 120 second timeout for analysis
+      "AI analysis",
+    )
 
     console.log(`[v0] AI analysis completed, validating speaker attribution...`)
 
@@ -285,6 +342,11 @@ ${conversationText}`,
     return createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, conversationText)
   } catch (error) {
     console.error("[v0] AI analysis error:", error)
+
+    if (error instanceof Error && error.message.includes("timed out")) {
+      console.warn("[v0] AI analysis timed out, using fallback")
+    }
+
     return createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, conversationText)
   }
 }
@@ -708,6 +770,7 @@ Remember that relationship growth is not linear. There will be setbacks, moments
 export async function analyzeConversation(formData: FormData) {
   try {
     console.log("[v0] ===== Starting conversation analysis =====")
+    console.log(`[v0] Environment: ${process.env.NEXT_PUBLIC_VERCEL_ENV || "development"}`)
 
     const subjectAName = formData.get("subjectAName") as string | null
     const subjectBName = formData.get("subjectBName") as string | null
@@ -750,40 +813,44 @@ export async function analyzeConversation(formData: FormData) {
       return { error: "No files provided. Please upload at least one screenshot." }
     }
 
-    // Extract text from all images
-    console.log(`[v0] Starting OCR extraction for ${files.length} files...`)
-    const extractedTexts = await Promise.all(
-      files.map(async (file, index) => {
-        console.log(`[v0] Processing file ${index + 1}/${files.length}: ${file.name}`)
-        try {
-          const result = await extractTextFromImage(file, index)
-          console.log(`[v0] ✓ File ${index + 1} processed successfully`)
-          return result
-        } catch (error) {
-          console.error(`[v0] ✗ File ${index + 1} failed:`, error)
-          throw error
-        }
-      }),
-    )
+    const analysisPromise = (async () => {
+      // Extract text from all images
+      console.log(`[v0] Starting OCR extraction for ${files.length} files...`)
+      const extractedTexts = await Promise.all(
+        files.map(async (file, index) => {
+          console.log(`[v0] Processing file ${index + 1}/${files.length}: ${file.name}`)
+          try {
+            const result = await extractTextFromImage(file, index)
+            console.log(`[v0] ✓ File ${index + 1} processed successfully`)
+            return result
+          } catch (error) {
+            console.error(`[v0] ✗ File ${index + 1} failed:`, error)
+            throw error
+          }
+        }),
+      )
 
-    console.log(`[v0] All files processed successfully`)
+      console.log(`[v0] All files processed successfully`)
 
-    // Normalize speaker labels
-    const { normalizedText, subjectALabel, subjectBLabel } = normalizeSpeakers(
-      extractedTexts,
-      subjectAName,
-      subjectBName,
-    )
+      // Normalize speaker labels
+      const { normalizedText, subjectALabel, subjectBLabel } = normalizeSpeakers(
+        extractedTexts,
+        subjectAName,
+        subjectBName,
+      )
 
-    console.log(`[v0] Normalized conversation text (${normalizedText.length} characters)`)
-    console.log(`[v0] Starting AI analysis...`)
+      console.log(`[v0] Normalized conversation text (${normalizedText.length} characters)`)
+      console.log(`[v0] Starting AI analysis...`)
 
-    // Generate analysis
-    const analysis = await generateAIAnalysis(subjectALabel, subjectBLabel, normalizedText)
+      // Generate analysis
+      const analysis = await generateAIAnalysis(subjectALabel, subjectBLabel, normalizedText)
 
-    console.log(`[v0] ===== Analysis complete successfully =====`)
+      console.log(`[v0] ===== Analysis complete successfully =====`)
 
-    return analysis
+      return analysis
+    })()
+
+    return await withTimeout(analysisPromise, 300000, "Complete analysis")
   } catch (error) {
     console.error("[v0] ===== Analysis error =====")
     console.error("[v0] Error details:", error)
@@ -791,16 +858,21 @@ export async function analyzeConversation(formData: FormData) {
     let errorMessage = "An unexpected error occurred during analysis."
 
     if (error instanceof Error) {
-      if (error.message.includes("file could not be read")) {
+      if (error.message.includes("timed out")) {
+        errorMessage =
+          "The analysis is taking longer than expected. This may be due to high server load or large images. Please try again with fewer or smaller images."
+      } else if (error.message.includes("file could not be read")) {
         errorMessage =
           "Unable to read one or more uploaded files. Please refresh the page and try uploading your images again."
       } else if (error.message.includes("too large")) {
         errorMessage = error.message
       } else if (error.message.includes("not an image")) {
         errorMessage = error.message
+      } else if (error.message.includes("API key")) {
+        errorMessage = error.message
       } else if (error.message.includes("OpenAI") || error.message.includes("API")) {
         errorMessage =
-          "There was an issue connecting to the analysis service. Please check your internet connection and try again."
+          "There was an issue connecting to the analysis service. Please check your internet connection and try again. If the problem persists, the service may be temporarily unavailable."
       } else {
         errorMessage = `Analysis failed: ${error.message}`
       }
