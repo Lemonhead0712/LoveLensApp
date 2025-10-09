@@ -78,6 +78,7 @@ export default function EnhancedCompactUpload() {
     setError(null)
 
     try {
+      console.log("[v0] Validating files before analysis...")
       for (const file of files) {
         if (!file || !file.size) {
           setError(`One or more files are invalid. Please remove and re-upload them.`)
@@ -91,7 +92,14 @@ export default function EnhancedCompactUpload() {
           setIsAnalyzing(false)
           return
         }
+        if (!file.type.startsWith("image/")) {
+          setError(`File "${file.name}" is not an image. Please upload only image files.`)
+          setIsAnalyzing(false)
+          return
+        }
       }
+
+      console.log("[v0] All files validated successfully")
 
       // Simulate progress
       const progressInterval = setInterval(() => {
@@ -112,18 +120,25 @@ export default function EnhancedCompactUpload() {
       if (subject2Name) formData.append("subjectBName", subject2Name)
 
       console.log("[v0] Starting analysis with", files.length, "files")
-      console.log("[v0] File details:", files.map((f) => `${f.name} (${f.size} bytes)`).join(", "))
+      console.log("[v0] File details:", files.map((f) => `${f.name} (${f.size} bytes, ${f.type})`).join(", "))
 
       const results = await analyzeConversation(formData)
 
       clearInterval(progressInterval)
       setProgress(100)
 
-      console.log("[v0] Analysis complete")
+      console.log("[v0] Analysis complete, checking results...")
 
       if (results.error) {
-        console.error("[v0] Analysis error:", results.error)
+        console.error("[v0] Analysis returned error:", results.error)
         setError(results.error)
+        setIsAnalyzing(false)
+        return
+      }
+
+      if (!results.subjectALabel || !results.subjectBLabel) {
+        console.error("[v0] Invalid results structure:", results)
+        setError("Analysis completed but results are incomplete. Please try again.")
         setIsAnalyzing(false)
         return
       }
@@ -137,15 +152,28 @@ export default function EnhancedCompactUpload() {
       }, 500)
     } catch (err: any) {
       console.error("[v0] Error during analysis:", err)
+      console.error("[v0] Error type:", typeof err)
+      console.error("[v0] Error details:", {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+      })
+
       let errorMessage = "An unexpected error occurred. Please try again."
 
-      if (err.message?.includes("file could not be read")) {
-        errorMessage =
-          "Unable to read one or more files. Please try refreshing the page and uploading your images again."
-      } else if (err.message?.includes("too large")) {
-        errorMessage = err.message
-      } else if (err.message) {
-        errorMessage = err.message
+      if (err?.message) {
+        if (err.message.includes("file could not be read") || err.message.includes("permission")) {
+          errorMessage =
+            "Unable to read one or more files. Please refresh the page and try uploading your images again."
+        } else if (err.message.includes("too large")) {
+          errorMessage = err.message
+        } else if (err.message.includes("network") || err.message.includes("fetch")) {
+          errorMessage = "Network error. Please check your internet connection and try again."
+        } else if (err.message.includes("timeout")) {
+          errorMessage = "Analysis is taking too long. Please try uploading fewer images or try again later."
+        } else {
+          errorMessage = err.message
+        }
       }
 
       setError(errorMessage)
