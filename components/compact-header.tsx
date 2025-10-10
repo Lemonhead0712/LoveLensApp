@@ -32,6 +32,9 @@ export default function CompactHeader() {
           >
             Analyze
           </Link>
+          <Link href="/zodiac" className="text-sm font-medium text-gray-700 hover:text-purple-600 transition-colors">
+            Zodiac
+          </Link>
           <Link href="/about" className="text-sm font-medium text-gray-700 hover:text-purple-600 transition-colors">
             About
           </Link>
@@ -63,6 +66,13 @@ export default function CompactHeader() {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Analyze
+              </Link>
+              <Link
+                href="/zodiac"
+                className="block py-1.5 text-gray-700 hover:text-purple-600 transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Zodiac
               </Link>
               <Link
                 href="/about"

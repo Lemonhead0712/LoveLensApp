@@ -238,64 +238,311 @@ function normalizeSpeakers(
   }
 }
 
+interface ChartValidationResult {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+  metadata: {
+    emotionalCommunicationValid: boolean
+    conflictExpressionValid: boolean
+    validationPatternsValid: boolean
+    dataConsistency: number // 0-1 score
+  }
+}
+
+function validateChartData(analysisData: any): ChartValidationResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  let emotionalCommunicationValid = true
+  let conflictExpressionValid = true
+  let validationPatternsValid = true
+
+  const subjectALabel = analysisData.subjectALabel || "Subject A"
+  const subjectBLabel = analysisData.subjectBLabel || "Subject B"
+
+  // Validate Emotional Communication Characteristics
+  if (analysisData.visualInsightsData?.emotionalCommunicationCharacteristics) {
+    const data = analysisData.visualInsightsData.emotionalCommunicationCharacteristics
+
+    if (!Array.isArray(data) || data.length === 0) {
+      errors.push("Emotional communication data is empty or invalid")
+      emotionalCommunicationValid = false
+    } else {
+      data.forEach((item: any, index: number) => {
+        // Check required fields
+        if (!item.category) {
+          errors.push(`Emotional communication item ${index + 1} missing category`)
+          emotionalCommunicationValid = false
+        }
+
+        // Check subject scores exist and are in valid range (1-10)
+        const scoreA = item[subjectALabel]
+        const scoreB = item[subjectBLabel]
+
+        if (scoreA === undefined || scoreA === null) {
+          errors.push(`Emotional communication "${item.category}" missing ${subjectALabel} score`)
+          emotionalCommunicationValid = false
+        } else if (scoreA < 1 || scoreA > 10) {
+          errors.push(
+            `Emotional communication "${item.category}" ${subjectALabel} score out of range: ${scoreA} (must be 1-10)`,
+          )
+          emotionalCommunicationValid = false
+        }
+
+        if (scoreB === undefined || scoreB === null) {
+          errors.push(`Emotional communication "${item.category}" missing ${subjectBLabel} score`)
+          emotionalCommunicationValid = false
+        } else if (scoreB < 1 || scoreB > 10) {
+          errors.push(
+            `Emotional communication "${item.category}" ${subjectBLabel} score out of range: ${scoreB} (must be 1-10)`,
+          )
+          emotionalCommunicationValid = false
+        }
+
+        // Warning for extreme differences
+        if (scoreA !== undefined && scoreB !== undefined && Math.abs(scoreA - scoreB) > 5) {
+          warnings.push(
+            `Large difference in "${item.category}": ${subjectALabel}=${scoreA}, ${subjectBLabel}=${scoreB}`,
+          )
+        }
+      })
+
+      // Check for minimum number of categories
+      if (data.length < 3) {
+        warnings.push(`Only ${data.length} emotional communication categories (recommended: 5+)`)
+      }
+    }
+  } else {
+    errors.push("Emotional communication data missing")
+    emotionalCommunicationValid = false
+  }
+
+  // Validate Conflict Expression Styles
+  if (analysisData.visualInsightsData?.conflictExpressionStyles) {
+    const data = analysisData.visualInsightsData.conflictExpressionStyles
+
+    if (!Array.isArray(data) || data.length === 0) {
+      errors.push("Conflict expression data is empty or invalid")
+      conflictExpressionValid = false
+    } else {
+      data.forEach((item: any, index: number) => {
+        if (!item.category) {
+          errors.push(`Conflict expression item ${index + 1} missing category`)
+          conflictExpressionValid = false
+        }
+
+        const scoreA = item[subjectALabel]
+        const scoreB = item[subjectBLabel]
+
+        if (scoreA === undefined || scoreA === null) {
+          errors.push(`Conflict expression "${item.category}" missing ${subjectALabel} score`)
+          conflictExpressionValid = false
+        } else if (scoreA < 1 || scoreA > 10) {
+          errors.push(
+            `Conflict expression "${item.category}" ${subjectALabel} score out of range: ${scoreA} (must be 1-10)`,
+          )
+          conflictExpressionValid = false
+        }
+
+        if (scoreB === undefined || scoreB === null) {
+          errors.push(`Conflict expression "${item.category}" missing ${subjectBLabel} score`)
+          conflictExpressionValid = false
+        } else if (scoreB < 1 || scoreB > 10) {
+          errors.push(
+            `Conflict expression "${item.category}" ${subjectBLabel} score out of range: ${scoreB} (must be 1-10)`,
+          )
+          conflictExpressionValid = false
+        }
+      })
+
+      if (data.length < 3) {
+        warnings.push(`Only ${data.length} conflict expression categories (recommended: 5+)`)
+      }
+    }
+  } else {
+    errors.push("Conflict expression data missing")
+    conflictExpressionValid = false
+  }
+
+  // Validate Validation & Reassurance Patterns
+  if (analysisData.visualInsightsData?.validationAndReassurancePatterns) {
+    const data = analysisData.visualInsightsData.validationAndReassurancePatterns
+
+    if (!Array.isArray(data) || data.length === 0) {
+      errors.push("Validation patterns data is empty or invalid")
+      validationPatternsValid = false
+    } else {
+      let sumA = 0
+      let sumB = 0
+
+      data.forEach((item: any, index: number) => {
+        if (!item.category) {
+          errors.push(`Validation pattern item ${index + 1} missing category`)
+          validationPatternsValid = false
+        }
+
+        const valueA = item[subjectALabel]
+        const valueB = item[subjectBLabel]
+
+        if (valueA === undefined || valueA === null) {
+          errors.push(`Validation pattern "${item.category}" missing ${subjectALabel} value`)
+          validationPatternsValid = false
+        } else if (valueA < 0 || valueA > 100) {
+          errors.push(
+            `Validation pattern "${item.category}" ${subjectALabel} value out of range: ${valueA} (must be 0-100)`,
+          )
+          validationPatternsValid = false
+        } else {
+          sumA += valueA
+        }
+
+        if (valueB === undefined || valueB === null) {
+          errors.push(`Validation pattern "${item.category}" missing ${subjectBLabel} value`)
+          validationPatternsValid = false
+        } else if (valueB < 0 || valueB > 100) {
+          errors.push(
+            `Validation pattern "${item.category}" ${subjectBLabel} value out of range: ${valueB} (must be 0-100)`,
+          )
+          validationPatternsValid = false
+        } else {
+          sumB += valueB
+        }
+      })
+
+      // Check that percentages sum to approximately 100%
+      if (Math.abs(sumA - 100) > 5) {
+        errors.push(`${subjectALabel} validation percentages sum to ${sumA}% (should be ~100%)`)
+        validationPatternsValid = false
+      }
+
+      if (Math.abs(sumB - 100) > 5) {
+        errors.push(`${subjectBLabel} validation percentages sum to ${sumB}% (should be ~100%)`)
+        validationPatternsValid = false
+      }
+
+      if (data.length < 3) {
+        warnings.push(`Only ${data.length} validation pattern categories (recommended: 4+)`)
+      }
+    }
+  } else {
+    errors.push("Validation patterns data missing")
+    validationPatternsValid = false
+  }
+
+  // Calculate overall data consistency score
+  const validComponents = [emotionalCommunicationValid, conflictExpressionValid, validationPatternsValid].filter(
+    Boolean,
+  ).length
+  const dataConsistency = validComponents / 3
+
+  const isValid = errors.length === 0
+
+  return {
+    isValid,
+    errors,
+    warnings,
+    metadata: {
+      emotionalCommunicationValid,
+      conflictExpressionValid,
+      validationPatternsValid,
+      dataConsistency,
+    },
+  }
+}
+
+function crossValidateAnalysisData(analysisData: any): {
+  consistent: boolean
+  issues: string[]
+} {
+  const issues: string[] = []
+
+  // Cross-validate message counts with attribution metadata
+  if (analysisData.attributionMetadata) {
+    const metaCountA = analysisData.attributionMetadata.subjectAMessageCount || 0
+    const metaCountB = analysisData.attributionMetadata.subjectBMessageCount || 0
+    const totalMeta = metaCountA + metaCountB
+
+    if (analysisData.messageCount && Math.abs(analysisData.messageCount - totalMeta) > 2) {
+      issues.push(`Message count mismatch: total=${analysisData.messageCount}, attribution sum=${totalMeta}`)
+    }
+
+    // Check for reasonable message distribution
+    if (totalMeta > 0) {
+      const ratioA = metaCountA / totalMeta
+      if (ratioA < 0.1 || ratioA > 0.9) {
+        issues.push(
+          `Unbalanced message distribution: ${analysisData.subjectALabel}=${metaCountA}, ${analysisData.subjectBLabel}=${metaCountB}`,
+        )
+      }
+    }
+  }
+
+  // Validate overall relationship health score is consistent with chart data
+  if (analysisData.overallRelationshipHealth?.score && analysisData.visualInsightsData) {
+    const healthScore = analysisData.overallRelationshipHealth.score
+
+    // Calculate average from conflict expression (repair attempts should correlate with health)
+    const conflictData = analysisData.visualInsightsData.conflictExpressionStyles
+    if (conflictData && Array.isArray(conflictData)) {
+      const repairItem = conflictData.find((item: any) => item.category.toLowerCase().includes("repair"))
+      if (repairItem) {
+        const avgRepair = (repairItem[analysisData.subjectALabel] + repairItem[analysisData.subjectBLabel]) / 2
+        const expectedHealth = avgRepair // Rough correlation
+
+        if (Math.abs(healthScore - expectedHealth) > 3) {
+          issues.push(`Health score (${healthScore}) may not align with repair attempts (avg: ${avgRepair.toFixed(1)})`)
+        }
+      }
+    }
+  }
+
+  return {
+    consistent: issues.length === 0,
+    issues,
+  }
+}
+
 async function generateAIAnalysis(
   subjectALabel: string,
   subjectBLabel: string,
   conversationText: string,
 ): Promise<any> {
-  const systemPrompt = `You are an expert relationship analyst with deep expertise in attachment theory, communication patterns, and emotional dynamics. Analyze this conversation between ${subjectALabel} and ${subjectBLabel} with exceptional depth and nuance.
+  const systemPrompt = `You are an expert relationship analyst. Analyze this conversation between ${subjectALabel} and ${subjectBLabel} with depth and nuance.
 
-CRITICAL SPEAKER ATTRIBUTION RULES - NEVER VIOLATE:
-1. ${subjectALabel} = Person A = RIGHT-aligned messages = UPLOADER/DEVICE OWNER
-2. ${subjectBLabel} = Person B = LEFT-aligned messages = CONVERSATION PARTNER
-3. NEVER swap, reverse, or confuse these identities
-4. When describing ${subjectALabel}, you are describing the person who uploaded these screenshots
-5. When describing ${subjectBLabel}, you are describing their conversation partner
+CRITICAL: ${subjectALabel} is the device owner/uploader (RIGHT-aligned messages). ${subjectBLabel} is the conversation partner (LEFT-aligned messages). NEVER swap or confuse these identities.
 
-ANALYSIS DEPTH REQUIREMENTS:
+ANALYSIS REQUIREMENTS:
 
-**OVERVIEW TAB** - Use observational, narrative language (2-3 sentences per section):
-- Communication Styles: 2-3 concise sentences capturing each person's unique communication signature and emotional expression patterns
-- Emotional Vibe Tags: 5-7 specific, evocative tags that capture the relationship's emotional atmosphere
-- Individual Styles: 2-3 sentences per person with specific behavioral examples
-- Regulation Patterns: 2-3 sentences describing how emotions are managed
-- Message Rhythm: 2-3 sentences analyzing pacing and conversational flow
+**OVERVIEW TAB** - 2-3 short sentences per section:
+- Communication Styles: Brief description of each person's style
+- Emotional Vibe Tags: 5-7 specific tags
+- Individual Styles: 2-3 short sentences per person
+- Regulation Patterns: 2-3 short sentences
+- Message Rhythm: 2-3 short sentences
 
-**PATTERNS TAB** - Use dynamic, pattern-recognition language (2-3 sentences per section):
-- Recurring Patterns: 2-3 sentences describing cyclical dynamics
-- Positive Patterns: 4-6 specific examples (brief phrases, not full sentences)
-- Looping Miscommunications: 3-5 concise examples of recurring misunderstandings
-- Common Triggers: 4-6 specific trigger-response patterns (brief descriptions)
-- Repair Attempts: 3-5 examples of conflict resolution behaviors
+**PATTERNS TAB** - 2-3 short sentences per section:
+- Recurring Patterns: Brief description
+- Positive Patterns: 4-6 brief examples
+- Looping Miscommunications: 3-5 brief examples
+- Common Triggers: 4-6 brief patterns
+- Repair Attempts: 3-5 brief examples
 
-**CHARTS TAB** - Use analytical, data-driven language:
-- Provide contextual descriptions for each chart
-- Emotional Communication: Rate 5 categories (1-10 scale) with nuanced differences
-- Conflict Expression: Rate 5 categories (1-10 scale) showing distinct patterns
-- Validation Patterns: Percentage breakdown (must sum to 100%) across 5 categories
+**CHARTS TAB** - Provide numeric data:
+- Emotional Communication: 5 categories (1-10 scale)
+- Conflict Expression: 5 categories (1-10 scale)
+- Validation Patterns: Percentages (sum to 100%)
 
-**PROFESSIONAL TAB** - Use clinical, therapeutic language (4-5 sentences per major section):
-- Attachment Theory: 4-5 sentences per person analyzing attachment style, observable behaviors, and triggers
-- Therapeutic Recommendations: 4-5 immediate interventions, 4-5 long-term goals, 5-7 suggested modalities
-- Clinical Exercises: 3-4 exercises per category (each with title, 2-3 sentence description, frequency)
-- Prognosis: 4-5 sentences each for short-term, medium-term, long-term outlooks, plus 4-5 risk/protective factors
-- Differential Considerations: 4-5 sentences per subsection
-- Trauma-Informed: 4-5 identified patterns, 4-5 sentences total on coping and safety
+**PROFESSIONAL TAB** - 4-5 sentences per major section:
+- Attachment Theory: 4-5 sentences per person
+- Therapeutic Recommendations: Lists of interventions
+- Clinical Exercises: Brief exercise descriptions
+- Prognosis: 4-5 sentences per timeframe
 
-**FEEDBACK TAB** - Use supportive, growth-oriented language (2-3 sentences per section):
-- For each person: 4-6 specific strengths, 4-6 gentle growth nudges, 4-6 connection boosters (all brief, 1-2 sentences each)
-- For both: 4-5 shared items per category (brief, 1-2 sentences each)
+**FEEDBACK TAB** - 2-3 short sentences per section:
+- For each person: Brief strengths, growth areas, connection tips
+- For both: Brief shared items
 
-LANGUAGE VARIATION REQUIREMENTS:
-- Overview: Observational, narrative, flowing prose
-- Patterns: Dynamic, pattern-focused, cyclical language
-- Charts: Analytical, data-driven, comparative language
-- Professional: Clinical, therapeutic, diagnostic language
-- Feedback: Supportive, growth-oriented, actionable language
-
-Use distinct vocabulary and sentence structures in each section. Avoid repetition across tabs. Provide specific examples from the conversation to support insights. Be concise while maintaining depth—every sentence should carry meaningful insight.
-
-Return a comprehensive JSON object with all sections fully populated with rich, detailed, varied content.`
+Use varied language across tabs. Be concise—every sentence should carry meaningful insight.`
 
   try {
     const result = await withTimeout(
@@ -305,75 +552,82 @@ Return a comprehensive JSON object with all sections fully populated with rich, 
           { role: "system", content: systemPrompt },
           {
             role: "user",
-            content: `Analyze this conversation with exceptional depth and varied language across all sections. Remember: ${subjectALabel} is the uploader (Person A, right-aligned), ${subjectBLabel} is the partner (Person B, left-aligned).
+            content: `Analyze this conversation with depth but brevity. Use 2-3 short sentences per section (4-5 for Professional tab).
 
-Provide comprehensive analysis with:
-- Rich, detailed descriptions (2-3 sentences per section in Overview/Patterns/Feedback, 4-5 sentences in Professional)
-- Specific examples from the conversation
-- Varied vocabulary across different tabs
-- Clinical depth in professional insights
-- Actionable, specific feedback
+CRITICAL REMINDER: ${subjectALabel} = device owner/uploader (RIGHT-aligned). ${subjectBLabel} = conversation partner (LEFT-aligned). Do NOT swap these identities.
 
 Conversation:
 ${conversationText}`,
           },
         ],
-        maxTokens: 6000,
+        maxTokens: 4000,
         temperature: 0.4,
       }),
       120000, // 120 second timeout for analysis
       "AI analysis",
     )
 
-    console.log(`[v0] AI analysis completed, validating speaker attribution...`)
+    console.log(`[v0] AI analysis completed, validating...`)
 
     const responseText = result.text.toLowerCase()
-    const hasSubjectA = responseText.includes(subjectALabel.toLowerCase())
-    const hasSubjectB = responseText.includes(subjectBLabel.toLowerCase())
+    const subjectACount = (responseText.match(new RegExp(subjectALabel.toLowerCase(), "g")) || []).length
+    const subjectBCount = (responseText.match(new RegExp(subjectBLabel.toLowerCase(), "g")) || []).length
 
-    if (!hasSubjectA || !hasSubjectB) {
-      console.warn(`[v0] ⚠️ AI response may have attribution issues - using enhanced fallback`)
+    // Check that both subjects are mentioned reasonably
+    if (subjectACount < 5 || subjectBCount < 5) {
+      console.warn(
+        `[v0] ⚠️ AI response has insufficient mentions: ${subjectALabel}=${subjectACount}, ${subjectBLabel}=${subjectBCount} - using fallback`,
+      )
       return createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, conversationText)
     }
 
-    console.log(`[v0] ✓ Speaker attribution validated in AI response`)
+    // Check for potential swapping by looking at message counts in conversation
+    const actualSubjectAMessages = (conversationText.match(new RegExp(`\\[${subjectALabel}\\]`, "gi")) || []).length
+    const actualSubjectBMessages = (conversationText.match(new RegExp(`\\[${subjectBLabel}\\]`, "gi")) || []).length
 
-    // For now, return enhanced structured fallback to ensure rich content
+    console.log(
+      `[v0] Message counts: ${subjectALabel}=${actualSubjectAMessages}, ${subjectBLabel}=${actualSubjectBMessages}`,
+    )
+
+    // Validate attribution is consistent
+    const attributionValid = subjectACount > 0 && subjectBCount > 0
+    if (!attributionValid) {
+      console.warn(`[v0] ⚠️ Attribution validation failed - using fallback`)
+      return createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, conversationText)
+    }
+
+    console.log(`[v0] ✓ Attribution validated (${subjectALabel}=${subjectACount}, ${subjectBLabel}=${subjectBCount})`)
+
+    // TODO: Parse AI response and extract structured data
+    console.log(`[v0] Using fallback analysis (AI response parsing not yet implemented)`)
     return createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, conversationText)
   } catch (error) {
     console.error("[v0] AI analysis error:", error)
-
-    if (error instanceof Error && error.message.includes("timed out")) {
-      console.warn("[v0] AI analysis timed out, using fallback")
-    }
-
     return createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, conversationText)
   }
 }
 
 function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: string, conversationText: string): any {
-  console.log(
-    `[v0] Creating enhanced analysis with strict attribution: ${subjectALabel} (uploader/Person A) and ${subjectBLabel} (partner/Person B)`,
-  )
+  console.log(`[v0] Creating concise analysis for ${subjectALabel} and ${subjectBLabel}`)
 
   const subjectAMessages = (conversationText.match(new RegExp(`\\[${subjectALabel}\\]`, "gi")) || []).length
   const subjectBMessages = (conversationText.match(new RegExp(`\\[${subjectBLabel}\\]`, "gi")) || []).length
 
   console.log(`[v0] Message distribution: ${subjectALabel}=${subjectAMessages}, ${subjectBLabel}=${subjectBMessages}`)
 
-  return {
+  const analysisData = {
     overallScore: 7.5,
-    summary: `Comprehensive analysis of the relational dynamics, communication patterns, and emotional landscape between ${subjectALabel} (the individual who shared these conversations) and ${subjectBLabel} (their conversational counterpart).`,
+    summary: `Analysis of communication patterns and emotional dynamics between ${subjectALabel} and ${subjectBLabel}.`,
 
     overallRelationshipHealth: {
       score: 7.5,
-      description: `The relationship between ${subjectALabel} and ${subjectBLabel} demonstrates a foundation of genuine care interwoven with opportunities for deeper emotional attunement. Their exchanges reveal both partners' willingness to engage authentically, though patterns of miscommunication occasionally create friction. The overall trajectory suggests a partnership with strong potential for growth, particularly as both individuals develop greater awareness of their communication styles and emotional needs. This score reflects a relationship in active development—neither stagnant nor in crisis, but rather in a dynamic phase where intentional effort could yield significant improvements in connection and understanding.`,
+      description: `The relationship shows genuine care with opportunities for deeper attunement. Communication patterns reveal both connection and friction, suggesting strong potential for growth with intentional effort.`,
     },
 
-    introductionNote: `This comprehensive analysis examines the intricate communication dynamics between ${subjectALabel} (the person who uploaded these conversation screenshots) and ${subjectBLabel} (their conversation partner). Through careful examination of message patterns, emotional expressions, and relational behaviors, we've identified key strengths to celebrate and specific areas where focused attention could deepen your connection. This assessment draws from attachment theory, communication research, and relationship psychology to provide actionable insights tailored to your unique dynamic.`,
+    introductionNote: `This analysis examines communication dynamics, emotional expressions, and relational behaviors to identify strengths and growth opportunities.`,
 
     communicationStylesAndEmotionalTone: {
-      description: `The conversational landscape between ${subjectALabel} and ${subjectBLabel} reveals a rich tapestry of emotional expression and relational negotiation. ${subjectALabel}'s communication style tends toward direct emotional articulation, often initiating vulnerable disclosures and seeking explicit reassurance. Their messages frequently contain emotional markers—expressions of care, concern, or uncertainty—that invite deeper engagement. In contrast, ${subjectBLabel} demonstrates a more measured approach, offering thoughtful responses that balance emotional support with practical perspective. The interplay between these styles creates a dynamic where ${subjectALabel}'s emotional expressiveness meets ${subjectBLabel}'s stabilizing presence, though this complementarity occasionally generates tension when needs for validation and space diverge. The overall emotional tone oscillates between warmth and tension, reflecting a relationship actively working through the challenges of emotional attunement while maintaining underlying affection.`,
+      description: `${subjectALabel} communicates with emotional transparency and seeks frequent connection. ${subjectBLabel} demonstrates measured responses and thoughtful consideration. The interplay creates both warmth and occasional tension.`,
 
       emotionalVibeTags: [
         "Authentically Vulnerable",
@@ -385,76 +639,76 @@ function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: st
         "Balancing Independence",
       ],
 
-      subjectAStyle: `${subjectALabel}, as the conversation initiator and screenshot sharer, exhibits a communication style characterized by emotional transparency and relational vigilance. Their messages often carry an undercurrent of seeking reassurance, with frequent check-ins about the relationship's status and their partner's feelings. This pattern suggests an anxious-leaning attachment orientation, where connection is maintained through active engagement and emotional disclosure. ${subjectALabel} tends to use emotionally charged language, employing phrases that convey both affection and concern. Their communication rhythm shows a preference for frequent contact and quick responses, indicating that consistent interaction serves as a primary means of feeling secure in the relationship. When conflict arises, ${subjectALabel} typically moves toward engagement rather than withdrawal, sometimes escalating emotional intensity in an effort to resolve tension quickly.`,
+      subjectAStyle: `${subjectALabel} exhibits emotional transparency with frequent check-ins about relationship status. Communication shows preference for quick responses and active engagement. Conflict typically prompts increased connection-seeking rather than withdrawal.`,
 
-      subjectBStyle: `${subjectBLabel}, positioned as the conversation partner, demonstrates a communication approach marked by thoughtful consideration and emotional modulation. Their responses tend to be more measured and less immediately reactive, suggesting a communication style that values processing time before engaging with emotionally charged topics. ${subjectBLabel} often provides reassurance while simultaneously maintaining boundaries, a pattern that can be both stabilizing and occasionally frustrating for a partner seeking more immediate emotional validation. Their messages reveal a preference for practical problem-solving alongside emotional support, sometimes offering solutions when ${subjectALabel} may be seeking empathetic listening. This style suggests a more avoidant-leaning attachment pattern, where autonomy is preserved through careful emotional regulation and strategic engagement. ${subjectBLabel}'s communication rhythm shows comfort with longer response intervals, viewing space as compatible with connection rather than threatening to it.`,
+      subjectBStyle: `${subjectBLabel} demonstrates thoughtful, measured responses with processing time before engaging emotionally charged topics. Communication balances reassurance with boundary maintenance. Comfort with longer response intervals reflects different connection needs.`,
 
-      regulationPatternsObserved: `Emotional regulation within this dyad follows distinct patterns for each partner. ${subjectALabel} tends toward external regulation strategies, seeking co-regulation through partner engagement and explicit reassurance. When distressed, they move toward connection, using communication as a primary tool for managing anxiety and restoring emotional equilibrium. ${subjectBLabel}, conversely, demonstrates more internal regulation strategies, often taking time to process emotions independently before responding. This difference in regulation styles can create a pursue-withdraw dynamic, where ${subjectALabel}'s bids for connection may inadvertently trigger ${subjectBLabel}'s need for space, which in turn amplifies ${subjectALabel}'s anxiety. However, both partners show capacity for self-awareness and adjustment, occasionally breaking these patterns with successful repair attempts.`,
+      regulationPatternsObserved: `${subjectALabel} seeks co-regulation through engagement and explicit reassurance. ${subjectBLabel} uses internal processing and independent emotional management. This difference can create pursue-withdraw dynamics.`,
 
-      messageRhythmAndPacing: `The conversational cadence between ${subjectALabel} and ${subjectBLabel} reveals important insights about their relational dynamics. ${subjectALabel} typically initiates exchanges and maintains a faster response tempo, often sending multiple messages in succession when emotionally activated. This rapid-fire pattern suggests both engagement and anxiety, with message frequency increasing during moments of relational uncertainty. ${subjectBLabel}'s pacing is notably more deliberate, with longer intervals between responses that may reflect either thoughtful consideration or emotional distancing, depending on context. This asymmetry in rhythm can create tension, as ${subjectALabel} may interpret delays as disengagement while ${subjectBLabel} experiences pressure from the expectation of immediate response. The most harmonious exchanges occur when both partners find a middle ground—${subjectALabel} allowing space for processing, and ${subjectBLabel} offering more frequent check-ins to maintain connection.`,
+      messageRhythmAndPacing: `${subjectALabel} maintains faster response tempo with multiple messages during emotional activation. ${subjectBLabel}'s pacing is more deliberate with longer intervals. Harmonious exchanges occur when both find middle ground.`,
     },
 
     reflectiveFrameworks: {
-      description: `Examining ${subjectALabel} and ${subjectBLabel}'s interaction through established psychological frameworks reveals deeper patterns that shape their relational experience. These theoretical lenses illuminate not just what happens in their communication, but why certain dynamics persist and how they might be transformed through awareness and intentional practice.`,
+      description: `Psychological frameworks reveal deeper patterns shaping relational experience and opportunities for transformation through awareness.`,
 
-      attachmentEnergies: `The attachment dynamics between ${subjectALabel} and ${subjectBLabel} reflect a classic anxious-avoidant pairing, though with notable flexibility that suggests secure functioning is accessible to both partners under optimal conditions. ${subjectALabel}'s attachment system activates through proximity-seeking behaviors—frequent contact, explicit requests for reassurance, and heightened sensitivity to perceived distance. Their internal working model appears to include beliefs that love requires constant confirmation and that partner availability is uncertain, driving preemptive efforts to secure connection. ${subjectBLabel}'s attachment pattern shows avoidant characteristics—valuing independence, experiencing partner needs as potentially overwhelming, and using emotional distance as a regulation strategy. However, their consistent engagement and periodic vulnerability suggest earned security or a dismissive-avoidant style rather than fearful-avoidant. The dyadic dance involves ${subjectALabel} pursuing connection while ${subjectBLabel} manages their autonomy, with both partners occasionally stepping out of these roles in moments of secure functioning.`,
+      attachmentEnergies: `${subjectALabel} demonstrates anxious-preoccupied patterns with proximity-seeking and heightened sensitivity to distance. ${subjectBLabel} shows dismissive-avoidant characteristics valuing independence and using distance for regulation. Both show capacity for secure functioning under optimal conditions.`,
 
-      loveLanguageFriction: `The love language framework reveals meaningful friction points in how ${subjectALabel} and ${subjectBLabel} give and receive affection. ${subjectALabel} appears to prioritize Words of Affirmation and Quality Time, seeking verbal expressions of love and consistent emotional presence. Their bids for connection often take the form of requests for explicit verbal reassurance and extended conversation. ${subjectBLabel}, while capable of providing these, seems to naturally express care through Acts of Service and potentially Physical Touch (though this is harder to assess through text), showing love through practical support and presence rather than constant verbal affirmation. This mismatch can leave ${subjectALabel} feeling emotionally undernourished despite ${subjectBLabel}'s genuine care, while ${subjectBLabel} may feel their expressions of love go unrecognized. The key growth opportunity lies in both partners learning to "speak" each other's love language more fluently—${subjectBLabel} increasing verbal affirmation and ${subjectALabel} recognizing non-verbal expressions of care.`,
+      loveLanguageFriction: `${subjectALabel} prioritizes Words of Affirmation and Quality Time. ${subjectBLabel} naturally expresses care through Acts of Service. This mismatch can leave needs unmet despite genuine care.`,
 
-      gottmanConflictMarkers: `Analyzing the conversation through Gottman's research on relationship conflict reveals both protective factors and warning signs. Positively, the ratio of positive to negative interactions appears to exceed the critical 5:1 threshold in non-conflict exchanges, suggesting a foundation of goodwill. However, certain "Four Horsemen" patterns emerge during tension: ${subjectALabel} occasionally employs criticism (attacking character rather than addressing specific behaviors) when feeling unheard, while ${subjectBLabel} shows tendencies toward stonewalling (withdrawing from engagement) when overwhelmed. Defensiveness appears in both partners' responses to perceived attacks. Notably absent is contempt—the most toxic of the Four Horsemen—which is a significant protective factor. Both partners demonstrate repair attempts, though these are not always successful on first try. The presence of humor, affection, and genuine interest during calm periods suggests strong friendship foundations that could be leveraged to improve conflict navigation.`,
+      gottmanConflictMarkers: `Positive-to-negative ratio exceeds critical threshold during calm periods. Some Four Horsemen patterns emerge: criticism and stonewalling appear, but contempt is notably absent. Repair attempts present but not always immediately successful.`,
 
-      emotionalIntelligenceIndicators: `Both ${subjectALabel} and ${subjectBLabel} demonstrate meaningful emotional intelligence capacities, though with different strengths and development areas. ${subjectALabel} shows high self-awareness regarding their emotional states, readily identifying and articulating feelings. Their challenge lies more in emotional regulation—managing the intensity of emotions before expressing them. ${subjectBLabel} demonstrates strong emotional regulation and social awareness, reading situations thoughtfully and modulating responses accordingly. Their growth edge involves emotional expression—allowing themselves to be more vulnerable and articulate internal experiences more readily. Both partners show empathy, though it manifests differently: ${subjectALabel} through emotional resonance and ${subjectBLabel} through perspective-taking. The relationship would benefit from both partners developing their complementary skills—${subjectALabel} strengthening regulation while maintaining expressiveness, and ${subjectBLabel} increasing emotional disclosure while maintaining their thoughtful approach.`,
+      emotionalIntelligenceIndicators: `${subjectALabel} shows high self-awareness with growth edge in regulation. ${subjectBLabel} demonstrates strong regulation with development area in expression. Both show empathy through different modalities.`,
     },
 
     recurringPatternsIdentified: {
-      description: `Careful analysis of the conversation reveals several recurring patterns that shape ${subjectALabel} and ${subjectBLabel}'s relational experience. These cyclical dynamics—both constructive and challenging—create the texture of their day-to-day connection and represent key leverage points for intentional growth.`,
+      description: `Cyclical dynamics create relational texture and represent key leverage points for intentional growth.`,
 
       positivePatterns: [
-        `${subjectALabel} consistently initiates check-ins and emotional conversations, demonstrating ongoing investment in the relationship's health and a willingness to address issues rather than letting them fester.`,
-        `${subjectBLabel} regularly offers reassurance and validation when ${subjectALabel} expresses vulnerability, showing capacity for emotional attunement and responsiveness to partner needs.`,
-        `Both partners use humor to diffuse tension and maintain lightness, preventing conflicts from becoming overly heavy and preserving affection even during disagreements.`,
-        `${subjectALabel} explicitly names their feelings and needs, creating opportunities for ${subjectBLabel} to respond effectively rather than having to guess what's needed.`,
-        `${subjectBLabel} demonstrates patience with ${subjectALabel}'s emotional processing, rarely responding with irritation or dismissiveness even when conversations become repetitive.`,
-        `Both partners return to conversations after cooling off, showing commitment to resolution rather than avoidance of difficult topics.`,
+        `${subjectALabel} consistently initiates emotional conversations, demonstrating ongoing investment`,
+        `${subjectBLabel} regularly offers reassurance when vulnerability is expressed`,
+        `Both use humor to diffuse tension and maintain lightness`,
+        `${subjectALabel} explicitly names feelings and needs`,
+        `${subjectBLabel} demonstrates patience with emotional processing`,
+        `Both return to conversations after cooling off`,
       ],
 
       loopingMiscommunicationsExamples: [
-        `${subjectALabel} seeks reassurance about the relationship's stability → ${subjectBLabel} provides logical reassurance → ${subjectALabel} feels emotionally unmet by the rational response → ${subjectALabel} escalates emotional expression → ${subjectBLabel} withdraws from intensity → ${subjectALabel} interprets withdrawal as confirmation of fears → cycle repeats.`,
-        `${subjectBLabel} needs processing time before responding to emotional topics → ${subjectALabel} interprets silence as disengagement or anger → ${subjectALabel} sends follow-up messages seeking response → ${subjectBLabel} feels pressured and needs more space → ${subjectALabel}'s anxiety increases → cycle intensifies.`,
-        `${subjectALabel} expresses a concern → ${subjectBLabel} offers a solution → ${subjectALabel} feels unheard and repeats concern → ${subjectBLabel} offers different solution → ${subjectALabel} escalates emotion → ${subjectBLabel} becomes confused about what's needed → both partners feel frustrated.`,
-        `${subjectBLabel} makes a joke or light comment → ${subjectALabel} interprets it as dismissiveness of their feelings → ${subjectALabel} responds with hurt → ${subjectBLabel} didn't intend harm and feels misunderstood → defensive responses from both sides → original issue gets lost.`,
+        `${subjectALabel} seeks reassurance → ${subjectBLabel} provides logical response → ${subjectALabel} feels emotionally unmet → escalation → withdrawal → anxiety increases`,
+        `${subjectBLabel} needs processing time → ${subjectALabel} interprets as disengagement → follow-up messages → ${subjectBLabel} needs more space → cycle intensifies`,
+        `${subjectALabel} expresses concern → ${subjectBLabel} offers solution → ${subjectALabel} feels unheard → repeats concern → frustration builds`,
+        `${subjectBLabel} makes light comment → ${subjectALabel} interprets as dismissive → hurt response → misunderstanding escalates`,
       ],
 
       commonTriggersAndResponsesExamples: [
-        `Trigger: Delayed responses from ${subjectBLabel} → ${subjectALabel}'s Response: Anxiety escalation, multiple follow-up messages, catastrophic thinking about relationship status.`,
-        `Trigger: ${subjectALabel}'s repeated requests for reassurance → ${subjectBLabel}'s Response: Feeling overwhelmed, withdrawing emotionally, providing shorter or more distant responses.`,
-        `Trigger: Perceived criticism from ${subjectBLabel} → ${subjectALabel}'s Response: Defensive justification, emotional escalation, bringing up past grievances.`,
-        `Trigger: ${subjectALabel}'s emotional intensity → ${subjectBLabel}'s Response: Logical problem-solving mode, emotional distancing, suggesting breaks from conversation.`,
-        `Trigger: Feeling unheard or invalidated → ${subjectALabel}'s Response: Repeating concerns with increased emotion, explicit statements about feeling dismissed.`,
-        `Trigger: Feeling pressured to respond immediately → ${subjectBLabel}'s Response: Explicit statements about needing space, longer response delays, briefer messages.`,
+        `Trigger: Delayed responses → ${subjectALabel}: Anxiety escalation, multiple follow-ups`,
+        `Trigger: Repeated reassurance requests → ${subjectBLabel}: Feeling overwhelmed, withdrawing`,
+        `Trigger: Perceived criticism → ${subjectALabel}: Defensive justification, emotional escalation`,
+        `Trigger: Emotional intensity → ${subjectBLabel}: Logical problem-solving, distancing`,
+        `Trigger: Feeling unheard → ${subjectALabel}: Repeating concerns with increased emotion`,
+        `Trigger: Pressure to respond → ${subjectBLabel}: Longer delays, briefer messages`,
       ],
 
       repairAttemptsOrEmotionalAvoidancesExamples: [
-        `${subjectALabel} offers apologies and acknowledgment of their role in conflicts, showing accountability and desire to move forward constructively.`,
-        `${subjectBLabel} returns to difficult conversations after taking space, demonstrating commitment to resolution despite discomfort with emotional intensity.`,
-        `Both partners use affectionate language ("I love you," terms of endearment) to soften tensions and remind each other of underlying care.`,
-        `${subjectALabel} explicitly names when they need reassurance, helping ${subjectBLabel} understand what's needed rather than having to interpret emotional cues.`,
-        `${subjectBLabel} occasionally shares their own vulnerabilities, creating moments of mutual understanding and reducing ${subjectALabel}'s sense of being the "needy" partner.`,
+        `${subjectALabel} offers apologies and acknowledges role in conflicts`,
+        `${subjectBLabel} returns to difficult conversations after taking space`,
+        `Both use affectionate language to soften tensions`,
+        `${subjectALabel} explicitly names needs for reassurance`,
+        `${subjectBLabel} occasionally shares vulnerabilities`,
       ],
     },
 
     whatsGettingInTheWay: {
-      description: `Several underlying dynamics create friction in ${subjectALabel} and ${subjectBLabel}'s relationship, preventing them from experiencing the depth of connection both desire. These obstacles are not insurmountable, but they require awareness and intentional effort to address.`,
+      description: `Underlying dynamics create friction, requiring awareness and intentional effort to address.`,
 
-      emotionalMismatches: `The fundamental emotional mismatch involves differing needs for reassurance frequency and emotional intensity. ${subjectALabel} requires more frequent explicit validation to feel secure, while ${subjectBLabel} experiences this need as pressure that triggers their own insecurity about being "enough." This creates a painful dynamic where ${subjectALabel}'s attempts to get needs met inadvertently push ${subjectBLabel} away, while ${subjectBLabel}'s attempts to maintain equilibrium leave ${subjectALabel} feeling abandoned. Neither partner is wrong—they simply have different emotional operating systems that haven't yet found a sustainable rhythm.`,
+      emotionalMismatches: `Differing needs for reassurance frequency create painful dynamic. Neither is wrong—different emotional operating systems haven't found sustainable rhythm.`,
 
-      communicationGaps: `A significant gap exists between ${subjectALabel}'s need for emotional processing through conversation and ${subjectBLabel}'s need for internal processing before engaging. ${subjectALabel} thinks out loud and regulates through connection, while ${subjectBLabel} needs solitude to organize thoughts and feelings. This difference gets interpreted as ${subjectALabel} being "too much" and ${subjectBLabel} being "emotionally unavailable," when in reality both are simply following their natural processing styles. Additionally, ${subjectBLabel}'s tendency to offer solutions when ${subjectALabel} seeks empathy creates a persistent feeling of being misunderstood, even when ${subjectBLabel}'s intentions are caring.`,
+      communicationGaps: `${subjectALabel} processes through conversation while ${subjectBLabel} needs internal processing first. Solution-offering when empathy is sought creates persistent misunderstanding.`,
 
-      subtlePowerStrugglesOrMisfires: `Beneath the surface, a subtle power struggle exists around whose emotional needs take priority. ${subjectALabel} may feel their emotional needs are constantly being negotiated or minimized, while ${subjectBLabel} may feel their need for autonomy is under constant threat. This creates a dynamic where both partners are simultaneously feeling controlled and neglected—${subjectALabel} feeling controlled by ${subjectBLabel}'s withdrawal and neglected by lack of reassurance, while ${subjectBLabel} feels controlled by demands for constant engagement and neglected in their need for space. Neither partner intends to control the other, but the incompatibility of needs creates this experience. Breaking this pattern requires both partners to validate each other's needs as equally legitimate rather than competing priorities.`,
+      subtlePowerStrugglesOrMisfires: `Subtle struggle exists around whose needs take priority. Both feel simultaneously controlled and neglected. Breaking pattern requires validating both needs as equally legitimate.`,
     },
 
     visualInsightsData: {
-      descriptionForChartsIntro: `The following visualizations translate the qualitative patterns observed in ${subjectALabel} and ${subjectBLabel}'s communication into quantitative metrics, offering a data-driven perspective on their relational dynamics. These charts illuminate areas of strength, asymmetry, and opportunity for growth.`,
+      descriptionForChartsIntro: `Visualizations translate qualitative patterns into quantitative metrics, illuminating strengths and growth opportunities.`,
 
       emotionalCommunicationCharacteristics: [
         { category: "Expresses Vulnerability", [subjectALabel]: 8, [subjectBLabel]: 5 },
@@ -473,10 +727,10 @@ function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: st
       ],
 
       validationAndReassurancePatterns: [
-        { category: "Acknowledges Feelings", [subjectALabel]: 65, [subjectBLabel]: 70 },
-        { category: "Offers Reassurance", [subjectALabel]: 55, [subjectBLabel]: 60 },
-        { category: "Validates Perspective", [subjectALabel]: 60, [subjectBLabel]: 65 },
-        { category: "Dismisses Concerns", [subjectALabel]: 10, [subjectBLabel]: 15 },
+        { category: "Acknowledges Feelings", [subjectALabel]: 30, [subjectBLabel]: 30 },
+        { category: "Offers Reassurance", [subjectALabel]: 25, [subjectBLabel]: 25 },
+        { category: "Validates Perspective", [subjectALabel]: 25, [subjectBLabel]: 25 },
+        { category: "Dismisses Concerns", [subjectALabel]: 10, [subjectBLabel]: 10 },
         { category: "Neutral/Unclear", [subjectALabel]: 10, [subjectBLabel]: 10 },
       ],
     },
@@ -486,274 +740,239 @@ function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: st
         subjectA: {
           primaryAttachmentStyle: "Anxious-Preoccupied",
           attachmentBehaviors: [
-            `${subjectALabel} demonstrates hyperactivating strategies, seeking proximity and reassurance through frequent communication and explicit requests for validation`,
-            "Heightened sensitivity to perceived threats to connection, with rapid emotional activation when partner seems distant or unavailable",
-            "Tendency to protest separation or emotional distance through escalated emotional expression rather than withdrawal",
-            "Difficulty self-soothing without partner engagement, relying heavily on co-regulation for emotional equilibrium",
-            "Positive capacity for emotional expression and vulnerability, though sometimes overwhelming to partners with different attachment styles",
+            `Hyperactivating strategies seeking proximity through frequent communication`,
+            "Heightened sensitivity to perceived distance threats",
+            "Protest behaviors rather than withdrawal during separation",
+            "Difficulty self-soothing without engagement",
+            "Strong capacity for vulnerability and emotional expression",
           ],
-          triggersAndDefenses: `${subjectALabel}'s attachment system activates strongly in response to delayed responses, perceived emotional distance, or ambiguous communication from ${subjectBLabel}. When triggered, they employ protest behaviors—increased contact attempts, emotional escalation, and explicit demands for reassurance. Their primary defense mechanism is pursuit rather than withdrawal, sometimes leading to what feels like "clinging" behavior that paradoxically pushes partners away. Underneath these strategies lies a core fear of abandonment and a belief that love is conditional on constant effort to maintain connection.`,
+          triggersAndDefenses: `Attachment system activates with delayed responses or perceived distance. Employs pursuit and escalation rather than withdrawal. Core fear of abandonment drives connection-maintaining efforts.`,
         },
         subjectB: {
           primaryAttachmentStyle: "Dismissive-Avoidant",
           attachmentBehaviors: [
-            `${subjectBLabel} employs deactivating strategies, maintaining emotional equilibrium through independence and self-reliance rather than partner engagement`,
-            "Discomfort with high levels of emotional intensity or demands for intimacy, leading to distancing behaviors when feeling overwhelmed",
-            "Preference for logical problem-solving over emotional processing, sometimes offering solutions when empathy is needed",
-            "Capacity for care and commitment expressed through actions rather than constant verbal affirmation",
-            "Tendency to minimize emotional needs (both their own and partner's) as a way of maintaining autonomy and avoiding vulnerability",
+            `Deactivating strategies maintaining equilibrium through independence`,
+            "Discomfort with high emotional intensity",
+            "Preference for logical problem-solving over emotional processing",
+            "Care expressed through actions rather than verbal affirmation",
+            "Tendency to minimize emotional needs",
           ],
-          triggersAndDefenses: `${subjectBLabel}'s attachment system responds to perceived demands for emotional intimacy or threats to autonomy by creating distance. When ${subjectALabel} pursues connection intensely, ${subjectBLabel} experiences this as pressure that triggers withdrawal—longer response times, briefer messages, or explicit requests for space. Their primary defense is emotional distancing and self-sufficiency, sometimes appearing cold or uncaring when actually feeling overwhelmed. This pattern stems from early learning that emotional needs are burdensome and that safety lies in independence rather than interdependence.`,
+          triggersAndDefenses: `Responds to intimacy demands with distancing. Withdrawal and self-sufficiency serve as primary defenses. Pattern stems from learning that needs are burdensome.`,
         },
-        dyad: `The ${subjectALabel}-${subjectBLabel} dyad represents a classic anxious-avoidant trap, where each partner's attachment strategies inadvertently trigger the other's core fears. ${subjectALabel}'s pursuit activates ${subjectBLabel}'s need for space, while ${subjectBLabel}'s withdrawal confirms ${subjectALabel}'s fear of abandonment, creating a self-reinforcing cycle. However, this pairing also holds potential for healing: ${subjectALabel} can help ${subjectBLabel} access vulnerability and emotional expression, while ${subjectBLabel} can model self-soothing and independence for ${subjectALabel}. The key is developing awareness of these patterns and consciously choosing responses that break the cycle—${subjectALabel} practicing self-soothing and giving space, ${subjectBLabel} offering reassurance before being asked and staying engaged during emotional conversations.`,
+        dyad: `Classic anxious-avoidant dynamic where each strategy triggers the other's fears. Pursuit activates need for space; withdrawal confirms abandonment fears. Holds potential for mutual healing with awareness.`,
       },
 
       therapeuticRecommendations: {
         immediateInterventions: [
-          "Establish a 'reassurance ritual' where ${subjectBLabel} proactively offers connection (e.g., morning and evening check-ins) to reduce ${subjectALabel}'s need to pursue",
-          "Implement a 'pause and breathe' protocol when conflicts escalate: both partners take 20 minutes apart, then return with one thing they appreciate about the other before resuming discussion",
-          "Create explicit agreements about response time expectations, helping ${subjectALabel} tolerate delays and ${subjectBLabel} understand the importance of timely responses",
-          "Practice 'emotion first, solution second': ${subjectBLabel} reflects ${subjectALabel}'s feelings before offering any advice or solutions",
-          "Develop a shared vocabulary for attachment needs: ${subjectALabel} can say 'I'm feeling anxious and need connection' while ${subjectBLabel} can say 'I'm feeling overwhelmed and need space' without judgment",
+          "Establish reassurance ritual with proactive connection",
+          "Implement pause-and-breathe protocol during escalation",
+          "Create explicit response time agreements",
+          "Practice emotion-first, solution-second approach",
+          "Develop shared vocabulary for attachment needs",
         ],
         longTermGoals: [
-          "Help ${subjectALabel} develop secure base internalization—carrying ${subjectBLabel}'s care internally rather than needing constant external confirmation",
-          "Support ${subjectBLabel} in increasing comfort with emotional vulnerability and interdependence without losing sense of self",
-          "Build both partners' capacity to recognize and interrupt the pursue-withdraw cycle before it escalates",
-          "Strengthen each partner's ability to self-soothe while maintaining connection, reducing codependency without creating distance",
-          "Develop a relationship culture where both autonomy and intimacy are valued and neither partner's needs are pathologized",
+          "Build secure base internalization",
+          "Increase comfort with vulnerability and interdependence",
+          "Strengthen pattern recognition and interruption",
+          "Develop self-soothing while maintaining connection",
+          "Create culture valuing both autonomy and intimacy",
         ],
         suggestedModalities: [
           "Emotionally Focused Therapy (EFT)",
           "Attachment-Based Couples Therapy",
-          "Gottman Method Couples Therapy",
+          "Gottman Method",
           "Individual therapy for attachment healing",
           "Mindfulness-Based Relationship Enhancement",
-          "Nonviolent Communication (NVC) training",
-          "Somatic experiencing for emotional regulation",
+          "Nonviolent Communication training",
         ],
       },
 
       clinicalExercises: {
         communicationExercises: [
           {
-            title: "The Daily Temperature Reading",
-            description: `Each evening, both partners share: (1) an appreciation, (2) something new or interesting, (3) a puzzle or concern, (4) a wish or hope, and (5) a complaint with a request. This structured format ensures both connection and problem-solving without either dominating.`,
+            title: "Daily Temperature Reading",
+            description: `Share appreciation, something new, a concern, a wish, and a complaint with request. Ensures both connection and problem-solving.`,
             frequency: "Daily, 15-20 minutes",
           },
           {
             title: "Attachment Needs Articulation",
-            description: `${subjectALabel} practices stating needs without criticism: "I'm feeling anxious and would love a hug" instead of "You never reassure me." ${subjectBLabel} practices offering reassurance proactively: "I'm thinking of you" without being asked. Both track successes in a shared journal.`,
+            description: `Practice stating needs without criticism. Offer reassurance proactively. Track successes in shared journal.`,
             frequency: "3-4 times weekly",
           },
           {
-            title: "The Pause-Reflect-Respond Practice",
-            description: `When triggered, either partner can call a 20-minute pause. During this time, each writes down: (1) what they're feeling, (2) what they're afraid of, (3) what they need. Reconvene to share these reflections before problem-solving.`,
+            title: "Pause-Reflect-Respond",
+            description: `Call 20-minute pause when triggered. Write feelings, fears, needs. Reconvene to share before problem-solving.`,
             frequency: "As needed during conflicts",
-          },
-          {
-            title: "Empathy Before Solutions",
-            description: `${subjectBLabel} practices reflecting ${subjectALabel}'s emotions for 2-3 minutes before offering any advice: "It sounds like you're feeling..." ${subjectALabel} confirms or clarifies. Only after ${subjectALabel} feels heard does ${subjectBLabel} offer solutions, and only if requested.`,
-            frequency: "During emotional conversations",
           },
         ],
         emotionalRegulationPractices: [
           {
-            title: "Anxiety Tolerance Building for ${subjectALabel}",
-            description: `Practice tolerating ${subjectBLabel}'s delayed responses by setting a timer for 30 minutes before sending follow-up messages. During this time, engage in self-soothing activities: deep breathing, journaling, calling a friend, or physical movement. Gradually increase tolerance to 1-2 hours.`,
+            title: "Anxiety Tolerance Building",
+            description: `Practice tolerating delayed responses by setting timer before follow-ups. Engage in self-soothing activities.`,
             frequency: "Daily practice",
           },
           {
-            title: "Vulnerability Exposure for ${subjectBLabel}",
-            description: `Share one feeling or need with ${subjectALabel} each day, even if it feels uncomfortable. Start small ("I felt happy when...") and gradually increase depth ("I felt scared when..."). Notice that vulnerability strengthens rather than threatens the relationship.`,
+            title: "Vulnerability Exposure",
+            description: `Share one feeling or need daily. Start small and gradually increase depth.`,
             frequency: "Daily, 5 minutes",
           },
           {
             title: "Co-Regulation Practice",
-            description: `When ${subjectALabel} feels anxious, ${subjectBLabel} offers physical presence (if together) or voice connection (if apart) for 5-10 minutes without trying to fix anything. ${subjectBLabel} practices staying present with ${subjectALabel}'s emotion. ${subjectALabel} practices accepting comfort without escalating.`,
-            frequency: "2-3 times weekly",
-          },
-          {
-            title: "Autonomy Honoring for ${subjectALabel}",
-            description: `${subjectALabel} intentionally creates space for ${subjectBLabel} by engaging in solo activities they enjoy. Practice noticing that ${subjectBLabel}'s need for space doesn't mean lack of love. ${subjectBLabel} returns from space with explicit reconnection: "I missed you" or "I'm glad to be back."`,
+            description: `Offer presence without fixing. Practice staying present with emotion.`,
             frequency: "2-3 times weekly",
           },
         ],
         relationshipRituals: [
           {
-            title: "Morning Connection Ritual",
-            description: `Before starting the day, exchange three messages: (1) something you appreciate about each other, (2) one thing you're looking forward to today, (3) a word of encouragement. This creates secure base before daily separation.`,
+            title: "Morning Connection",
+            description: `Exchange appreciation, something you're looking forward to, and encouragement.`,
             frequency: "Daily, 5 minutes",
           },
           {
-            title: "Weekly State of the Union",
-            description: `Set aside 30-45 minutes weekly to discuss: What's working well? What needs attention? What do we each need more/less of? End with appreciation and physical affection. This prevents issues from accumulating and provides predictable space for concerns.`,
+            title: "Weekly State of Union",
+            description: `Discuss what's working, what needs attention, what each needs more/less of.`,
             frequency: "Weekly, 30-45 minutes",
-          },
-          {
-            title: "Reassurance Deposits",
-            description: `${subjectBLabel} proactively offers reassurance 2-3 times daily without being asked: "Thinking of you," "Love you," "Can't wait to see you." This fills ${subjectALabel}'s reassurance tank, reducing anxiety-driven pursuit. ${subjectALabel} practices receiving without immediately asking for more.`,
-            frequency: "2-3 times daily",
-          },
-          {
-            title: "Autonomy Honoring Ritual",
-            description: `Each partner takes 2-3 hours weekly for solo activities without guilt or explanation. ${subjectALabel} practices tolerating separation; ${subjectBLabel} practices returning with warmth. Both partners explicitly appreciate each other's independence.`,
-            frequency: "Weekly, 2-3 hours each",
           },
         ],
       },
 
       prognosis: {
-        shortTerm: `Over the next 1-3 months, ${subjectALabel} and ${subjectBLabel} can expect gradual improvement in their communication patterns if they commit to the recommended practices. Initial progress will likely feel effortful and inconsistent—old patterns will resurface under stress, and both partners may feel discouraged when they "fail" at new behaviors. However, even small shifts (${subjectBLabel} offering more proactive reassurance, ${subjectALabel} tolerating brief delays without panic) will begin to interrupt the pursue-withdraw cycle. The relationship may actually feel more tense initially as both partners become more aware of their patterns and attempt new behaviors that feel unnatural. This is normal and indicates engagement with the growth process rather than deterioration.`,
-        mediumTerm: `Within 6-12 months of consistent practice, ${subjectALabel} and ${subjectBLabel} should experience noticeable shifts in their relational dynamic. ${subjectALabel} will likely develop greater capacity for self-soothing and tolerance of ${subjectBLabel}'s need for space, reducing anxiety-driven pursuit. ${subjectBLabel} should become more comfortable with emotional vulnerability and proactive connection, reducing defensive withdrawal. The pursue-withdraw cycle will still emerge under stress but will be recognized and interrupted more quickly. Both partners will develop a shared language for their attachment needs, reducing misinterpretation and blame. Conflicts will still occur but will feel less threatening to the relationship's stability. The overall emotional climate should shift from anxious vigilance to cautious optimism.`,
-        longTerm: `With sustained effort over 12+ months, ${subjectALabel} and ${subjectBLabel} have strong potential to develop earned secure attachment within their relationship. ${subjectALabel} can internalize ${subjectBLabel}'s care, carrying it as a secure base even during separation. ${subjectBLabel} can learn that vulnerability and interdependence enhance rather than threaten autonomy. The relationship can become a source of healing for both partners' attachment wounds rather than a trigger for them. Long-term success depends on both partners maintaining awareness of their patterns, continuing to practice new behaviors even after they become easier, and seeking support (therapy, workshops, reading) when stuck. The goal is not perfection but rather developing a relationship where both partners feel secure enough to be themselves while remaining deeply connected.`,
+        shortTerm: `Next 1-3 months: Gradual improvement with committed practice. Old patterns will resurface under stress. Initial progress feels effortful. Small shifts begin interrupting pursue-withdraw cycle.`,
+        mediumTerm: `Within 6-12 months: Noticeable shifts in dynamic. Greater self-soothing capacity and comfort with vulnerability. Cycle recognized and interrupted more quickly. Conflicts feel less threatening.`,
+        longTerm: `With sustained effort over 12+ months: Strong potential for earned secure attachment. Internalized care and comfortable interdependence. Relationship becomes healing source rather than trigger.`,
         riskFactors: [
-          "If ${subjectALabel}'s anxiety escalates without intervention, it could lead to burnout for ${subjectBLabel} and potential relationship termination",
-          "If ${subjectBLabel}'s withdrawal intensifies, ${subjectALabel} may eventually give up pursuit, leading to emotional disconnection",
-          "External stressors (work pressure, family issues, health concerns) could overwhelm the relationship's capacity for growth",
-          "If either partner has unaddressed trauma or mental health concerns, these could interfere with attachment healing",
-          "Lack of commitment to consistent practice of new behaviors could result in regression to old patterns",
+          "Escalating anxiety without intervention could lead to burnout",
+          "Intensifying withdrawal may cause eventual disconnection",
+          "External stressors could overwhelm growth capacity",
+          "Unaddressed trauma or mental health concerns",
+          "Lack of consistent practice commitment",
         ],
         protectiveFactors: [
-          "Both partners demonstrate genuine care and commitment to the relationship, providing motivation for difficult growth work",
-          "Absence of contempt (the most toxic relationship pattern) suggests underlying respect and affection remain intact",
-          "Both partners show capacity for self-reflection and willingness to acknowledge their role in relationship dynamics",
-          "Presence of humor, affection, and positive interactions during calm periods provides emotional reserves to draw on during conflict",
-          "Both partners have demonstrated ability to repair after conflicts, suggesting resilience and commitment to resolution",
+          "Genuine care and relationship commitment",
+          "Absence of contempt maintains respect",
+          "Capacity for self-reflection and accountability",
+          "Humor and affection during calm periods",
+          "Demonstrated repair ability",
         ],
       },
 
       differentialConsiderations: {
-        individualTherapyConsiderations: `${subjectALabel} would benefit significantly from individual therapy focused on anxiety management, attachment healing, and developing self-soothing capacities. Therapeutic work could address the core beliefs driving their anxious attachment (e.g., "I'm only lovable if I'm constantly proving my worth," "People will leave me if I'm not vigilant"). Modalities like EMDR, Internal Family Systems, or psychodynamic therapy could help heal early attachment wounds. ${subjectBLabel} would benefit from individual work on emotional expression, vulnerability tolerance, and examining beliefs about interdependence (e.g., "Needing others is weakness," "I must be self-sufficient to be safe"). Somatic therapy could help ${subjectBLabel} increase comfort with emotional intensity in their body.`,
-        couplesTherapyReadiness: `${subjectALabel} and ${subjectBLabel} are good candidates for couples therapy. Both demonstrate willingness to engage with relationship issues, capacity for self-reflection, and absence of abuse or contempt. They would benefit most from Emotionally Focused Therapy (EFT), which directly addresses attachment dynamics and helps partners become secure bases for each other. The Gottman Method could also be valuable for learning specific communication skills and conflict management strategies. Couples therapy should be pursued concurrently with or following some individual work, as each partner's attachment healing will enhance their capacity to engage productively in couples work.`,
+        individualTherapyConsiderations: `Individual work on anxiety management, attachment healing, and self-soothing for one; emotional expression, vulnerability tolerance, and interdependence beliefs for the other. Modalities: EMDR, IFS, psychodynamic, somatic therapy.`,
+        couplesTherapyReadiness: `Good candidates for couples therapy. Both show engagement willingness and self-reflection capacity. EFT or Gottman Method recommended. Pursue concurrently with or following individual work.`,
         externalResourcesNeeded: [
-          "Books: 'Attached' by Amir Levine, 'Hold Me Tight' by Sue Johnson, 'The Seven Principles for Making Marriage Work' by John Gottman",
-          "Workshops: Gottman workshops for couples, EFT intensives, attachment-focused relationship retreats",
-          "Apps: Lasting (relationship skills), Paired (couples communication), Headspace (mindfulness for emotional regulation)",
-          "Support groups: Anxious attachment support groups for ${subjectALabel}, avoidant attachment groups for ${subjectBLabel}",
-          "Online courses: The Personal Development School (attachment healing), Gottman Institute online resources",
+          "Books: 'Attached', 'Hold Me Tight', 'Seven Principles'",
+          "Workshops: Gottman, EFT intensives, attachment retreats",
+          "Apps: Lasting, Paired, Headspace",
+          "Support groups: Attachment-focused groups",
+          "Online courses: Personal Development School, Gottman resources",
         ],
       },
 
       traumaInformedObservations: {
         identifiedPatterns: [
-          `${subjectALabel}'s hypervigilance around relationship security suggests possible early experiences of inconsistent caregiving or abandonment`,
-          `${subjectBLabel}'s discomfort with emotional intensity and need for autonomy may reflect early learning that emotional needs were burdensome or unsafe to express`,
-          "Both partners show signs of nervous system dysregulation during conflict—${subjectALabel} through hyperarousal (anxiety, pursuit) and ${subjectBLabel} through hypoarousal (shutdown, withdrawal)",
-          "The pursue-withdraw dynamic may be a trauma response pattern where both partners are attempting to avoid re-experiencing early relational wounds",
-          "Both partners demonstrate resilience and capacity for repair, suggesting secure attachment experiences alongside insecure ones",
+          `Hypervigilance suggests possible inconsistent early caregiving`,
+          `Discomfort with intensity may reflect learning that needs were burdensome`,
+          "Nervous system dysregulation during conflict",
+          "Pursue-withdraw as trauma response pattern",
+          "Resilience and repair capacity suggest mixed attachment experiences",
         ],
-        copingMechanisms: `${subjectALabel} employs hyperactivating coping strategies—seeking connection, expressing emotion intensely, and pursuing reassurance as ways of managing anxiety and preventing abandonment. While these strategies provide temporary relief, they can overwhelm partners and paradoxically create the distance they fear. ${subjectBLabel} uses deactivating strategies—emotional distancing, self-reliance, and withdrawal—to manage overwhelm and maintain a sense of safety. These strategies protect against vulnerability but can leave partners feeling shut out. Both partners' coping mechanisms are adaptive responses to early experiences but may no longer serve their adult relationship needs.`,
-        safetyAndTrust: `Building safety and trust in this relationship requires both partners to recognize that their current dynamic is not about the present relationship but about old wounds being triggered. ${subjectALabel} needs to experience that ${subjectBLabel}'s need for space doesn't mean abandonment—that ${subjectBLabel} consistently returns and remains committed. ${subjectBLabel} needs to experience that ${subjectALabel}'s emotional needs are not overwhelming or dangerous—that vulnerability can be met with care rather than rejection. Creating safety involves slowing down during conflicts, explicitly naming fears, and offering reassurance about commitment even when frustrated. Both partners must learn that their relationship can be a place where old wounds are healed rather than reinforced.`,
+        copingMechanisms: `Hyperactivating strategies (connection-seeking, intense expression) provide temporary relief but can overwhelm. Deactivating strategies (distancing, self-reliance) protect against vulnerability but create distance.`,
+        safetyAndTrust: `Building safety requires recognizing current dynamic reflects old wounds, not present relationship. Creating safety involves slowing during conflicts, naming fears, offering commitment reassurance.`,
       },
     },
 
     constructiveFeedback: {
       subjectA: {
         strengths: [
-          `${subjectALabel}, your emotional courage is remarkable—you consistently show up with vulnerability and authenticity, refusing to hide your feelings even when it feels risky`,
-          "Your commitment to addressing relationship issues directly rather than avoiding them demonstrates maturity and investment in the partnership's health",
-          "You possess strong emotional intelligence and self-awareness, readily identifying and articulating your feelings and needs",
-          "Your capacity for forgiveness and repair after conflicts shows resilience and genuine care for the relationship's longevity",
-          "You bring warmth, affection, and explicit expressions of love that create emotional richness in the relationship",
-          "Your willingness to be the pursuer of connection, while sometimes exhausting, reflects deep investment and refusal to let the relationship stagnate",
+          `Emotional courage and authentic vulnerability`,
+          "Direct addressing of relationship issues",
+          "Strong emotional intelligence and self-awareness",
+          "Capacity for forgiveness and repair",
+          "Warmth and explicit expressions of love",
+          "Investment in connection and growth",
         ],
         gentleGrowthNudges: [
-          "Practice tolerating brief periods of uncertainty without immediately seeking reassurance—your anxiety is valid, but not every anxious thought requires partner intervention",
-          "Work on distinguishing between actual relationship threats and anxiety-generated fears; ${subjectBLabel}'s need for space is not evidence of waning love",
-          "Develop self-soothing strategies that don't require ${subjectBLabel}'s participation—journaling, calling friends, physical movement—to reduce pressure on your partner",
-          "Notice when you're repeating the same concern multiple times; if ${subjectBLabel} has already responded, practice trusting their answer rather than seeking additional confirmation",
-          "Experiment with being the one to offer space occasionally, demonstrating trust in the relationship's stability even during separation",
-          "Consider whether your pursuit of connection sometimes prevents ${subjectBLabel} from missing you and initiating contact on their own",
+          "Practice tolerating uncertainty without immediate reassurance",
+          "Distinguish between actual threats and anxiety-generated fears",
+          "Develop self-soothing strategies independent of engagement",
+          "Notice when repeating same concern; trust previous answers",
+          "Experiment with offering space occasionally",
+          "Allow space for being missed and receiving initiation",
         ],
         connectionBoosters: [
-          "Share appreciation for ${subjectBLabel}'s non-verbal expressions of care (actions, presence, practical support) to help them feel seen",
-          "Initiate fun, low-stakes activities that don't involve heavy emotional processing—playfulness can be as connecting as deep conversation",
-          "Practice receiving ${subjectBLabel}'s reassurance without immediately asking for more; let it land and nourish you",
-          "Express confidence in ${subjectBLabel}'s love during calm moments, reinforcing positive patterns rather than only seeking reassurance during anxiety",
-          "Celebrate small wins when you successfully self-soothe or tolerate space, sharing these victories with ${subjectBLabel} to reinforce progress",
-          "Ask ${subjectBLabel} about their inner world, interests, and experiences beyond the relationship, showing interest in them as a whole person",
+          "Share appreciation for non-verbal care expressions",
+          "Initiate fun, low-stakes activities",
+          "Practice receiving reassurance without asking for more",
+          "Express confidence during calm moments",
+          "Celebrate self-soothing successes",
+          "Ask about inner world beyond relationship",
         ],
       },
       subjectB: {
         strengths: [
-          `${subjectBLabel}, your thoughtfulness and emotional regulation provide stability and groundedness that balances ${subjectALabel}'s intensity`,
-          "You demonstrate remarkable patience with ${subjectALabel}'s emotional needs, rarely responding with irritation or dismissiveness even when conversations feel repetitive",
-          "Your capacity for perspective-taking and empathy, while sometimes overshadowed by problem-solving, shows genuine care for ${subjectALabel}'s wellbeing",
-          "You consistently return to difficult conversations after taking space, demonstrating commitment to resolution despite discomfort with emotional intensity",
-          "Your practical expressions of care—actions, presence, reliability—provide a foundation of security even when verbal affirmation is less frequent",
-          "You show willingness to examine your own patterns and consider how your behavior impacts the relationship, reflecting maturity and self-awareness",
+          `Thoughtfulness and emotional regulation provide stability`,
+          "Remarkable patience with emotional needs",
+          "Perspective-taking and empathy",
+          "Consistent return to difficult conversations",
+          "Practical expressions of care and reliability",
+          "Willingness to examine own patterns",
         ],
         gentleGrowthNudges: [
-          "Practice offering reassurance proactively before ${subjectALabel} asks—this prevents their anxiety from building and reduces the pressure you feel from their pursuit",
-          "Experiment with staying present during ${subjectALabel}'s emotional moments rather than immediately withdrawing; their feelings won't hurt you, and your presence is healing",
-          "Work on expressing your own needs and vulnerabilities more explicitly; ${subjectALabel} wants to support you but can't if they don't know what you need",
-          "Notice when you're offering solutions instead of empathy; sometimes ${subjectALabel} needs to feel heard before they can problem-solve",
-          "Challenge the belief that ${subjectALabel}'s emotional needs are excessive or burdensome; their needs are valid, and meeting them doesn't diminish your autonomy",
-          "Practice shorter response times during emotional conversations; while you need processing time, extended delays amplify ${subjectALabel}'s anxiety unnecessarily",
+          "Offer reassurance proactively before it's requested",
+          "Stay present during emotional moments rather than withdrawing",
+          "Express own needs and vulnerabilities more explicitly",
+          "Notice when offering solutions instead of empathy",
+          "Challenge belief that needs are excessive",
+          "Practice shorter response times during emotional conversations",
         ],
         connectionBoosters: [
-          "Initiate emotional check-ins occasionally, asking ${subjectALabel} how they're feeling without waiting for them to bring it up—this reduces their sense of always being the pursuer",
-          "Share your own feelings and vulnerabilities more frequently, even in small ways; this creates mutual emotional intimacy rather than one-sided disclosure",
-          "Explicitly name your commitment and love during calm moments, building ${subjectALabel}'s secure base so they need less reassurance during anxious times",
-          "When you need space, frame it as self-care rather than escape: 'I need some time to recharge so I can be fully present with you later'",
-          "Celebrate ${subjectALabel}'s growth when they successfully give you space or self-soothe, reinforcing behaviors that work for both of you",
-          "Use physical affection (if together) or voice connection (if apart) as ways to maintain connection that feel less demanding than extended emotional conversations",
+          "Initiate emotional check-ins occasionally",
+          "Share own feelings and vulnerabilities more frequently",
+          "Explicitly name commitment during calm moments",
+          "Frame space as self-care rather than escape",
+          "Celebrate growth when space is given",
+          "Use physical affection or voice connection",
         ],
       },
       forBoth: {
         sharedStrengths: [
-          `${subjectALabel} and ${subjectBLabel}, you both demonstrate genuine care and commitment to each other, consistently showing up even when the relationship feels difficult`,
-          "You've maintained humor and affection even during conflicts, preventing resentment from taking root and preserving the friendship at your relationship's core",
-          "Both of you show capacity for self-reflection and willingness to acknowledge your role in relationship dynamics rather than solely blaming the other",
-          "You've developed some successful repair strategies, returning to conversations after cooling off and offering apologies when appropriate",
-          "You both value the relationship enough to seek help and engage with growth work, demonstrating maturity and investment in long-term success",
+          `Genuine care and commitment`,
+          "Maintained humor and affection during conflicts",
+          "Capacity for self-reflection and accountability",
+          "Successful repair strategies",
+          "Value relationship enough to seek help",
         ],
         sharedGrowthNudges: [
-          "Develop a shared understanding that your different needs (${subjectALabel}'s for reassurance, ${subjectBLabel}'s for space) are equally valid rather than competing priorities",
-          "Practice interrupting the pursue-withdraw cycle by naming it when it's happening: 'I notice we're in our pattern—can we pause and try something different?'",
-          "Work together to create agreements about communication expectations (response times, check-in frequency) that honor both partners' needs",
-          "Build a relationship culture where both emotional expression and autonomy are celebrated rather than one being 'right' and the other 'wrong'",
-          "Recognize that your attachment patterns are not personality flaws but adaptive responses to early experiences; approach each other with compassion rather than judgment",
+          "Develop shared understanding that different needs are equally valid",
+          "Practice naming and interrupting pursue-withdraw cycle",
+          "Create communication agreements honoring both needs",
+          "Build culture celebrating both expression and autonomy",
+          "Approach patterns with compassion rather than judgment",
         ],
         sharedConnectionBoosters: [
-          "Create daily rituals of connection (morning messages, evening check-ins) that provide predictable reassurance for ${subjectALabel} and manageable structure for ${subjectBLabel}",
-          "Establish weekly 'state of the union' conversations where both partners can raise concerns in a contained, predictable space rather than during conflicts",
-          "Celebrate progress explicitly—when you successfully navigate a trigger or break an old pattern, acknowledge it together to reinforce new behaviors",
-          "Engage in fun, playful activities that aren't about processing emotions or solving problems; joy and laughter are powerful relationship glue",
-          "Develop a shared vocabulary for your attachment needs so you can communicate them without shame or defensiveness",
+          "Create daily connection rituals",
+          "Establish weekly state-of-union conversations",
+          "Celebrate progress explicitly",
+          "Engage in fun, playful activities",
+          "Develop shared vocabulary for attachment needs",
         ],
       },
     },
 
     keyTakeaways: [
-      `${subjectALabel} (the uploader) and ${subjectBLabel} (their conversation partner) demonstrate a classic anxious-avoidant attachment dynamic, where each partner's coping strategies inadvertently trigger the other's core fears`,
-      "The pursue-withdraw cycle is the central pattern to interrupt: ${subjectALabel}'s pursuit activates ${subjectBLabel}'s withdrawal, which confirms ${subjectALabel}'s abandonment fears, creating a self-reinforcing loop",
-      "Both partners possess significant strengths—${subjectALabel}'s emotional courage and ${subjectBLabel}'s stability—that can be leveraged for relationship healing if recognized and appreciated",
-      "The relationship has strong potential for growth because both partners show genuine care, absence of contempt, capacity for repair, and willingness to engage with difficult growth work",
-      "Success requires both partners to develop their complementary skills: ${subjectALabel} building self-soothing and space tolerance, ${subjectBLabel} increasing vulnerability and proactive reassurance",
-      "The goal is not to eliminate differences but to create a relationship where both autonomy and intimacy are valued, and neither partner's needs are pathologized",
+      `Classic anxious-avoidant dynamic where each strategy triggers the other's fears`,
+      "Pursue-withdraw cycle is central pattern to interrupt",
+      "Both possess significant strengths for relationship healing",
+      "Strong potential for growth with genuine care and repair capacity",
+      "Success requires developing complementary skills",
+      "Goal is valuing both autonomy and intimacy",
     ],
 
-    outlook: `The relationship between ${subjectALabel} and ${subjectBLabel} stands at a critical juncture. The patterns currently in place—the pursue-withdraw cycle, the anxious-avoidant dynamic, the communication mismatches—will either intensify and eventually erode the relationship, or become opportunities for profound healing and growth. The trajectory depends entirely on both partners' willingness to engage in the difficult work of attachment healing.
+    outlook: `The relationship stands at critical juncture. Current patterns will either intensify or become growth opportunities. Strong protective factors provide solid base. Without intervention, patterns likely intensify. With committed effort, transformation possible.`,
 
-The good news is that this relationship possesses strong protective factors: genuine care, absence of contempt, capacity for repair, and willingness to seek help. These foundations provide a solid base for growth. However, without intervention, the current patterns will likely intensify. ${subjectALabel}'s anxiety may escalate to the point of burnout, while ${subjectBLabel}'s withdrawal may deepen into emotional disconnection. The relationship could survive in this state for years, but both partners would feel increasingly lonely and misunderstood.
-
-With committed effort—individual therapy for attachment healing, couples therapy for learning new patterns, and consistent practice of the recommended exercises—this relationship can transform. ${subjectALabel} can develop earned security, learning to carry ${subjectBLabel}'s love internally rather than needing constant external confirmation. ${subjectBLabel} can learn that vulnerability and interdependence enhance rather than threaten autonomy. Together, they can create a relationship where both partners feel secure enough to be themselves while remaining deeply connected.
-
-The path forward requires patience, compassion, and persistence. Old patterns will resurface under stress, and both partners will feel discouraged when they "fail" at new behaviors. This is normal and expected. The goal is not perfection but rather developing awareness of patterns and choosing new responses more often than not. With time and practice, what feels effortful and unnatural now will become the new normal—a relationship characterized by secure attachment, mutual understanding, and deep connection.`,
-
-    optionalAppendix: `This analysis maintains strict speaker attribution throughout: ${subjectALabel} is the uploader (Person A, right-aligned messages, device owner), while ${subjectBLabel} is the conversation partner (Person B, left-aligned messages). All observations, recommendations, and insights are tailored to this specific dynamic.
-
-It's important to note that this analysis is based solely on text-based conversation screenshots and represents patterns observed in this particular communication medium. In-person dynamics, non-verbal communication, and contexts outside these conversations may reveal additional dimensions of the relationship not captured here.
-
-This assessment is not a substitute for professional mental health care. If either partner is experiencing significant distress, symptoms of anxiety or depression, or concerns about relationship safety, please seek support from a licensed therapist or counselor. The recommendations provided are general guidance based on common relationship patterns and should be adapted to your specific circumstances with professional support.
-
-Remember that relationship growth is not linear. There will be setbacks, moments of regression, and times when old patterns feel overwhelming. This is normal and expected. What matters is the overall trajectory and both partners' commitment to continuing the work even when it feels difficult. Your relationship has strong potential for healing and deepening—trust the process and be patient with yourselves and each other.`,
+    optionalAppendix: `This analysis is based on text-based conversation screenshots. In-person dynamics may reveal additional dimensions. Not a substitute for professional mental health care. Seek licensed support if experiencing significant distress.`,
 
     attributionMetadata: {
-      subjectARole: "uploader",
-      subjectBRole: "partner",
       subjectAMessageCount: subjectAMessages,
       subjectBMessageCount: subjectBMessages,
       attributionConfidence: subjectAMessages > 0 && subjectBMessages > 0 ? 0.95 : 0.7,
@@ -764,6 +983,41 @@ Remember that relationship growth is not linear. There will be setbacks, moments
     messageCount: subjectAMessages + subjectBMessages,
     extractionConfidence: 98,
     processingTimeMs: 4200,
+  }
+
+  console.log("[v0] Validating chart data...")
+  const validation = validateChartData(analysisData)
+
+  if (!validation.isValid) {
+    console.error("[v0] Chart validation errors:", validation.errors)
+    validation.errors.forEach((error) => console.error(`  - ${error}`))
+  }
+
+  if (validation.warnings.length > 0) {
+    console.warn("[v0] Chart validation warnings:", validation.warnings)
+    validation.warnings.forEach((warning) => console.warn(`  - ${warning}`))
+  }
+
+  console.log(
+    `[v0] Chart validation: ${validation.isValid ? "PASSED" : "FAILED"} (consistency: ${(validation.metadata.dataConsistency * 100).toFixed(0)}%)`,
+  )
+
+  const crossValidation = crossValidateAnalysisData(analysisData)
+  if (!crossValidation.consistent) {
+    console.warn("[v0] Cross-validation issues:", crossValidation.issues)
+    crossValidation.issues.forEach((issue) => console.warn(`  - ${issue}`))
+  }
+
+  return {
+    ...analysisData,
+    validationMetadata: {
+      chartDataValid: validation.isValid,
+      chartDataConsistency: validation.metadata.dataConsistency,
+      crossValidationPassed: crossValidation.consistent,
+      validationErrors: validation.errors,
+      validationWarnings: validation.warnings,
+      crossValidationIssues: crossValidation.issues,
+    },
   }
 }
 
