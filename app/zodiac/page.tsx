@@ -26,7 +26,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { analyzeZodiacCompatibility } from "./actions"
 import PageLayout from "@/components/page-layout"
@@ -163,15 +162,18 @@ export default function ZodiacCompatibilityPage() {
                         <Label htmlFor="yourGender" className="text-sm sm:text-base font-medium">
                           Gender
                         </Label>
-                        <Select name="yourGender" value={yourGender} onValueChange={setYourGender} required>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select gender" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <select
+                          id="yourGender"
+                          name="yourGender"
+                          value={yourGender}
+                          onChange={(e) => setYourGender(e.target.value)}
+                          required
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="">Select gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                        </select>
                       </div>
                     </div>
 
@@ -196,15 +198,18 @@ export default function ZodiacCompatibilityPage() {
                         <Label htmlFor="partnerGender" className="text-sm sm:text-base font-medium">
                           Gender
                         </Label>
-                        <Select name="partnerGender" value={partnerGender} onValueChange={setPartnerGender} required>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select gender" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <select
+                          id="partnerGender"
+                          name="partnerGender"
+                          value={partnerGender}
+                          onChange={(e) => setPartnerGender(e.target.value)}
+                          required
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="">Select gender</option>
+                          <option value="male">Male</option>
+                          <option value="female">Female</option>
+                        </select>
                       </div>
                     </div>
                   </div>
