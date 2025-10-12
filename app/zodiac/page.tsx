@@ -28,7 +28,8 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { analyzeZodiacCompatibility } from "./actions"
-import PageLayout from "@/components/page-layout"
+import CompactHeader from "@/components/compact-header"
+import CompactFooter from "@/components/compact-footer"
 import { ResponsiveContainer, RadialBarChart, RadialBar } from "recharts"
 
 const COLORS = ["#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6"]
@@ -45,37 +46,48 @@ export default function ZodiacCompatibilityPage() {
     setIsAnalyzing(true)
     setError(null)
 
-    const formData = new FormData(e.currentTarget)
-    const response = await analyzeZodiacCompatibility(formData)
+    try {
+      const formData = new FormData(e.currentTarget)
+      const response = await analyzeZodiacCompatibility(formData)
 
-    if (response.error) {
-      setError(response.error)
+      if (response && response.error) {
+        setError(response.error)
+        setResults(null)
+      } else if (response) {
+        setResults(response)
+        setError(null)
+      } else {
+        setError("Failed to analyze compatibility. Please try again.")
+        setResults(null)
+      }
+    } catch (err) {
+      console.error("[v0] Zodiac analysis error:", err)
+      setError("An unexpected error occurred. Please try again.")
       setResults(null)
-    } else {
-      setResults(response)
+    } finally {
+      setIsAnalyzing(false)
     }
-
-    setIsAnalyzing(false)
   }
 
   return (
-    <PageLayout>
-      <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 py-8 sm:py-12 md:py-16 px-4">
-        <div className="max-w-6xl mx-auto space-y-8 sm:space-y-10 md:space-y-12">
+    <main className="min-h-screen bg-white">
+      <CompactHeader />
+      <div className="bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 py-6 sm:py-8 md:py-12 lg:py-16 px-3 sm:px-4">
+        <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 md:space-y-10 lg:space-y-12">
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center space-y-4 sm:space-y-6"
+            className="text-center space-y-3 sm:space-y-4 md:space-y-6"
           >
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Sparkles className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600" />
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
+            <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-purple-600 flex-shrink-0" />
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">
                 Zodiac Compatibility
               </h1>
-              <Moon className="w-8 h-8 sm:w-10 sm:h-10 text-pink-600" />
+              <Moon className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-pink-600 flex-shrink-0" />
             </div>
-            <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-sm sm:text-base md:text-lg lg:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed px-2">
               Discover the cosmic connection between you and your partner through the ancient wisdom of astrology
             </p>
           </motion.div>
@@ -85,7 +97,7 @@ export default function ZodiacCompatibilityPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6"
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 md:gap-6"
             >
               <Card className="border-purple-200 bg-white/80 backdrop-blur-sm">
                 <CardContent className="pt-6 text-center space-y-3">
@@ -132,15 +144,15 @@ export default function ZodiacCompatibilityPage() {
             transition={{ delay: 0.2 }}
           >
             <Card className="border-2 border-purple-200 bg-white/80 backdrop-blur-sm shadow-xl">
-              <CardHeader className="pb-4 sm:pb-6">
-                <CardTitle className="flex items-center gap-2 text-xl sm:text-2xl">
-                  <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+              <CardHeader className="pb-3 sm:pb-4 md:pb-6">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl md:text-2xl">
+                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-purple-600 flex-shrink-0" />
                   Enter Your Information
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div className="space-y-4 p-4 bg-blue-50 rounded-lg">
                       <h3 className="font-semibold text-blue-900 flex items-center gap-2">
                         <Sun className="w-5 h-5" />
@@ -216,24 +228,24 @@ export default function ZodiacCompatibilityPage() {
 
                   {error && (
                     <Alert className="border-red-200 bg-red-50">
-                      <AlertCircle className="h-4 w-4 text-red-600" />
-                      <AlertDescription className="text-red-800 ml-2">{error}</AlertDescription>
+                      <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                      <AlertDescription className="text-red-800 ml-2 text-sm">{error}</AlertDescription>
                     </Alert>
                   )}
 
                   <Button
                     type="submit"
                     disabled={isAnalyzing}
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-base sm:text-lg py-5 sm:py-6"
+                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm sm:text-base md:text-lg py-4 sm:py-5 md:py-6 touch-manipulation"
                   >
                     {isAnalyzing ? (
                       <>
-                        <Sparkles className="w-5 h-5 mr-2 animate-spin" />
+                        <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 mr-2 animate-spin" />
                         Analyzing Cosmic Connection...
                       </>
                     ) : (
                       <>
-                        <Star className="w-5 h-5 mr-2" />
+                        <Star className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                         Reveal Compatibility
                       </>
                     )}
@@ -249,7 +261,7 @@ export default function ZodiacCompatibilityPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="space-y-6 sm:space-y-8"
+                className="space-y-4 sm:space-y-6 md:space-y-8"
               >
                 {/* Compatibility Score */}
                 <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50 shadow-xl">
@@ -690,6 +702,7 @@ export default function ZodiacCompatibilityPage() {
           </AnimatePresence>
         </div>
       </div>
-    </PageLayout>
+      <CompactFooter />
+    </main>
   )
 }

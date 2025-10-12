@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { Heart } from "lucide-react"
 
 export default function CompactFooter() {
@@ -13,24 +12,6 @@ export default function CompactFooter() {
               Love Lens
             </h3>
             <span className="text-xs text-gray-500">© {currentYear}</span>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link href="/about" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
-              About
-            </Link>
-            <Link href="/faq" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
-              FAQ
-            </Link>
-            <Link href="/contact" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
-              Contact
-            </Link>
-            <Link href="/privacy" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
-              Privacy
-            </Link>
-            <Link href="/terms" className="text-xs text-gray-600 hover:text-purple-600 transition-colors">
-              Terms
-            </Link>
           </div>
 
           <div className="flex items-center gap-1 text-xs text-gray-500">

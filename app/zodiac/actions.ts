@@ -2,390 +2,7 @@
 
 import { generateText } from "ai"
 import { openai } from "@ai-sdk/openai"
-
-interface ZodiacSign {
-  sign: string
-  element: string
-  quality: string
-  rulingPlanet: string
-  traits: string[]
-  strengths: string[]
-  weaknesses: string[]
-}
-
-const zodiacSigns: Record<string, ZodiacSign> = {
-  aries: {
-    sign: "Aries",
-    element: "Fire",
-    quality: "Cardinal",
-    rulingPlanet: "Mars",
-    traits: ["Bold", "Ambitious", "Confident", "Enthusiastic", "Impulsive"],
-    strengths: ["Courageous", "Determined", "Confident", "Enthusiastic", "Optimistic"],
-    weaknesses: ["Impatient", "Moody", "Short-tempered", "Impulsive", "Aggressive"],
-  },
-  taurus: {
-    sign: "Taurus",
-    element: "Earth",
-    quality: "Fixed",
-    rulingPlanet: "Venus",
-    traits: ["Reliable", "Patient", "Practical", "Devoted", "Stubborn"],
-    strengths: ["Reliable", "Patient", "Practical", "Devoted", "Responsible"],
-    weaknesses: ["Stubborn", "Possessive", "Uncompromising", "Materialistic"],
-  },
-  gemini: {
-    sign: "Gemini",
-    element: "Air",
-    quality: "Mutable",
-    rulingPlanet: "Mercury",
-    traits: ["Adaptable", "Outgoing", "Intelligent", "Curious", "Indecisive"],
-    strengths: ["Gentle", "Affectionate", "Curious", "Adaptable", "Quick learner"],
-    weaknesses: ["Nervous", "Inconsistent", "Indecisive", "Superficial"],
-  },
-  cancer: {
-    sign: "Cancer",
-    element: "Water",
-    quality: "Cardinal",
-    rulingPlanet: "Moon",
-    traits: ["Intuitive", "Emotional", "Protective", "Sympathetic", "Moody"],
-    strengths: ["Tenacious", "Loyal", "Emotional", "Sympathetic", "Persuasive"],
-    weaknesses: ["Moody", "Pessimistic", "Suspicious", "Manipulative", "Insecure"],
-  },
-  leo: {
-    sign: "Leo",
-    element: "Fire",
-    quality: "Fixed",
-    rulingPlanet: "Sun",
-    traits: ["Creative", "Passionate", "Generous", "Warm-hearted", "Arrogant"],
-    strengths: ["Creative", "Passionate", "Generous", "Warm-hearted", "Cheerful"],
-    weaknesses: ["Arrogant", "Stubborn", "Self-centered", "Inflexible", "Lazy"],
-  },
-  virgo: {
-    sign: "Virgo",
-    element: "Earth",
-    quality: "Mutable",
-    rulingPlanet: "Mercury",
-    traits: ["Analytical", "Practical", "Diligent", "Reliable", "Critical"],
-    strengths: ["Loyal", "Analytical", "Kind", "Hardworking", "Practical"],
-    weaknesses: ["Shyness", "Worry", "Overly critical", "Perfectionist"],
-  },
-  libra: {
-    sign: "Libra",
-    element: "Air",
-    quality: "Cardinal",
-    rulingPlanet: "Venus",
-    traits: ["Diplomatic", "Fair-minded", "Social", "Indecisive", "Gracious"],
-    strengths: ["Cooperative", "Diplomatic", "Gracious", "Fair-minded", "Social"],
-    weaknesses: ["Indecisive", "Avoids confrontations", "Self-pity", "Holds grudges"],
-  },
-  scorpio: {
-    sign: "Scorpio",
-    element: "Water",
-    quality: "Fixed",
-    rulingPlanet: "Pluto",
-    traits: ["Passionate", "Resourceful", "Brave", "Jealous", "Secretive"],
-    strengths: ["Resourceful", "Brave", "Passionate", "Stubborn", "True friend"],
-    weaknesses: ["Distrusting", "Jealous", "Secretive", "Violent", "Manipulative"],
-  },
-  sagittarius: {
-    sign: "Sagittarius",
-    element: "Fire",
-    quality: "Mutable",
-    rulingPlanet: "Jupiter",
-    traits: ["Optimistic", "Freedom-loving", "Honest", "Philosophical", "Careless"],
-    strengths: ["Generous", "Idealistic", "Great sense of humor", "Optimistic"],
-    weaknesses: ["Promises more than can deliver", "Impatient", "Tactless"],
-  },
-  capricorn: {
-    sign: "Capricorn",
-    element: "Earth",
-    quality: "Cardinal",
-    rulingPlanet: "Saturn",
-    traits: ["Responsible", "Disciplined", "Self-control", "Ambitious", "Pessimistic"],
-    strengths: ["Responsible", "Disciplined", "Self-control", "Good managers"],
-    weaknesses: ["Know-it-all", "Unforgiving", "Condescending", "Pessimistic"],
-  },
-  aquarius: {
-    sign: "Aquarius",
-    element: "Air",
-    quality: "Fixed",
-    rulingPlanet: "Uranus",
-    traits: ["Progressive", "Original", "Independent", "Humanitarian", "Aloof"],
-    strengths: ["Progressive", "Original", "Independent", "Humanitarian"],
-    weaknesses: ["Runs from emotional expression", "Temperamental", "Aloof"],
-  },
-  pisces: {
-    sign: "Pisces",
-    element: "Water",
-    quality: "Mutable",
-    rulingPlanet: "Neptune",
-    traits: ["Compassionate", "Artistic", "Intuitive", "Gentle", "Overly trusting"],
-    strengths: ["Compassionate", "Artistic", "Intuitive", "Gentle", "Wise"],
-    weaknesses: ["Fearful", "Overly trusting", "Sad", "Desire to escape reality"],
-  },
-}
-
-function getZodiacSign(month: number, day: number): string {
-  if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) return "aries"
-  if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) return "taurus"
-  if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) return "gemini"
-  if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) return "cancer"
-  if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) return "leo"
-  if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) return "virgo"
-  if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) return "libra"
-  if ((month === 10 && day >= 23) || (month === 11 && day <= 21)) return "scorpio"
-  if ((month === 11 && day >= 22) || (month === 12 && day <= 21)) return "sagittarius"
-  if ((month === 12 && day >= 22) || (month === 1 && day <= 19)) return "capricorn"
-  if ((month === 1 && day >= 20) || (month === 2 && day <= 18)) return "aquarius"
-  return "pisces"
-}
-
-function calculateCompatibility(sign1: string, sign2: string): number {
-  const compatibilityMatrix: Record<string, Record<string, number>> = {
-    aries: {
-      aries: 75,
-      taurus: 60,
-      gemini: 85,
-      cancer: 55,
-      leo: 90,
-      virgo: 65,
-      libra: 80,
-      scorpio: 70,
-      sagittarius: 95,
-      capricorn: 60,
-      aquarius: 85,
-      pisces: 65,
-    },
-    taurus: {
-      aries: 60,
-      taurus: 80,
-      gemini: 65,
-      cancer: 90,
-      leo: 70,
-      virgo: 95,
-      libra: 75,
-      scorpio: 85,
-      sagittarius: 60,
-      capricorn: 95,
-      aquarius: 65,
-      pisces: 90,
-    },
-    gemini: {
-      aries: 85,
-      taurus: 65,
-      gemini: 75,
-      cancer: 60,
-      leo: 85,
-      virgo: 70,
-      libra: 95,
-      scorpio: 65,
-      sagittarius: 85,
-      capricorn: 60,
-      aquarius: 95,
-      pisces: 70,
-    },
-    cancer: {
-      aries: 55,
-      taurus: 90,
-      gemini: 60,
-      cancer: 80,
-      leo: 65,
-      virgo: 85,
-      libra: 70,
-      scorpio: 95,
-      sagittarius: 55,
-      capricorn: 85,
-      aquarius: 60,
-      pisces: 95,
-    },
-    leo: {
-      aries: 90,
-      taurus: 70,
-      gemini: 85,
-      cancer: 65,
-      leo: 80,
-      virgo: 70,
-      libra: 90,
-      scorpio: 75,
-      sagittarius: 95,
-      capricorn: 65,
-      aquarius: 85,
-      pisces: 70,
-    },
-    virgo: {
-      aries: 65,
-      taurus: 95,
-      gemini: 70,
-      cancer: 85,
-      leo: 70,
-      virgo: 80,
-      libra: 75,
-      scorpio: 85,
-      sagittarius: 65,
-      capricorn: 95,
-      aquarius: 70,
-      pisces: 85,
-    },
-    libra: {
-      aries: 80,
-      taurus: 75,
-      gemini: 95,
-      cancer: 70,
-      leo: 90,
-      virgo: 75,
-      libra: 80,
-      scorpio: 70,
-      sagittarius: 85,
-      capricorn: 70,
-      aquarius: 95,
-      pisces: 75,
-    },
-    scorpio: {
-      aries: 70,
-      taurus: 85,
-      gemini: 65,
-      cancer: 95,
-      leo: 75,
-      virgo: 85,
-      libra: 70,
-      scorpio: 80,
-      sagittarius: 65,
-      capricorn: 90,
-      aquarius: 70,
-      pisces: 95,
-    },
-    sagittarius: {
-      aries: 95,
-      taurus: 60,
-      gemini: 85,
-      cancer: 55,
-      leo: 95,
-      virgo: 65,
-      libra: 85,
-      scorpio: 65,
-      sagittarius: 80,
-      capricorn: 60,
-      aquarius: 90,
-      pisces: 70,
-    },
-    capricorn: {
-      aries: 60,
-      taurus: 95,
-      gemini: 60,
-      cancer: 85,
-      leo: 65,
-      virgo: 95,
-      libra: 70,
-      scorpio: 90,
-      sagittarius: 60,
-      capricorn: 80,
-      aquarius: 65,
-      pisces: 85,
-    },
-    aquarius: {
-      aries: 85,
-      taurus: 65,
-      gemini: 95,
-      cancer: 60,
-      leo: 85,
-      virgo: 70,
-      libra: 95,
-      scorpio: 70,
-      sagittarius: 90,
-      capricorn: 65,
-      aquarius: 80,
-      pisces: 75,
-    },
-    pisces: {
-      aries: 65,
-      taurus: 90,
-      gemini: 70,
-      cancer: 95,
-      leo: 70,
-      virgo: 85,
-      libra: 75,
-      scorpio: 95,
-      sagittarius: 70,
-      capricorn: 85,
-      aquarius: 75,
-      pisces: 80,
-    },
-  }
-
-  return compatibilityMatrix[sign1]?.[sign2] || 70
-}
-
-export async function analyzeZodiacCompatibility(formData: FormData) {
-  try {
-    const yourBirthDate = formData.get("yourBirthDate") as string
-    const partnerBirthDate = formData.get("partnerBirthDate") as string
-    const yourGender = formData.get("yourGender") as string
-    const partnerGender = formData.get("partnerGender") as string
-
-    if (!yourBirthDate || !partnerBirthDate || !yourGender || !partnerGender) {
-      return { error: "Please provide all required information" }
-    }
-
-    const yourDate = new Date(yourBirthDate)
-    const partnerDate = new Date(partnerBirthDate)
-
-    const yourSign = getZodiacSign(yourDate.getMonth() + 1, yourDate.getDate())
-    const partnerSign = getZodiacSign(partnerDate.getMonth() + 1, partnerDate.getDate())
-
-    const yourZodiac = zodiacSigns[yourSign]
-    const partnerZodiac = zodiacSigns[partnerSign]
-
-    const today = new Date()
-    const yourAge = today.getFullYear() - yourDate.getFullYear()
-    const partnerAge = today.getFullYear() - partnerDate.getFullYear()
-    const ageDiff = Math.abs(yourAge - partnerAge)
-
-    const baseCompatibilityScore = calculateCompatibility(yourSign, partnerSign)
-
-    const detailedAnalysis = await generateDetailedAnalysis(
-      yourZodiac,
-      partnerZodiac,
-      yourAge,
-      partnerAge,
-      yourGender,
-      partnerGender,
-      baseCompatibilityScore,
-    )
-
-    const similarities: string[] = []
-    const differences: string[] = []
-
-    if (yourZodiac.element === partnerZodiac.element) {
-      similarities.push(`Both ${yourZodiac.element} signs - natural understanding of each other's energy`)
-    } else {
-      differences.push(`Different elements: ${yourZodiac.element} vs ${partnerZodiac.element}`)
-    }
-
-    if (yourZodiac.quality === partnerZodiac.quality) {
-      similarities.push(`Same quality (${yourZodiac.quality}) - similar approach to life`)
-    } else {
-      differences.push(`Different qualities: ${yourZodiac.quality} vs ${partnerZodiac.quality}`)
-    }
-
-    return {
-      yourZodiac,
-      partnerZodiac,
-      compatibilityScore: baseCompatibilityScore,
-      yourAge,
-      partnerAge,
-      ageDiff,
-      yourGender,
-      partnerGender,
-      similarities,
-      differences,
-      detailedAnalysis,
-      yourBirthDate,
-      partnerBirthDate,
-    }
-  } catch (error) {
-    console.error("Zodiac analysis error:", error)
-    return { error: "Failed to analyze compatibility. Please check your information and try again." }
-  }
-}
+import type { ZodiacSign } from "./types" // Declare or import ZodiacSign here
 
 async function generateDetailedAnalysis(
   yourZodiac: ZodiacSign,
@@ -394,149 +11,41 @@ async function generateDetailedAnalysis(
   partnerAge: number,
   yourGender: string,
   partnerGender: string,
-  baseCompatibilityScore: number, // Corrected: variable name was 'baseScore' in fallback, changed to match here.
+  baseCompatibilityScore: number,
 ) {
   try {
     const { text } = await generateText({
       model: openai("gpt-4o-mini"),
-      temperature: 0.7,
-      maxTokens: 4000,
+      temperature: 0.8,
+      maxTokens: 3500,
       messages: [
         {
           role: "system",
-          content: `You are an expert astrologer, relationship psychologist, and couples therapist. Generate detailed, nuanced compatibility analysis using psychological frameworks including attachment theory, Gottman Method, emotional intelligence, and trauma-informed approaches. Be insightful, specific, and personalized. Use 2-3 sentences per section.`,
+          content: `Expert astrologer & relationship psychologist. Generate comprehensive compatibility analysis using attachment theory, Gottman Method, and emotional intelligence. Output ONLY valid JSON.`,
         },
         {
           role: "user",
-          content: `Analyze compatibility between:
-Person 1: ${yourZodiac.sign} (${yourGender}, age ${yourAge})
-Person 2: ${partnerZodiac.sign} (${partnerGender}, age ${partnerAge})
-
-Generate JSON with this structure:
-{
-  "personalityInsights": {
-    "person1": "2-3 sentences about their personality based on zodiac and gender",
-    "person2": "2-3 sentences about their personality",
-    "compatibility": "2-3 sentences about how their personalities mesh"
-  },
-  "ageCompatibility": {
-    "analysis": "2-3 sentences about age difference impact (${Math.abs(yourAge - partnerAge)} years)",
-    "score": number 1-100
-  },
-  "passions": {
-    "person1": ["passion1", "passion2", "passion3"],
-    "person2": ["passion1", "passion2", "passion3"],
-    "shared": ["shared passion 1", "shared passion 2"]
-  },
-  "attributes": {
-    "person1": {
-      "physical": "brief description",
-      "emotional": "brief description",
-      "mental": "brief description"
-    },
-    "person2": {
-      "physical": "brief description",
-      "emotional": "brief description",
-      "mental": "brief description"
-    }
-  },
-  "ambitions": {
-    "person1": "2-3 sentences about career and life goals",
-    "person2": "2-3 sentences about career and life goals",
-    "alignment": "2-3 sentences about how their ambitions align"
-  },
-  "sexualCompatibility": {
-    "chemistry": "2-3 sentences about physical chemistry and attraction",
-    "intimacyStyle": "2-3 sentences about intimacy preferences",
-    "score": number 1-100
-  },
-  "loveLanguage": {
-    "person1": {
-      "primary": "Words of Affirmation|Quality Time|Physical Touch|Acts of Service|Receiving Gifts",
-      "description": "brief explanation"
-    },
-    "person2": {
-      "primary": "Words of Affirmation|Quality Time|Physical Touch|Acts of Service|Receiving Gifts",
-      "description": "brief explanation"
-    },
-    "compatibility": "2-3 sentences about love language compatibility"
-  },
-  "relationshipDynamics": {
-    "genderDynamics": "2-3 sentences about ${yourGender}-${partnerGender} relationship dynamics",
-    "powerBalance": "2-3 sentences about power dynamics",
-    "conflictStyle": "2-3 sentences about how they handle conflict"
-  },
-  "attachmentTheory": {
-    "person1": {
-      "style": "Secure|Anxious-Preoccupied|Dismissive-Avoidant|Fearful-Avoidant",
-      "description": "2-3 sentences about attachment patterns based on zodiac",
-      "triggers": ["trigger1", "trigger2", "trigger3"]
-    },
-    "person2": {
-      "style": "Secure|Anxious-Preoccupied|Dismissive-Avoidant|Fearful-Avoidant",
-      "description": "2-3 sentences about attachment patterns",
-      "triggers": ["trigger1", "trigger2", "trigger3"]
-    },
-    "dyad": "2-3 sentences about how their attachment styles interact"
-  },
-  "emotionalIntelligence": {
-    "person1": {
-      "selfAwareness": number 1-10,
-      "selfRegulation": number 1-10,
-      "empathy": number 1-10,
-      "socialSkills": number 1-10
-    },
-    "person2": {
-      "selfAwareness": number 1-10,
-      "selfRegulation": number 1-10,
-      "empathy": number 1-10,
-      "socialSkills": number 1-10
-    },
-    "analysis": "2-3 sentences about emotional intelligence compatibility"
-  },
-  "gottmanPrinciples": {
-    "positiveToNegativeRatio": "2-3 sentences about expected interaction patterns",
-    "fourHorsemen": ["potential horseman 1", "potential horseman 2"],
-    "repairAttempts": "2-3 sentences about how they likely repair conflicts"
-  },
-  "communicationPatterns": {
-    "person1Style": "2-3 sentences about communication approach",
-    "person2Style": "2-3 sentences about communication approach",
-    "compatibility": "2-3 sentences about communication compatibility"
-  },
-  "conflictResolution": {
-    "person1Approach": "2-3 sentences about conflict handling",
-    "person2Approach": "2-3 sentences about conflict handling",
-    "recommendations": ["tip1", "tip2", "tip3"]
-  },
-  "therapeuticRecommendations": {
-    "exercises": ["exercise1", "exercise2", "exercise3"],
-    "focusAreas": ["area1", "area2", "area3"],
-    "suggestedModalities": ["modality1", "modality2"]
-  },
-  "prognosis": {
-    "shortTerm": "2-3 sentences about 1-3 month outlook",
-    "longTerm": "2-3 sentences about 12+ month outlook",
-    "riskFactors": ["risk1", "risk2"],
-    "protectiveFactors": ["factor1", "factor2", "factor3"]
-  },
-  "advice": {
-    "success": ["tip 1", "tip 2", "tip 3", "tip 4"],
-    "awareness": ["warning 1", "warning 2", "warning 3"]
-  }
-}`,
+          content: `Analyze ${yourZodiac.sign} (${yourGender}, ${yourAge}) + ${partnerZodiac.sign} (${partnerGender}, ${partnerAge}). Generate detailed JSON with 3-4 sentence descriptions per field, specific examples, and actionable insights. Use varied, engaging language.`,
         },
       ],
     })
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      throw new Error("No JSON found in response")
+    let jsonText = text.trim()
+    const codeBlockMatch = jsonText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1]
+    } else {
+      const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        jsonText = jsonMatch[0]
+      }
     }
 
-    return JSON.parse(jsonMatch[0])
+    jsonText = jsonText.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").replace(/,(\s*[}\]])/g, "$1")
+
+    return JSON.parse(jsonText)
   } catch (error) {
-    console.error("AI analysis error:", error)
+    console.error("[v0] AI analysis error:", error)
     return createFallbackDetailedAnalysis(
       yourZodiac,
       partnerZodiac,
@@ -556,14 +65,13 @@ function createFallbackDetailedAnalysis(
   partnerAge: number,
   yourGender: string,
   partnerGender: string,
-  baseCompatibilityScore: number, // Corrected parameter name to match generateDetailedAnalysis
+  baseCompatibilityScore: number,
 ) {
-  // Determine attachment styles based on zodiac elements and qualities
   const getAttachmentStyle = (zodiac: ZodiacSign) => {
     if (zodiac.element === "Water") return "Anxious-Preoccupied"
     if (zodiac.element === "Earth") return "Secure"
     if (zodiac.element === "Air") return "Dismissive-Avoidant"
-    return "Secure" // Fire signs tend toward secure when healthy
+    return "Secure"
   }
 
   const yourAttachment = getAttachmentStyle(yourZodiac)
@@ -571,67 +79,49 @@ function createFallbackDetailedAnalysis(
 
   return {
     personalityInsights: {
-      person1: `As a ${yourZodiac.sign}, you embody ${yourZodiac.traits.slice(0, 3).join(", ")} qualities. Your ${yourZodiac.element} nature drives you to seek ${yourZodiac.element === "Fire" ? "passion and adventure" : yourZodiac.element === "Earth" ? "stability and security" : yourZodiac.element === "Air" ? "intellectual stimulation" : "emotional depth"}.`,
-      person2: `Your partner's ${partnerZodiac.sign} personality is characterized by ${partnerZodiac.traits.slice(0, 3).join(", ")} traits. Their ${partnerZodiac.element} essence creates a ${partnerZodiac.element === "Fire" ? "dynamic and energetic" : partnerZodiac.element === "Earth" ? "grounded and practical" : partnerZodiac.element === "Air" ? "communicative and social" : "intuitive and empathetic"} presence.`,
-      compatibility: `Your ${yourZodiac.element}-${partnerZodiac.element} combination creates ${yourZodiac.element === partnerZodiac.element ? "natural harmony and mutual understanding" : "complementary energies that can balance each other beautifully"}. Together, you bring out ${yourZodiac.strengths[0].toLowerCase()} and ${partnerZodiac.strengths[0].toLowerCase()} qualities in each other.`,
+      person1: `As a ${yourZodiac.sign}, you embody ${yourZodiac.element} energy through ${yourZodiac.traits.slice(0, 3).join(", ").toLowerCase()} qualities. Your ${yourZodiac.quality.toLowerCase()} nature drives you to ${yourZodiac.quality === "Cardinal" ? "initiate and lead" : yourZodiac.quality === "Fixed" ? "maintain and perfect" : "adapt and flow"}, creating a distinct relational style.`,
+      person2: `Your ${partnerZodiac.sign} partner radiates ${partnerZodiac.element} essence through ${partnerZodiac.traits.slice(0, 3).join(", ").toLowerCase()} characteristics. Their ${partnerZodiac.quality.toLowerCase()} approach manifests as ${partnerZodiac.quality === "Cardinal" ? "pioneering leadership" : partnerZodiac.quality === "Fixed" ? "steadfast dedication" : "flexible versatility"}.`,
+      compatibility: `The ${yourZodiac.element}-${partnerZodiac.element} combination creates ${yourZodiac.element === partnerZodiac.element ? "natural resonance and mutual understanding" : "complementary dynamics requiring conscious bridging"}. Together, you activate growth in ${yourZodiac.strengths[0].toLowerCase()} and ${partnerZodiac.strengths[0].toLowerCase()} areas.`,
     },
     ageCompatibility: {
-      analysis: `With a ${Math.abs(yourAge - partnerAge)}-year age difference, you're ${Math.abs(yourAge - partnerAge) <= 5 ? "close in life stage, sharing similar experiences and perspectives" : Math.abs(yourAge - partnerAge) <= 10 ? "at slightly different life stages, which can offer fresh perspectives and growth opportunities" : "at notably different life stages, bringing diverse wisdom and experiences to the relationship"}. This dynamic ${Math.abs(yourAge - partnerAge) <= 5 ? "fosters easy understanding" : "can enrich your connection with varied viewpoints"}.`,
+      analysis: `Your ${Math.abs(yourAge - partnerAge)}-year age difference ${Math.abs(yourAge - partnerAge) <= 5 ? "creates natural alignment in life stages and shared experiences" : "introduces different perspectives and life wisdom that can enrich the relationship"}. This gap ${Math.abs(yourAge - partnerAge) <= 3 ? "minimizes generational friction" : "requires conscious effort to bridge different life experiences"}.`,
       score: Math.max(60, 100 - Math.abs(yourAge - partnerAge) * 3),
     },
     passions: {
       person1: [
-        yourZodiac.element === "Fire"
-          ? "Adventure & Travel"
-          : yourZodiac.element === "Earth"
-            ? "Building & Creating"
-            : yourZodiac.element === "Air"
-              ? "Learning & Communication"
-              : "Art & Emotional Expression",
-        yourZodiac.quality === "Cardinal"
-          ? "Leadership & Initiative"
-          : yourZodiac.quality === "Fixed"
-            ? "Dedication & Mastery"
-            : "Variety & Exploration",
-        yourZodiac.sign,
+        `${yourZodiac.element} pursuits`,
+        `${yourZodiac.quality} activities`,
+        `${yourZodiac.sign}-specific interests`,
+        "Personal growth",
       ],
       person2: [
-        partnerZodiac.element === "Fire"
-          ? "Excitement & Competition"
-          : partnerZodiac.element === "Earth"
-            ? "Nature & Craftsmanship"
-            : partnerZodiac.element === "Air"
-              ? "Ideas & Social Connection"
-              : "Music & Spirituality",
-        partnerZodiac.quality === "Cardinal"
-          ? "Innovation & Change"
-          : partnerZodiac.quality === "Fixed"
-            ? "Loyalty & Commitment"
-            : "Flexibility & Adaptation",
-        partnerZodiac.sign,
+        `${partnerZodiac.element} endeavors`,
+        `${partnerZodiac.quality} projects`,
+        `${partnerZodiac.sign}-specific hobbies`,
+        "Relationship building",
       ],
-      shared: ["Deep Connection", "Personal Growth", "Shared Experiences"],
+      shared: ["Emotional connection", "Mutual growth", "Shared experiences"],
     },
     attributes: {
       person1: {
-        physical: `${yourZodiac.element === "Fire" ? "Energetic and dynamic presence" : yourZodiac.element === "Earth" ? "Grounded and steady demeanor" : yourZodiac.element === "Air" ? "Light and expressive energy" : "Fluid and intuitive movements"}`,
-        emotional: `${yourZodiac.element === "Water" || yourZodiac.sign === "Cancer" || yourZodiac.sign === "Pisces" ? "Deeply empathetic and emotionally attuned" : yourZodiac.element === "Fire" ? "Passionate and expressive with feelings" : yourZodiac.element === "Earth" ? "Stable and reliable emotionally" : "Intellectually processes emotions"}`,
-        mental: `${yourZodiac.element === "Air" ? "Quick-thinking and communicative" : yourZodiac.element === "Fire" ? "Intuitive and action-oriented" : yourZodiac.element === "Earth" ? "Practical and methodical" : "Imaginative and perceptive"}`,
+        physical: `${yourZodiac.element === "Fire" ? "Dynamic, energetic presence" : yourZodiac.element === "Earth" ? "Grounded, solid presence" : yourZodiac.element === "Air" ? "Light, expressive presence" : "Fluid, intuitive presence"} with natural ${yourZodiac.strengths[0].toLowerCase()}.`,
+        emotional: `${yourZodiac.element === "Water" ? "Deeply empathetic and sensitive" : yourZodiac.element === "Fire" ? "Passionate and expressive" : yourZodiac.element === "Earth" ? "Stable and reliable" : "Intellectually processes emotions"}, creating ${yourZodiac.element} emotional landscape.`,
+        mental: `${yourZodiac.element === "Air" ? "Quick-thinking and analytical" : yourZodiac.element === "Fire" ? "Intuitive and action-oriented" : yourZodiac.element === "Earth" ? "Practical and methodical" : "Imaginative and perceptive"} approach to challenges.`,
       },
       person2: {
-        physical: `${partnerZodiac.element === "Fire" ? "Vibrant and magnetic aura" : partnerZodiac.element === "Earth" ? "Solid and comforting presence" : partnerZodiac.element === "Air" ? "Graceful and animated" : "Gentle and flowing energy"}`,
-        emotional: `${partnerZodiac.element === "Water" || partnerZodiac.sign === "Cancer" || partnerZodiac.sign === "Pisces" ? "Highly sensitive and nurturing" : partnerZodiac.element === "Fire" ? "Bold and direct with emotions" : partnerZodiac.element === "Earth" ? "Emotionally grounded and secure" : "Rational yet caring"}`,
-        mental: `${partnerZodiac.element === "Air" ? "Analytical and socially intelligent" : partnerZodiac.element === "Fire" ? "Visionary and spontaneous" : partnerZodiac.element === "Earth" ? "Logical and detail-oriented" : "Creative and intuitive"}`,
+        physical: `${partnerZodiac.element === "Fire" ? "Vibrant, magnetic presence" : partnerZodiac.element === "Earth" ? "Solid, comforting presence" : partnerZodiac.element === "Air" ? "Graceful, animated presence" : "Gentle, flowing presence"} with ${partnerZodiac.strengths[0].toLowerCase()} energy.`,
+        emotional: `${partnerZodiac.element === "Water" ? "Highly sensitive and nurturing" : partnerZodiac.element === "Fire" ? "Bold and direct" : partnerZodiac.element === "Earth" ? "Emotionally grounded" : "Rational yet caring"} emotional style.`,
+        mental: `${partnerZodiac.element === "Air" ? "Analytical and socially intelligent" : partnerZodiac.element === "Fire" ? "Visionary and spontaneous" : partnerZodiac.element === "Earth" ? "Logical and detail-oriented" : "Creative and intuitive"} thinking patterns.`,
       },
     },
     ambitions: {
-      person1: `As a ${yourZodiac.sign}, you're driven toward ${yourZodiac.quality === "Cardinal" ? "leadership roles and pioneering new paths" : yourZodiac.quality === "Fixed" ? "mastery and building lasting legacies" : "diverse experiences and continuous learning"}. Your ${yourZodiac.element} nature pushes you to achieve through ${yourZodiac.element === "Fire" ? "bold action and innovation" : yourZodiac.element === "Earth" ? "steady progress and tangible results" : yourZodiac.element === "Air" ? "networking and intellectual pursuits" : "intuition and creative expression"}.`,
-      person2: `Your partner's ${partnerZodiac.sign} ambitions center on ${partnerZodiac.quality === "Cardinal" ? "initiating change and leading others" : partnerZodiac.quality === "Fixed" ? "perfecting their craft and creating stability" : "exploring possibilities and adapting to opportunities"}. Their ${partnerZodiac.element} approach means they pursue goals through ${partnerZodiac.element === "Fire" ? "passion and determination" : partnerZodiac.element === "Earth" ? "practical planning and persistence" : partnerZodiac.element === "Air" ? "collaboration and communication" : "emotional intelligence and creativity"}.`,
-      alignment: `Your ambitions ${yourZodiac.quality === partnerZodiac.quality ? "align beautifully, as you both approach goals with similar energy and timing" : "complement each other, with different approaches that can create a balanced partnership"}. Together, you can ${yourZodiac.element === partnerZodiac.element ? "amplify each other's strengths" : "provide what the other lacks"}, creating a powerful team.`,
+      person1: `Your ${yourZodiac.sign} ambitions center on ${yourZodiac.quality === "Cardinal" ? "pioneering new territories" : yourZodiac.quality === "Fixed" ? "building lasting legacies" : "exploring diverse paths"}. Your ${yourZodiac.element} nature drives you through ${yourZodiac.element === "Fire" ? "bold action" : yourZodiac.element === "Earth" ? "practical planning" : yourZodiac.element === "Air" ? "networking" : "intuition"}.`,
+      person2: `Your partner's ${partnerZodiac.sign} goals revolve around ${partnerZodiac.quality === "Cardinal" ? "initiating change" : partnerZodiac.quality === "Fixed" ? "achieving excellence" : "maintaining freedom"}. Their ${partnerZodiac.element} approach emphasizes ${partnerZodiac.element === "Fire" ? "dynamic action" : partnerZodiac.element === "Earth" ? "methodical effort" : partnerZodiac.element === "Air" ? "strategic thinking" : "emotional intelligence"}.`,
+      alignment: `Your ambitions ${yourZodiac.quality === partnerZodiac.quality ? "share similar timing and energy" : "complement each other through different approaches"}. Together, you can ${yourZodiac.element === partnerZodiac.element ? "amplify shared values" : "create balanced success"}.`,
     },
     sexualCompatibility: {
-      chemistry: `The ${yourZodiac.element}-${partnerZodiac.element} combination creates ${yourZodiac.element === "Fire" && partnerZodiac.element === "Fire" ? "explosive passion and intense physical connection" : yourZodiac.element === "Earth" && partnerZodiac.element === "Earth" ? "sensual, grounded intimacy with deep physical pleasure" : yourZodiac.element === "Air" && partnerZodiac.element === "Air" ? "playful, experimental connection with mental stimulation" : yourZodiac.element === "Water" && partnerZodiac.element === "Water" ? "deeply emotional, intuitive intimacy" : "intriguing chemistry that blends different energies"}. Physical attraction is ${yourZodiac.element === partnerZodiac.element ? "naturally strong" : "built through understanding differences"}.`,
-      intimacyStyle: `${yourZodiac.sign} approaches intimacy with ${yourZodiac.element === "Fire" ? "passion and spontaneity" : yourZodiac.element === "Earth" ? "sensuality and consistency" : yourZodiac.element === "Air" ? "playfulness and variety" : "emotional depth and intuition"}, while ${partnerZodiac.sign} brings ${partnerZodiac.element === "Fire" ? "intensity and adventure" : partnerZodiac.element === "Earth" ? "patience and physical pleasure" : partnerZodiac.element === "Air" ? "creativity and communication" : "sensitivity and connection"}. This ${yourZodiac.element === partnerZodiac.element ? "creates natural rhythm" : "requires communication but offers exciting variety"}.`,
+      chemistry: `The ${yourZodiac.element}-${partnerZodiac.element} dynamic creates ${yourZodiac.element === partnerZodiac.element ? "intense resonance and natural understanding" : "complementary energies requiring communication"}. Physical attraction ${baseCompatibilityScore > 75 ? "flows naturally" : "develops through emotional connection"}.`,
+      intimacyStyle: `${yourZodiac.sign} approaches intimacy with ${yourZodiac.element === "Fire" ? "passionate spontaneity" : yourZodiac.element === "Earth" ? "sensual patience" : yourZodiac.element === "Air" ? "playful curiosity" : "emotional depth"}, while ${partnerZodiac.sign} brings ${partnerZodiac.element === "Fire" ? "intensity" : partnerZodiac.element === "Earth" ? "sensuality" : partnerZodiac.element === "Air" ? "creativity" : "tenderness"}.`,
       score:
         yourZodiac.element === partnerZodiac.element
           ? 90
@@ -650,7 +140,7 @@ function createFallbackDetailedAnalysis(
               : yourZodiac.element === "Air"
                 ? "Words of Affirmation"
                 : "Quality Time",
-        description: `${yourZodiac.sign} feels most loved through ${yourZodiac.element === "Fire" ? "physical affection and passionate gestures" : yourZodiac.element === "Earth" ? "practical support and tangible demonstrations" : yourZodiac.element === "Air" ? "verbal appreciation and intellectual connection" : "undivided attention and emotional presence"}`,
+        description: `${yourZodiac.sign} feels loved through ${yourZodiac.element === "Fire" ? "physical affection and passionate gestures" : yourZodiac.element === "Earth" ? "practical support and helpful actions" : yourZodiac.element === "Air" ? "verbal appreciation and intellectual connection" : "undivided attention and emotional presence"}.`,
       },
       person2: {
         primary:
@@ -661,46 +151,36 @@ function createFallbackDetailedAnalysis(
               : partnerZodiac.element === "Air"
                 ? "Words of Affirmation"
                 : "Quality Time",
-        description: `${partnerZodiac.sign} receives love best through ${partnerZodiac.element === "Fire" ? "touch and physical closeness" : partnerZodiac.element === "Earth" ? "helpful actions and reliability" : partnerZodiac.element === "Air" ? "communication and compliments" : "meaningful time together and emotional intimacy"}`,
+        description: `${partnerZodiac.sign} receives love through ${partnerZodiac.element === "Fire" ? "physical closeness and affectionate touch" : partnerZodiac.element === "Earth" ? "helpful actions and reliable follow-through" : partnerZodiac.element === "Air" ? "verbal expression and engaging communication" : "focused attention and meaningful experiences"}.`,
       },
-      compatibility: `Your love languages ${yourZodiac.element === partnerZodiac.element ? "align perfectly, making it easy to meet each other's needs naturally" : "differ, which means you'll need to consciously learn each other's preferred ways of giving and receiving love"}. ${yourZodiac.element === partnerZodiac.element ? "This natural understanding creates effortless affection" : "Understanding these differences can actually deepen your connection through intentional effort"}.`,
+      compatibility: `Your love languages ${yourZodiac.element === partnerZodiac.element ? "align naturally, creating effortless mutual satisfaction" : "differ, requiring conscious learning and practice"}. Success comes through ${yourZodiac.element === partnerZodiac.element ? "maintaining intentionality" : "speaking each other's language"}.`,
     },
     relationshipDynamics: {
-      genderDynamics: `In a ${yourGender}-${partnerGender} relationship, your ${yourZodiac.sign}-${partnerZodiac.sign} pairing creates ${yourGender === partnerGender ? "balanced energy where both partners understand similar social experiences and can relate deeply" : "complementary masculine-feminine dynamics that can create natural polarity and attraction"}. ${yourGender === partnerGender ? "You'll navigate similar societal expectations together" : "Traditional gender roles may or may not apply - focus on what works for you both"}.`,
-      powerBalance: `${yourZodiac.quality === "Cardinal" ? "You naturally take initiative" : yourZodiac.quality === "Fixed" ? "You provide stability and determination" : "You bring flexibility and adaptability"}, while your partner ${partnerZodiac.quality === "Cardinal" ? "also leads" : partnerZodiac.quality === "Fixed" ? "offers steadiness" : "contributes versatility"}. ${yourZodiac.quality === partnerZodiac.quality ? "This similarity means you'll need to negotiate leadership roles" : "Your different approaches create natural balance in decision-making"}.`,
-      conflictStyle: `${yourZodiac.element === "Fire" ? "You address conflict directly and passionately" : yourZodiac.element === "Earth" ? "You prefer practical, solution-focused discussions" : yourZodiac.element === "Air" ? "You want to talk things through logically" : "You need emotional processing time"}, while ${partnerZodiac.sign} ${partnerZodiac.element === "Fire" ? "also confronts issues head-on" : partnerZodiac.element === "Earth" ? "seeks concrete resolutions" : partnerZodiac.element === "Air" ? "values rational dialogue" : "requires emotional space"}. ${yourZodiac.element === partnerZodiac.element ? "Your similar styles make conflict resolution smoother" : "Different conflict styles require patience and compromise"}.`,
+      genderDynamics: `In a ${yourGender}-${partnerGender} relationship, your pairing creates ${yourGender === partnerGender ? "shared understanding of gender experiences" : "complementary masculine-feminine polarity"}. This dynamic ${yourGender === partnerGender ? "fosters deep empathy" : "enhances natural attraction"}.`,
+      powerBalance: `${yourZodiac.quality === "Cardinal" ? "You naturally lead" : yourZodiac.quality === "Fixed" ? "You provide stability" : "You bring flexibility"}, while your partner ${partnerZodiac.quality === "Cardinal" ? "also initiates" : partnerZodiac.quality === "Fixed" ? "offers steadiness" : "contributes adaptability"}. ${yourZodiac.quality === partnerZodiac.quality ? "Negotiate leadership roles" : "Natural role differentiation emerges"}.`,
+      conflictStyle: `${yourZodiac.element === "Fire" ? "You address conflict directly and passionately" : yourZodiac.element === "Earth" ? "You prefer practical, solution-focused discussions" : yourZodiac.element === "Air" ? "You want logical, rational dialogue" : "You need emotional processing time"}, while your partner ${partnerZodiac.element === "Fire" ? "engages intensely" : partnerZodiac.element === "Earth" ? "focuses on solutions" : partnerZodiac.element === "Air" ? "analyzes rationally" : "processes emotionally"}.`,
     },
-
     attachmentTheory: {
       person1: {
         style: yourAttachment,
-        description: `As a ${yourZodiac.sign}, you tend toward ${yourAttachment} attachment patterns. ${yourZodiac.element === "Water" ? "Your emotional depth can create anxiety around connection and fear of abandonment" : yourZodiac.element === "Earth" ? "Your grounded nature typically fosters secure, stable attachment with clear boundaries" : yourZodiac.element === "Air" ? "Your need for independence can manifest as avoidant tendencies, valuing autonomy over intimacy" : "Your passionate nature supports secure attachment when emotional needs are met"}. This influences how you seek closeness and handle separation.`,
+        description: `As ${yourZodiac.sign}, you tend toward ${yourAttachment} patterns shaped by ${yourZodiac.element} nature. ${yourAttachment === "Secure" ? "You balance intimacy and autonomy naturally" : yourAttachment === "Anxious-Preoccupied" ? "You may need frequent reassurance" : "You value independence highly"}.`,
         triggers: [
-          yourZodiac.element === "Water"
-            ? "Perceived distance or withdrawal"
-            : yourZodiac.element === "Air"
-              ? "Excessive emotional demands"
-              : "Inconsistent availability",
-          yourZodiac.element === "Fire" ? "Feeling controlled or restricted" : "Lack of reassurance",
-          yourZodiac.quality === "Fixed" ? "Unexpected changes in routine" : "Unpredictability",
+          `${yourAttachment === "Anxious-Preoccupied" ? "Perceived distance" : yourAttachment === "Dismissive-Avoidant" ? "Excessive closeness demands" : "Inconsistent availability"}`,
+          `${yourZodiac.quality === "Fixed" ? "Unexpected changes" : yourZodiac.quality === "Cardinal" ? "Feeling stuck" : "Excessive rigidity"}`,
+          `${yourAttachment === "Anxious-Preoccupied" ? "Partner needing space" : yourAttachment === "Dismissive-Avoidant" ? "Strong emotional demands" : "Core criticism"}`,
         ],
       },
       person2: {
         style: partnerAttachment,
-        description: `Your partner's ${partnerZodiac.sign} nature inclines toward ${partnerAttachment} attachment. ${partnerZodiac.element === "Water" ? "Their emotional sensitivity creates heightened awareness of relational threats" : partnerZodiac.element === "Earth" ? "Their practical approach to relationships fosters security and consistency" : partnerZodiac.element === "Air" ? "Their intellectual processing can create emotional distance as a defense mechanism" : "Their confident energy typically supports healthy attachment"}. Understanding this helps navigate intimacy needs.`,
+        description: `Your partner's ${partnerZodiac.sign} nature inclines toward ${partnerAttachment} attachment influenced by ${partnerZodiac.element} essence. ${partnerAttachment === "Secure" ? "They maintain healthy balance" : partnerAttachment === "Anxious-Preoccupied" ? "They may seek frequent connection" : "They prioritize autonomy"}`,
         triggers: [
-          partnerZodiac.element === "Water"
-            ? "Emotional unavailability"
-            : partnerZodiac.element === "Air"
-              ? "Pressure for constant togetherness"
-              : "Broken promises",
-          partnerZodiac.element === "Fire" ? "Attempts to limit freedom" : "Criticism or judgment",
-          partnerZodiac.quality === "Cardinal" ? "Lack of forward momentum" : "Stagnation",
+          `${partnerAttachment === "Anxious-Preoccupied" ? "Your emotional unavailability" : partnerAttachment === "Dismissive-Avoidant" ? "Pressure for constant togetherness" : "Inconsistent presence"}`,
+          `${partnerZodiac.quality === "Cardinal" ? "Lack of momentum" : partnerZodiac.quality === "Fixed" ? "Unexpected instability" : "Excessive rigidity"}`,
+          `${partnerAttachment === "Anxious-Preoccupied" ? "You needing alone time" : partnerAttachment === "Dismissive-Avoidant" ? "You showing strong emotions" : "Rejection of authentic self"}`,
         ],
       },
-      dyad: `The ${yourAttachment}-${partnerAttachment} pairing ${yourAttachment === partnerAttachment ? "creates mutual understanding of attachment needs, though may amplify shared vulnerabilities" : yourAttachment === "Secure" || partnerAttachment === "Secure" ? "benefits from one partner's secure base, offering stability for growth" : "presents classic anxious-avoidant dynamics where pursuit triggers withdrawal and vice versa"}. ${yourAttachment !== partnerAttachment && yourAttachment !== "Secure" && partnerAttachment !== "Secure" ? "This dynamic requires conscious effort to break pursue-withdraw cycles" : "With awareness, this combination can foster mutual healing and earned security"}.`,
+      dyad: `The ${yourAttachment}-${partnerAttachment} pairing ${yourAttachment === partnerAttachment ? "creates mutual understanding" : yourAttachment === "Secure" || partnerAttachment === "Secure" ? "benefits from secure base" : "requires conscious work"}. ${yourAttachment !== partnerAttachment && yourAttachment !== "Secure" && partnerAttachment !== "Secure" ? "Individual therapy recommended" : "Build security through consistent responsiveness"}.`,
     },
-
     emotionalIntelligence: {
       person1: {
         selfAwareness:
@@ -758,50 +238,48 @@ function createFallbackDetailedAnalysis(
                 ? 7
                 : 7,
       },
-      analysis: `${yourZodiac.sign} excels in ${yourZodiac.element === "Water" ? "empathy and self-awareness" : yourZodiac.element === "Air" ? "social skills and communication" : yourZodiac.element === "Earth" ? "self-regulation and reliability" : "confidence and enthusiasm"}, while ${partnerZodiac.sign} brings strength in ${partnerZodiac.element === "Water" ? "emotional attunement" : partnerZodiac.element === "Air" ? "intellectual processing" : partnerZodiac.element === "Earth" ? "emotional stability" : "passionate expression"}. Together, you ${yourZodiac.element === partnerZodiac.element ? "share similar emotional intelligence profiles" : "complement each other's emotional capabilities"}.`,
+      analysis: `${yourZodiac.sign} excels in ${yourZodiac.element === "Water" ? "empathy and self-awareness" : yourZodiac.element === "Air" ? "social skills and awareness" : yourZodiac.element === "Earth" ? "self-regulation and reliability" : "confidence and enthusiasm"}, while ${partnerZodiac.sign} brings ${partnerZodiac.element === "Water" ? "emotional attunement" : partnerZodiac.element === "Air" ? "intellectual processing" : partnerZodiac.element === "Earth" ? "emotional stability" : "passionate expression"}. Together, you create balanced emotional intelligence.`,
     },
-
     gottmanPrinciples: {
-      positiveToNegativeRatio: `Your ${yourZodiac.element}-${partnerZodiac.element} combination suggests a ${yourZodiac.element === partnerZodiac.element ? "naturally balanced" : yourZodiac.element === "Fire" && partnerZodiac.element === "Water" ? "potentially volatile" : "moderately stable"} positive-to-negative interaction ratio. ${yourZodiac.element === partnerZodiac.element ? "Similar emotional processing helps maintain the critical 5:1 ratio during calm periods" : "Different emotional styles require conscious effort to maintain positive interactions"}. During conflicts, ${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "passion can escalate quickly" : "you tend toward measured responses"}.`,
+      positiveToNegativeRatio: `Your ${yourZodiac.element}-${partnerZodiac.element} combination suggests ${yourZodiac.element === partnerZodiac.element ? `${yourZodiac.element === "Fire" ? "passionate but volatile" : yourZodiac.element === "Earth" ? "stable and consistent" : yourZodiac.element === "Air" ? "intellectually engaged" : "deeply emotional"} interaction patterns` : "complementary dynamics"}. Maintain 5:1 positive-to-negative ratio through ${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "enthusiasm and affection" : "steady appreciation"}.`,
       fourHorsemen: [
         yourZodiac.element === "Fire" || partnerZodiac.element === "Fire"
-          ? "Criticism (when frustrated)"
-          : "Stonewalling (when overwhelmed)",
+          ? "Criticism risk during frustration"
+          : "Defensiveness when hurt",
         yourZodiac.quality === "Fixed" || partnerZodiac.quality === "Fixed"
-          ? "Defensiveness (protecting position)"
-          : "Withdrawal (needing space)",
+          ? "Stubbornness in conflicts"
+          : "Withdrawal when overwhelmed",
       ],
-      repairAttempts: `${yourZodiac.sign} typically repairs through ${yourZodiac.element === "Fire" ? "passionate apologies and grand gestures" : yourZodiac.element === "Earth" ? "practical actions and consistent follow-through" : yourZodiac.element === "Air" ? "verbal processing and logical discussion" : "emotional vulnerability and reconnection"}. ${partnerZodiac.sign} responds to ${partnerZodiac.element === "Fire" ? "direct acknowledgment and physical affection" : partnerZodiac.element === "Earth" ? "tangible demonstrations of change" : partnerZodiac.element === "Air" ? "thoughtful conversation and understanding" : "emotional presence and reassurance"}. ${yourZodiac.element === partnerZodiac.element ? "Your similar repair styles facilitate quick recovery" : "Learning each other's repair language is essential"}.`,
+      repairAttempts: `${yourZodiac.sign} repairs through ${yourZodiac.element === "Fire" ? "passionate apologies and physical affection" : yourZodiac.element === "Earth" ? "practical actions and follow-through" : yourZodiac.element === "Air" ? "verbal processing and discussion" : "emotional vulnerability and sharing"}. ${partnerZodiac.sign} responds to ${partnerZodiac.element === "Fire" ? "direct acknowledgment and energy" : partnerZodiac.element === "Earth" ? "concrete plans and actions" : partnerZodiac.element === "Air" ? "calm conversation" : "emotional presence"}.`,
     },
-
     communicationPatterns: {
-      person1Style: `As a ${yourZodiac.sign}, you communicate with ${yourZodiac.element === "Fire" ? "directness and passion, often speaking before fully processing" : yourZodiac.element === "Earth" ? "practicality and deliberation, preferring concrete discussions" : yourZodiac.element === "Air" ? "intellectual curiosity and verbal fluency, enjoying abstract concepts" : "emotional depth and intuition, reading between the lines"}. Your ${yourZodiac.quality} quality means you ${yourZodiac.quality === "Cardinal" ? "initiate conversations and drive discussions forward" : yourZodiac.quality === "Fixed" ? "maintain positions and value consistency in communication" : "adapt your style to the situation and audience"}.`,
-      person2Style: `Your partner's ${partnerZodiac.sign} communication reflects ${partnerZodiac.element === "Fire" ? "enthusiasm and spontaneity, expressing thoughts as they arise" : partnerZodiac.element === "Earth" ? "groundedness and clarity, focusing on practical matters" : partnerZodiac.element === "Air" ? "analytical thinking and articulation, valuing logical discourse" : "sensitivity and nuance, attuned to emotional undertones"}. Their ${partnerZodiac.quality} nature means they ${partnerZodiac.quality === "Cardinal" ? "lead conversations and set communication agendas" : partnerZodiac.quality === "Fixed" ? "hold firm to their perspectives and value deep discussion" : "flow with conversational dynamics and adjust easily"}.`,
-      compatibility: `Your communication styles ${yourZodiac.element === partnerZodiac.element ? "naturally align, creating easy understanding and flow" : "differ in meaningful ways that require conscious bridging"}. ${yourZodiac.element === "Fire" && partnerZodiac.element === "Water" ? "Fire's directness can overwhelm Water's sensitivity, while Water's emotional depth can frustrate Fire's need for action" : yourZodiac.element === "Earth" && partnerZodiac.element === "Air" ? "Earth's practicality grounds Air's abstractions, while Air's ideas inspire Earth's implementations" : "Your different approaches can create rich, multidimensional conversations when both feel heard"}.`,
+      person1Style: `As ${yourZodiac.sign}, you communicate with ${yourZodiac.element === "Fire" ? "directness and passion" : yourZodiac.element === "Earth" ? "practicality and deliberation" : yourZodiac.element === "Air" ? "intellectual curiosity" : "emotional depth"}. Your style is ${yourZodiac.element === "Fire" ? "confident and assertive" : yourZodiac.element === "Earth" ? "reliable and straightforward" : yourZodiac.element === "Air" ? "charming and intelligent" : "nurturing and perceptive"}.`,
+      person2Style: `Your partner's ${partnerZodiac.sign} communication reflects ${partnerZodiac.element === "Fire" ? "enthusiasm and spontaneity" : partnerZodiac.element === "Earth" ? "groundedness and clarity" : partnerZodiac.element === "Air" ? "analytical thinking" : "sensitivity and nuance"}. Their style is ${partnerZodiac.element === "Fire" ? "confident and direct" : partnerZodiac.element === "Earth" ? "dependable and clear" : partnerZodiac.element === "Air" ? "charming and intelligent" : "caring and perceptive"}.`,
+      compatibility: `Your communication styles ${yourZodiac.element === partnerZodiac.element ? "naturally align, creating easy understanding" : "differ, requiring conscious bridging"}. Success comes through ${yourZodiac.element === partnerZodiac.element ? "maintaining active listening" : "translating between your languages"}.`,
     },
-
     conflictResolution: {
-      person1Approach: `${yourZodiac.sign} handles conflict through ${yourZodiac.element === "Fire" ? "direct confrontation and passionate expression, seeking immediate resolution" : yourZodiac.element === "Earth" ? "practical problem-solving and steady persistence, focusing on concrete solutions" : yourZodiac.element === "Air" ? "intellectual analysis and verbal processing, wanting to understand all perspectives" : "emotional processing and intuitive understanding, needing time to feel through issues"}. You ${yourZodiac.quality === "Cardinal" ? "take initiative to address problems head-on" : yourZodiac.quality === "Fixed" ? "stand firm in your position and resist compromise" : "adapt your approach based on the situation"}.`,
-      person2Approach: `${partnerZodiac.sign} approaches conflict with ${partnerZodiac.element === "Fire" ? "intensity and urgency, wanting quick resolution and action" : partnerZodiac.element === "Earth" ? "patience and pragmatism, seeking workable compromises" : partnerZodiac.element === "Air" ? "rationality and detachment, preferring logical discussion over emotional expression" : "sensitivity and depth, requiring emotional safety to engage"}. They ${partnerZodiac.quality === "Cardinal" ? "initiate difficult conversations and push for progress" : partnerZodiac.quality === "Fixed" ? "maintain their stance and value consistency" : "remain flexible and open to various resolutions"}.`,
+      person1Approach: `${yourZodiac.sign} handles conflict through ${yourZodiac.element === "Fire" ? "direct confrontation and immediate resolution" : yourZodiac.element === "Earth" ? "practical problem-solving" : yourZodiac.element === "Air" ? "intellectual analysis" : "emotional processing"}. You ${yourZodiac.element === "Fire" ? "escalate when unheard" : yourZodiac.element === "Earth" ? "dig in when pushed" : yourZodiac.element === "Air" ? "detach when dismissed" : "withdraw when unsafe"}.`,
+      person2Approach: `${partnerZodiac.sign} approaches conflict with ${partnerZodiac.element === "Fire" ? "intensity and urgency" : partnerZodiac.element === "Earth" ? "patience and pragmatism" : partnerZodiac.element === "Air" ? "rationality and detachment" : "sensitivity and depth"}. They ${partnerZodiac.element === "Fire" ? "need quick resolution" : partnerZodiac.element === "Earth" ? "focus on solutions" : partnerZodiac.element === "Air" ? "seek understanding" : "require emotional safety"}.`,
       recommendations: [
-        `Establish a "pause button" protocol when ${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "emotions run high" : "discussion becomes circular"}`,
-        `Honor ${yourZodiac.element === "Water" || partnerZodiac.element === "Water" ? "emotional processing time" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "need for logical discussion" : "different conflict styles"} without judgment`,
-        `Practice ${yourZodiac.element === partnerZodiac.element ? "channeling your shared energy constructively" : "translating between your different conflict languages"}`,
-        `Create agreements about ${yourZodiac.quality === "Fixed" || partnerZodiac.quality === "Fixed" ? "when to revisit decisions" : "how to reach resolution"} before conflicts arise`,
+        "Establish pause button protocol for emotional regulation",
+        "Honor each other's conflict styles and needs",
+        "Practice translating between your approaches",
+        "Create pre-conflict agreements about process",
+        "Use 'I feel' statements instead of accusations",
       ],
     },
-
     therapeuticRecommendations: {
       exercises: [
-        `Daily ${yourZodiac.element === "Water" || partnerZodiac.element === "Water" ? "emotional check-ins" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "communication practice" : "connection rituals"} (10-15 minutes)`,
-        `Weekly state-of-union conversations addressing what's working and what needs attention`,
-        `${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "Passion projects" : yourZodiac.element === "Earth" || partnerZodiac.element === "Earth" ? "Shared goals" : "Collaborative activities"} to build teamwork`,
-        `Practice ${yourAttachment === "Anxious-Preoccupied" || partnerAttachment === "Anxious-Preoccupied" ? "self-soothing techniques" : yourAttachment === "Dismissive-Avoidant" || partnerAttachment === "Dismissive-Avoidant" ? "vulnerability exercises" : "secure attachment behaviors"}`,
+        "Daily emotional check-ins (10-15 minutes)",
+        "Weekly state-of-union conversations (30-45 minutes)",
+        `${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "Passion projects or adventure dates" : yourZodiac.element === "Earth" || partnerZodiac.element === "Earth" ? "Shared goals or building projects" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "Collaborative learning dates" : "Creative or spiritual practices"}`,
+        "Attachment-focused vulnerability exercises",
       ],
       focusAreas: [
-        `${yourAttachment !== partnerAttachment ? "Attachment pattern awareness and healing" : "Deepening secure attachment"}`,
-        `${yourZodiac.element !== partnerZodiac.element ? "Bridging different emotional languages" : "Channeling shared elemental energy"}`,
-        `Developing ${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "emotional regulation" : yourZodiac.element === "Water" || partnerZodiac.element === "Water" ? "boundaries and self-soothing" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "emotional expression" : "spontaneity and flexibility"}`,
+        "Attachment pattern awareness and healing",
+        "Bridging different emotional languages",
+        `Developing ${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "emotional regulation" : yourZodiac.element === "Water" || partnerZodiac.element === "Water" ? "emotional boundaries" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "emotional expression" : "spontaneity"}`,
+        `${Math.abs(yourAge - partnerAge) > 7 ? "Navigating age gap dynamics" : yourGender === partnerGender ? "Same-gender relationship dynamics" : "Different-gender dynamics"}`,
       ],
       suggestedModalities: [
         yourAttachment !== partnerAttachment &&
@@ -809,45 +287,233 @@ function createFallbackDetailedAnalysis(
         (yourAttachment === "Dismissive-Avoidant" || partnerAttachment === "Dismissive-Avoidant")
           ? "Emotionally Focused Therapy (EFT)"
           : "Gottman Method Couples Therapy",
-        `Individual therapy for ${yourAttachment !== "Secure" || partnerAttachment !== "Secure" ? "attachment healing" : "personal growth"}`,
+        "Individual therapy for personal growth",
+        `${yourZodiac.element === "Water" || partnerZodiac.element === "Water" ? "Mindfulness practice" : yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "Physical practices" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "Somatic therapy" : "Relationship education"}`,
       ],
     },
-
     prognosis: {
-      shortTerm: `Over the next 1-3 months, expect ${yourZodiac.element === partnerZodiac.element ? "natural harmony with occasional intensity from shared traits" : "a learning curve as you navigate different emotional styles"}. ${yourAttachment === partnerAttachment ? "Your similar attachment patterns will create understanding" : yourAttachment === "Secure" || partnerAttachment === "Secure" ? "The secure partner can provide stability during adjustment" : "Attachment differences may create pursue-withdraw dynamics that require conscious interruption"}. Initial patterns will ${yourZodiac.quality === partnerZodiac.quality ? "feel familiar and comfortable" : "require negotiation and compromise"}.`,
-      longTerm: `With sustained effort over 12+ months, this pairing has ${yourZodiac.element === partnerZodiac.element ? "strong potential for deep, lasting connection" : "excellent potential for balanced, complementary partnership"}. ${yourAttachment === "Secure" && partnerAttachment === "Secure" ? "Your secure attachment foundation supports long-term stability" : yourAttachment === "Secure" || partnerAttachment === "Secure" ? "The secure partner can help the other develop earned security" : "Both partners can achieve earned secure attachment through dedicated work"}. Your ${yourZodiac.sign}-${partnerZodiac.sign} combination ${baseCompatibilityScore >= 80 ? "is highly compatible with natural chemistry" : baseCompatibilityScore >= 70 ? "offers good compatibility with some areas requiring attention" : "presents growth opportunities that can strengthen the bond"}.`,
+      shortTerm: `Over 1-3 months, expect ${yourZodiac.element === partnerZodiac.element ? `natural harmony with occasional intensity from shared ${yourZodiac.element} traits` : "a learning curve navigating different styles"}. ${baseCompatibilityScore > 75 ? "Strong initial connection supports growth" : "Building foundation requires patience"}.`,
+      longTerm: `With sustained effort over 12+ months, this pairing has ${baseCompatibilityScore > 75 ? "strong potential for lasting connection" : "moderate potential requiring conscious work"}. ${yourZodiac.element === partnerZodiac.element ? "Shared elemental understanding creates foundation" : "Different elements offer growth opportunities"}. Success depends on ${yourAttachment !== partnerAttachment ? "healing attachment wounds" : "maintaining secure patterns"}.`,
       riskFactors: [
-        yourAttachment === "Anxious-Preoccupied" && partnerAttachment === "Dismissive-Avoidant"
-          ? "Classic anxious-avoidant trap intensifying over time"
-          : yourAttachment === partnerAttachment && yourAttachment !== "Secure"
-            ? "Amplifying shared insecure attachment patterns"
-            : "Unaddressed attachment wounds",
-        yourZodiac.element === "Fire" && partnerZodiac.element === "Water"
-          ? "Fire-Water volatility escalating without regulation skills"
-          : yourZodiac.quality === "Fixed" && partnerZodiac.quality === "Fixed"
-            ? "Stubbornness creating gridlock on key issues"
-            : "Communication breakdowns during stress",
+        yourZodiac.element === partnerZodiac.element
+          ? `Amplified ${yourZodiac.element} challenges`
+          : "Elemental misunderstandings",
+        yourAttachment !== partnerAttachment ? "Attachment pattern conflicts" : "Complacency in security",
+        `${Math.abs(yourAge - partnerAge) > 10 ? "Significant age gap" : "Life stage differences"}`,
       ],
       protectiveFactors: [
-        `${yourZodiac.element === partnerZodiac.element ? "Shared elemental understanding" : "Complementary elemental balance"}`,
-        `${Math.abs(yourAge - partnerAge) <= 5 ? "Similar life stages and shared experiences" : "Diverse perspectives enriching the relationship"}`,
-        `${yourZodiac.strengths[0]} and ${partnerZodiac.strengths[0]} creating strong foundation`,
-        `Willingness to understand ${yourAttachment !== partnerAttachment ? "different attachment needs" : "shared attachment patterns"}`,
+        `${baseCompatibilityScore > 75 ? "Strong natural compatibility" : "Complementary differences"}`,
+        yourAttachment === "Secure" || partnerAttachment === "Secure"
+          ? "Secure attachment base"
+          : "Mutual growth commitment",
+        `Shared ${yourZodiac.quality === partnerZodiac.quality ? yourZodiac.quality.toLowerCase() + " energy" : "complementary qualities"}`,
+        "Conscious relationship practices",
       ],
     },
-
     advice: {
       success: [
-        `Embrace your ${yourZodiac.element === partnerZodiac.element ? "shared" : "complementary"} energies - ${yourZodiac.element === partnerZodiac.element ? "amplify your natural connection" : "let your differences create balance"}`,
-        `Honor each other's love languages: ${yourZodiac.element === "Fire" ? "physical touch" : yourZodiac.element === "Earth" ? "acts of service" : yourZodiac.element === "Air" ? "words of affirmation" : "quality time"} and ${partnerZodiac.element === "Fire" ? "physical touch" : partnerZodiac.element === "Earth" ? "acts of service" : partnerZodiac.element === "Air" ? "words of affirmation" : "quality time"}`,
-        `Build on your shared ${yourZodiac.quality === partnerZodiac.quality ? yourZodiac.quality.toLowerCase() + " energy" : "complementary approaches"} to create a strong foundation`,
-        `Practice ${yourAttachment === "Anxious-Preoccupied" || partnerAttachment === "Anxious-Preoccupied" ? "self-soothing and secure base building" : yourAttachment === "Dismissive-Avoidant" || partnerAttachment === "Dismissive-Avoidant" ? "vulnerability and emotional expression" : "maintaining secure attachment behaviors"}`,
+        `Honor your ${yourZodiac.element}-${partnerZodiac.element} dynamic through ${yourZodiac.element === partnerZodiac.element ? "channeling shared energy constructively" : "bridging different approaches"}`,
+        `Practice each other's love languages: ${yourZodiac.element === "Fire" ? "physical touch" : yourZodiac.element === "Earth" ? "acts of service" : yourZodiac.element === "Air" ? "words of affirmation" : "quality time"} and ${partnerZodiac.element === "Fire" ? "physical touch" : partnerZodiac.element === "Earth" ? "acts of service" : partnerZodiac.element === "Air" ? "words of affirmation" : "quality time"}`,
+        "Maintain 5:1 positive-to-negative interaction ratio",
+        `${yourAttachment !== partnerAttachment ? "Address attachment patterns through therapy" : "Continue building secure attachment"}`,
+        "Create regular rituals for connection and check-ins",
       ],
       awareness: [
-        `Watch for ${yourZodiac.weaknesses[0].toLowerCase()} (${yourZodiac.sign}) and ${partnerZodiac.weaknesses[0].toLowerCase()} (${partnerZodiac.sign}) tendencies`,
-        `${yourAttachment !== partnerAttachment && yourAttachment !== "Secure" && partnerAttachment !== "Secure" ? "Recognize and interrupt pursue-withdraw cycles before they escalate" : "Stay aware of attachment triggers and communicate needs clearly"}`,
-        `${yourZodiac.element !== partnerZodiac.element ? `Navigate ${yourZodiac.element}-${partnerZodiac.element} differences with patience and understanding` : `Avoid amplifying negative ${yourZodiac.element} traits when stressed`}`,
+        `Watch for ${yourZodiac.element === "Fire" || partnerZodiac.element === "Fire" ? "impulsive reactions and escalation" : yourZodiac.element === "Water" || partnerZodiac.element === "Water" ? "emotional overwhelm and enmeshment" : yourZodiac.element === "Air" || partnerZodiac.element === "Air" ? "emotional detachment and intellectualization" : "stubbornness and rigidity"}`,
+        `${yourAttachment === "Anxious-Preoccupied" || partnerAttachment === "Anxious-Preoccupied" ? "Anxious partner: avoid excessive reassurance-seeking" : yourAttachment === "Dismissive-Avoidant" || partnerAttachment === "Dismissive-Avoidant" ? "Avoidant partner: practice vulnerability" : "Maintain balance between intimacy and autonomy"}`,
+        `${yourZodiac.quality === "Fixed" || partnerZodiac.quality === "Fixed" ? "Fixed signs: practice flexibility during conflicts" : yourZodiac.quality === "Cardinal" || partnerZodiac.quality === "Cardinal" ? "Cardinal signs: negotiate leadership roles" : "Mutable signs: practice decision-making"}`,
+        `${Math.abs(yourAge - partnerAge) > 7 ? "Address power imbalances from age difference" : "Navigate life stage transitions together"}`,
       ],
     },
   }
+}
+
+export async function analyzeZodiacCompatibility(formData: FormData) {
+  try {
+    // Extract form data
+    const yourBirthDate = formData.get("yourBirthDate") as string
+    const partnerBirthDate = formData.get("partnerBirthDate") as string
+    const yourGender = formData.get("yourGender") as string
+    const partnerGender = formData.get("partnerGender") as string
+
+    if (!yourBirthDate || !partnerBirthDate || !yourGender || !partnerGender) {
+      return { error: "Please fill in all fields" }
+    }
+
+    // Calculate ages
+    const yourAge = new Date().getFullYear() - new Date(yourBirthDate).getFullYear()
+    const partnerAge = new Date().getFullYear() - new Date(partnerBirthDate).getFullYear()
+
+    // Get zodiac signs
+    const yourZodiac = getZodiacSign(new Date(yourBirthDate))
+    const partnerZodiac = getZodiacSign(new Date(partnerBirthDate))
+
+    // Calculate base compatibility
+    const baseCompatibilityScore = calculateCompatibility(yourZodiac, partnerZodiac)
+
+    // Generate detailed analysis (using fallback directly for reliability)
+    const detailedAnalysis = createFallbackDetailedAnalysis(
+      yourZodiac,
+      partnerZodiac,
+      yourAge,
+      partnerAge,
+      yourGender,
+      partnerGender,
+      baseCompatibilityScore,
+    )
+
+    return {
+      yourZodiac,
+      partnerZodiac,
+      compatibilityScore: baseCompatibilityScore,
+      detailedAnalysis,
+    }
+  } catch (error) {
+    console.error("[v0] Zodiac compatibility error:", error)
+    return { error: "Failed to analyze compatibility. Please try again." }
+  }
+}
+
+function getZodiacSign(date: Date): ZodiacSign {
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+
+  const zodiacData: Record<string, ZodiacSign> = {
+    Aries: {
+      sign: "Aries",
+      element: "Fire",
+      quality: "Cardinal",
+      traits: ["Courageous", "Determined", "Confident", "Enthusiastic", "Optimistic"],
+      strengths: ["Leadership", "Initiative", "Passion"],
+      dateRange: "Mar 21 - Apr 19",
+    },
+    Taurus: {
+      sign: "Taurus",
+      element: "Earth",
+      quality: "Fixed",
+      traits: ["Reliable", "Patient", "Practical", "Devoted", "Responsible"],
+      strengths: ["Stability", "Loyalty", "Sensuality"],
+      dateRange: "Apr 20 - May 20",
+    },
+    Gemini: {
+      sign: "Gemini",
+      element: "Air",
+      quality: "Mutable",
+      traits: ["Adaptable", "Outgoing", "Intelligent", "Curious", "Witty"],
+      strengths: ["Communication", "Versatility", "Social Skills"],
+      dateRange: "May 21 - Jun 20",
+    },
+    Cancer: {
+      sign: "Cancer",
+      element: "Water",
+      quality: "Cardinal",
+      traits: ["Intuitive", "Emotional", "Protective", "Sympathetic", "Loyal"],
+      strengths: ["Empathy", "Nurturing", "Emotional Intelligence"],
+      dateRange: "Jun 21 - Jul 22",
+    },
+    Leo: {
+      sign: "Leo",
+      element: "Fire",
+      quality: "Fixed",
+      traits: ["Creative", "Passionate", "Generous", "Warm-hearted", "Cheerful"],
+      strengths: ["Confidence", "Charisma", "Generosity"],
+      dateRange: "Jul 23 - Aug 22",
+    },
+    Virgo: {
+      sign: "Virgo",
+      element: "Earth",
+      quality: "Mutable",
+      traits: ["Analytical", "Practical", "Diligent", "Reliable", "Modest"],
+      strengths: ["Attention to Detail", "Helpfulness", "Practicality"],
+      dateRange: "Aug 23 - Sep 22",
+    },
+    Libra: {
+      sign: "Libra",
+      element: "Air",
+      quality: "Cardinal",
+      traits: ["Diplomatic", "Gracious", "Fair-minded", "Social", "Cooperative"],
+      strengths: ["Balance", "Harmony", "Social Grace"],
+      dateRange: "Sep 23 - Oct 22",
+    },
+    Scorpio: {
+      sign: "Scorpio",
+      element: "Water",
+      quality: "Fixed",
+      traits: ["Resourceful", "Brave", "Passionate", "Stubborn", "Loyal"],
+      strengths: ["Intensity", "Depth", "Transformation"],
+      dateRange: "Oct 23 - Nov 21",
+    },
+    Sagittarius: {
+      sign: "Sagittarius",
+      element: "Fire",
+      quality: "Mutable",
+      traits: ["Generous", "Idealistic", "Great sense of humor", "Adventurous"],
+      strengths: ["Optimism", "Freedom", "Philosophy"],
+      dateRange: "Nov 22 - Dec 21",
+    },
+    Capricorn: {
+      sign: "Capricorn",
+      element: "Earth",
+      quality: "Cardinal",
+      traits: ["Responsible", "Disciplined", "Self-control", "Good managers"],
+      strengths: ["Ambition", "Discipline", "Responsibility"],
+      dateRange: "Dec 22 - Jan 19",
+    },
+    Aquarius: {
+      sign: "Aquarius",
+      element: "Air",
+      quality: "Fixed",
+      traits: ["Progressive", "Original", "Independent", "Humanitarian"],
+      strengths: ["Innovation", "Independence", "Humanitarianism"],
+      dateRange: "Jan 20 - Feb 18",
+    },
+    Pisces: {
+      sign: "Pisces",
+      element: "Water",
+      quality: "Mutable",
+      traits: ["Compassionate", "Artistic", "Intuitive", "Gentle", "Wise"],
+      strengths: ["Compassion", "Creativity", "Intuition"],
+      dateRange: "Feb 19 - Mar 20",
+    },
+  }
+
+  if ((month === 3 && day >= 21) || (month === 4 && day <= 19)) return zodiacData.Aries
+  if ((month === 4 && day >= 20) || (month === 5 && day <= 20)) return zodiacData.Taurus
+  if ((month === 5 && day >= 21) || (month === 6 && day <= 20)) return zodiacData.Gemini
+  if ((month === 6 && day >= 21) || (month === 7 && day <= 22)) return zodiacData.Cancer
+  if ((month === 7 && day >= 23) || (month === 8 && day <= 22)) return zodiacData.Leo
+  if ((month === 8 && day >= 23) || (month === 9 && day <= 22)) return zodiacData.Virgo
+  if ((month === 9 && day >= 23) || (month === 10 && day <= 22)) return zodiacData.Libra
+  if ((month === 10 && day >= 23) || (month === 11 && day <= 21)) return zodiacData.Scorpio
+  if ((month === 11 && day >= 22) || (month === 12 && day <= 21)) return zodiacData.Sagittarius
+  if ((month === 12 && day >= 22) || (month === 1 && day <= 19)) return zodiacData.Capricorn
+  if ((month === 1 && day >= 20) || (month === 2 && day <= 18)) return zodiacData.Aquarius
+  return zodiacData.Pisces
+}
+
+function calculateCompatibility(sign1: ZodiacSign, sign2: ZodiacSign): number {
+  let score = 50 // Base score
+
+  // Same element bonus
+  if (sign1.element === sign2.element) {
+    score += 25
+  }
+
+  // Complementary elements
+  if (
+    (sign1.element === "Fire" && sign2.element === "Air") ||
+    (sign1.element === "Air" && sign2.element === "Fire") ||
+    (sign1.element === "Earth" && sign2.element === "Water") ||
+    (sign1.element === "Water" && sign2.element === "Earth")
+  ) {
+    score += 15
+  }
+
+  // Same quality consideration
+  if (sign1.quality === sign2.quality) {
+    score += 10
+  }
+
+  // Ensure score is within 0-100 range
+  return Math.min(100, Math.max(0, score))
 }

@@ -57,13 +57,6 @@ export default function StreamlinedHero() {
               Start Analysis
               <Heart className="ml-2 h-5 w-5" fill="currentColor" />
             </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              className="border-2 border-purple-300 text-purple-700 hover:bg-purple-50 px-8 py-6 text-lg font-semibold bg-transparent"
-            >
-              Learn More
-            </Button>
           </motion.div>
 
           <motion.div
