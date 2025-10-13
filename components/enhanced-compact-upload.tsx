@@ -225,8 +225,11 @@ export default function EnhancedCompactUpload() {
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">
                     {isDragging ? "Drop your screenshots here" : "Drag & drop or click to upload"}
                   </h3>
-                  <p className="text-sm text-gray-600 mb-4">
+                  <p className="text-sm text-gray-600 mb-2">
                     Support for PNG, JPG, JPEG • Up to 10 images • Max 10MB each
+                  </p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Your screenshots are processed locally and automatically deleted after analysis.
                   </p>
                   <Button
                     variant="outline"

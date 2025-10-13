@@ -288,6 +288,18 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </Alert>
           )}
 
+          <Alert className="border-blue-200 bg-blue-50 max-w-3xl mx-auto">
+            <div className="flex items-start gap-2">
+              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <AlertDescription className="text-blue-800 text-xs sm:text-sm text-left">
+                <strong>Note:</strong> This analysis is for informational purposes only and is not a substitute for
+                professional therapy or counseling. If you're experiencing relationship difficulties, consider
+                consulting a licensed therapist.
+              </AlertDescription>
+            </div>
+          </Alert>
+          {/* </CHANGE> */}
+
           <div className="flex flex-wrap gap-2 sm:gap-3 justify-center items-center">
             <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
               <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />

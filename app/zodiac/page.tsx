@@ -88,7 +88,8 @@ export default function ZodiacCompatibilityPage() {
               <Moon className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-pink-600 flex-shrink-0" />
             </div>
             <p className="text-sm sm:text-base md:text-lg lg:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed px-2">
-              Discover the cosmic connection between you and your partner through the ancient wisdom of astrology
+              Discover the cosmic connection between you and your partner through astrology. Results are for
+              entertainment and may not reflect complex real-life dynamics.
             </p>
           </motion.div>
 
