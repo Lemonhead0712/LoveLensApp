@@ -192,8 +192,11 @@ export default function EnhancedCompactUpload() {
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-3">Upload Your Conversation</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
-              Upload screenshots of your text conversations. We support iPhone, Android, WhatsApp, and other messaging
-              apps.
+              Upload screenshots of your text conversations. Our AI analyzes communication patterns, emotional tone, and
+              relationship dynamics to provide insights. Results are general guidance, not professional therapy.
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              Tip: Upload at least 3-5 screenshots with 10+ messages for more reliable insights.
             </p>
           </div>
 
@@ -229,7 +232,8 @@ export default function EnhancedCompactUpload() {
                     Support for PNG, JPG, JPEG • Up to 10 images • Max 10MB each
                   </p>
                   <p className="text-xs text-gray-500 mb-4">
-                    Your screenshots are processed locally and automatically deleted after analysis.
+                    <strong>Privacy:</strong> Your screenshots are processed locally in your browser and automatically
+                    deleted after analysis. No data is stored on our servers.
                   </p>
                   <Button
                     variant="outline"
