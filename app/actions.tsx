@@ -73,7 +73,7 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
           "Content-Type": "application/json",
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
-        body: JSON.stringify({
+        body: JSON.JSON.stringify({
           model: "gpt-4o",
           messages: [
             {
@@ -123,7 +123,7 @@ Extract the complete conversation now:`,
             "Content-Type": "application/json",
             Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
-          body: JSON.JSONstringify({
+          body: JSON.JSON.stringify({
             model: "gpt-4o",
             messages: [
               {
@@ -856,15 +856,7 @@ function detectMessageIntent(message: string, priorState: EmotionalFlowState): M
   const withdrawScore = withdrawMarkers.filter((m) => lower.includes(m)).length
 
   // Repair intent markers
-  const repairMarkers = [
-    "i'm sorry",
-    "i apologize",
-    "you're right",
-    "i understand",
-    "let me try",
-    "i was wrong",
-    "my fault",
-  ]
+  const repairMarkers = ["i'm sorry", "i apologize", "you're right", "i understand", "i was wrong", "my fault"]
   const repairScore = repairMarkers.filter((m) => lower.includes(m)).length
 
   // Attack intent markers (contempt, criticism)
@@ -1322,6 +1314,421 @@ function extractEmotionalThemes(
   return themes.slice(0, 2) // Return max 2 themes
 }
 
+// NEW FUNCTIONS FOR PDR TRACKING
+function analyzeBidirectionalPDR(
+  conversationText: string,
+  subjectALabel: string,
+  subjectBLabel: string,
+): {
+  subjectA_pursues_B: number
+  subjectB_pursues_A: number
+  subjectA_distances_from_B: number
+  subjectB_distances_from_A: number
+  subjectA_repairs_toward_B: number
+  subjectB_repairs_toward_A: number
+  pursuitAsymmetry: number
+  distanceAsymmetry: number
+  repairAsymmetry: number
+} {
+  const messages = conversationText.split(/\[(?:Subject [AB]|[^\]]+)\]/).filter((m) => m.trim())
+  const labels = conversationText.match(/\[([^\]]+)\]/g)?.map((l) => l.replace(/[[\]]/g, "")) || []
+
+  let subjectA_pursues_B = 0
+  let subjectB_pursues_A = 0
+  let subjectA_distances_from_B = 0
+  let subjectB_distances_from_A = 0
+  let subjectA_repairs_toward_B = 0
+  let subjectB_repairs_toward_A = 0
+
+  const pursuitMarkers = [
+    "can we talk",
+    "i miss",
+    "i want to",
+    "let's",
+    "are you",
+    "where are you",
+    "?",
+    "i need",
+    "please",
+    "i love you",
+  ]
+  const distanceMarkers = ["whatever", "fine", "ok", "sure", "nothing", "forget it", "never mind", "i don't care"]
+  const repairMarkers = ["i'm sorry", "i apologize", "you're right", "i understand", "my fault", "i was wrong"]
+
+  messages.forEach((msg, i) => {
+    const lower = msg.toLowerCase()
+    const speaker = labels[i]
+
+    const pursuitCount = pursuitMarkers.filter((m) => lower.includes(m)).length
+    const distanceCount = distanceMarkers.filter((m) => lower.includes(m)).length
+    const repairCount = repairMarkers.filter((m) => lower.includes(m)).length
+
+    if (speaker === subjectALabel) {
+      subjectA_pursues_B += pursuitCount
+      subjectA_distances_from_B += distanceCount
+      subjectA_repairs_toward_B += repairCount
+    } else if (speaker === subjectBLabel) {
+      subjectB_pursues_A += pursuitCount
+      subjectB_distances_from_A += distanceCount
+      subjectB_repairs_toward_A += repairCount
+    }
+  })
+
+  const totalPursuit = subjectA_pursues_B + subjectB_pursues_A
+  const totalDistance = subjectA_distances_from_B + subjectB_distances_from_A
+  const totalRepair = subjectA_repairs_toward_B + subjectB_repairs_toward_A
+
+  const pursuitAsymmetry = totalPursuit > 0 ? Math.abs(subjectA_pursues_B - subjectB_pursues_A) / totalPursuit : 0
+  const distanceAsymmetry =
+    totalDistance > 0 ? Math.abs(subjectA_distances_from_B - subjectB_distances_from_A) / totalDistance : 0
+  const repairAsymmetry =
+    totalRepair > 0 ? Math.abs(subjectA_repairs_toward_B - subjectB_repairs_toward_A) / totalRepair : 0
+
+  return {
+    subjectA_pursues_B,
+    subjectB_pursues_A,
+    subjectA_distances_from_B,
+    subjectB_distances_from_A,
+    subjectA_repairs_toward_B,
+    subjectB_repairs_toward_A,
+    pursuitAsymmetry,
+    distanceAsymmetry,
+    repairAsymmetry,
+  }
+}
+
+function detectPursueWithdrawLoop(
+  conversationText: string,
+  subjectALabel: string,
+  subjectBLabel: string,
+): {
+  loopDetected: boolean
+  loopCount: number
+  pursuer: string
+  withdrawer: string
+  escalates: boolean
+  description: string
+} {
+  const messages = conversationText.split(/\[(?:Subject [AB]|[^\]]+)\]/).filter((m) => m.trim())
+  const labels = conversationText.match(/\[([^\]]+)\]/g)?.map((l) => l.replace(/[[\]]/g, "")) || []
+
+  const pursuitMarkers = ["can we talk", "i miss", "are you", "where", "please", "?"]
+  const withdrawalMarkers = ["whatever", "fine", "ok", "nothing", "forget it", "never mind"]
+
+  let loopCount = 0
+  let lastAction: "pursue" | "withdraw" | null = null
+  let lastActor: string | null = null
+  const pursuerCount: Record<string, number> = { [subjectALabel]: 0, [subjectBLabel]: 0 }
+  const withdrawerCount: Record<string, number> = { [subjectALabel]: 0, [subjectBLabel]: 0 }
+
+  messages.forEach((msg, i) => {
+    const lower = msg.toLowerCase()
+    const speaker = labels[i]
+
+    const isPursuit = pursuitMarkers.some((m) => lower.includes(m))
+    const isWithdrawal = withdrawalMarkers.some((m) => lower.includes(m))
+
+    if (isPursuit && lastAction === "withdraw" && lastActor !== speaker) {
+      loopCount++
+      pursuerCount[speaker]++
+    } else if (isWithdrawal && lastAction === "pursue" && lastActor !== speaker) {
+      loopCount++
+      withdrawerCount[speaker]++
+    }
+
+    if (isPursuit) {
+      lastAction = "pursue"
+      lastActor = speaker
+    } else if (isWithdrawal) {
+      lastAction = "withdraw"
+      lastActor = speaker
+    }
+  })
+
+  const pursuer = pursuerCount[subjectALabel] > pursuerCount[subjectBLabel] ? subjectALabel : subjectBLabel
+  const withdrawer = pursuer === subjectALabel ? subjectBLabel : subjectALabel
+  const loopDetected = loopCount >= 2
+  const escalates = loopCount > 3
+
+  const description = loopDetected
+    ? `${pursuer} pursues connection while ${withdrawer} withdraws (${loopCount} loop iterations). ${escalates ? "Pattern escalates over time." : "Pattern remains stable."}`
+    : "No clear pursue-withdraw loop detected"
+
+  return {
+    loopDetected,
+    loopCount,
+    pursuer,
+    withdrawer,
+    escalates,
+    description,
+  }
+}
+
+function assessRepairQuality(conversationText: string): {
+  superficial: number
+  genuine: number
+  accountable: number
+  empathic: number
+  overallQuality: "low" | "moderate" | "high"
+} {
+  const lower = conversationText.toLowerCase()
+
+  // Superficial: just "sorry" without context
+  const superficial = (lower.match(/\bsorry\b(?!\s+(i|that|for|about))/g) || []).length
+
+  // Genuine: "I'm sorry I..." or "I'm sorry that..."
+  const genuine = (lower.match(/sorry\s+(i|that|for)\s+\w+/g) || []).length
+
+  // Accountable: "I was wrong", "my fault", "I shouldn't have"
+  const accountable = (lower.match(/(i was wrong|my fault|i shouldn't have|i messed up)/g) || []).length
+
+  // Empathic: "I understand why you felt", "I see how that hurt"
+  const empathic = (lower.match(/(i understand (why|how)|i see (why|how)|that must have)/g) || []).length
+
+  const totalRepairs = superficial + genuine + accountable + empathic
+  const qualityScore = totalRepairs > 0 ? (genuine * 2 + accountable * 3 + empathic * 4) / (totalRepairs * 4) : 0
+
+  const overallQuality = qualityScore > 0.6 ? "high" : qualityScore > 0.3 ? "moderate" : "low"
+
+  return {
+    superficial,
+    genuine,
+    accountable,
+    empathic,
+    overallQuality,
+  }
+}
+
+function analyzeRepairTiming(conversationText: string): {
+  immediate: number
+  delayed: number
+  absent: number
+  timingQuality: "excellent" | "good" | "poor"
+} {
+  const messages = conversationText.split(/\[(?:Subject [AB]|[^\]]+)\]/).filter((m) => m.trim())
+
+  const conflictMarkers = ["but", "however", "you always", "you never", "that's not"]
+  const repairMarkers = ["sorry", "apologize", "you're right", "i understand"]
+
+  let immediate = 0
+  let delayed = 0
+  let absent = 0
+  let lastConflictIndex = -1
+
+  messages.forEach((msg, i) => {
+    const lower = msg.toLowerCase()
+    const hasConflict = conflictMarkers.some((m) => lower.includes(m))
+    const hasRepair = repairMarkers.some((m) => lower.includes(m))
+
+    if (hasConflict) {
+      lastConflictIndex = i
+    }
+
+    if (hasRepair && lastConflictIndex >= 0) {
+      const gap = i - lastConflictIndex
+      if (gap <= 2) {
+        immediate++
+      } else {
+        delayed++
+      }
+      lastConflictIndex = -1
+    }
+  })
+
+  // Count unresolved conflicts
+  if (lastConflictIndex >= 0) {
+    absent++
+  }
+
+  const timingQuality = immediate > delayed && absent === 0 ? "excellent" : immediate >= delayed ? "good" : "poor"
+
+  return {
+    immediate,
+    delayed,
+    absent,
+    timingQuality,
+  }
+}
+
+function distinguishPursuitType(
+  conversationText: string,
+  subjectLabel: string,
+  timing: ReturnType<typeof analyzeMessageTiming>,
+): {
+  healthyPursuit: number
+  anxiousProtest: number
+  pursuitType: "healthy" | "anxious" | "mixed"
+} {
+  const messages = conversationText.split(/\[(?:Subject [AB]|[^\]]+)\]/).filter((m) => m.trim())
+  const labels = conversationText.match(/\[([^\]]+)\]/g)?.map((l) => l.replace(/[[\]]/g, "")) || []
+
+  const healthyMarkers = ["i miss you", "can we talk", "i'd love to", "thinking of you"]
+  const anxiousMarkers = ["why aren't you", "you never", "where are you", "why won't you", "!!!"]
+
+  let healthyPursuit = 0
+  let anxiousProtest = 0
+
+  messages.forEach((msg, i) => {
+    const lower = msg.toLowerCase()
+    const speaker = labels[i]
+
+    if (speaker === subjectLabel) {
+      healthyPursuit += healthyMarkers.filter((m) => lower.includes(m)).length
+      anxiousProtest += anxiousMarkers.filter((m) => lower.includes(m)).length
+    }
+  })
+
+  // Rapid-fire messaging is a sign of anxious protest
+  if (timing.anxiousPursuit) {
+    anxiousProtest += timing.rapidFireSequences
+  }
+
+  const pursuitType = anxiousProtest > healthyPursuit ? "anxious" : healthyPursuit > 0 ? "healthy" : "mixed"
+
+  return {
+    healthyPursuit,
+    anxiousProtest,
+    pursuitType,
+  }
+}
+
+function distinguishWithdrawalType(
+  conversationText: string,
+  subjectLabel: string,
+): {
+  stonewalling: number
+  healthySpace: number
+  withdrawalType: "stonewalling" | "healthy" | "mixed"
+} {
+  const messages = conversationText.split(/\[(?:Subject [AB]|[^\]]+)\]/).filter((m) => m.trim())
+  const labels = conversationText.match(/\[([^\]]+)\]/g)?.map((l) => l.replace(/[[\]]/g, "")) || []
+
+  const stonewallingMarkers = ["whatever", "i don't care", "fine", "ok", "sure"]
+  const healthySpaceMarkers = ["i need time", "can we talk later", "i'm overwhelmed", "let me think"]
+
+  let stonewalling = 0
+  let healthySpace = 0
+
+  messages.forEach((msg, i) => {
+    const lower = msg.toLowerCase()
+    const speaker = labels[i]
+
+    if (speaker === subjectLabel) {
+      stonewalling += stonewallingMarkers.filter((m) => lower.includes(m)).length
+      healthySpace += healthySpaceMarkers.filter((m) => lower.includes(m)).length
+    }
+  })
+
+  const withdrawalType = stonewalling > healthySpace ? "stonewalling" : healthySpace > 0 ? "healthy" : "mixed"
+
+  return {
+    stonewalling,
+    healthySpace,
+    withdrawalType,
+  }
+}
+
+function trackPatternEvolution(conversationText: string): {
+  early: { pursuit: number; distance: number; repair: number }
+  middle: { pursuit: number; distance: number; repair: number }
+  late: { pursuit: number; distance: number; repair: number }
+  trend: "improving" | "worsening" | "stable"
+  description: string
+} {
+  const messages = conversationText.split(/\[(?:Subject [AB]|[^\]]+)\]/).filter((m) => m.trim())
+  const third = Math.floor(messages.length / 3)
+
+  const earlyMessages = messages.slice(0, third).join(" ")
+  const middleMessages = messages.slice(third, third * 2).join(" ")
+  const lateMessages = messages.slice(third * 2).join(" ")
+
+  const countPatterns = (text: string) => {
+    const lower = text.toLowerCase()
+    const pursuit = (lower.match(/(can we talk|i miss|are you|where|please|\?)/g) || []).length
+    const distance = (lower.match(/(whatever|fine|ok|nothing|forget it|never mind)/g) || []).length
+    const repair = (lower.match(/(sorry|apologize|you're right|i understand)/g) || []).length
+    return { pursuit, distance, repair }
+  }
+
+  const early = countPatterns(earlyMessages)
+  const middle = countPatterns(middleMessages)
+  const late = countPatterns(lateMessages)
+
+  const earlyScore = early.repair - early.distance
+  const middleScore = middle.repair - middle.distance
+  const lateScore = late.repair - late.distance
+
+  const trend = lateScore > earlyScore ? "improving" : lateScore < earlyScore ? "worsening" : "stable"
+
+  const description =
+    trend === "improving"
+      ? "Patterns improve over the conversation—more repair, less distance"
+      : trend === "worsening"
+        ? "Patterns worsen over the conversation—less repair, more distance"
+        : "Patterns remain stable throughout the conversation"
+
+  return {
+    early,
+    middle,
+    late,
+    trend,
+    description,
+  }
+}
+
+function calculatePDRScores(
+  bidirectionalPDR: ReturnType<typeof analyzeBidirectionalPDR>,
+  pursuitType: { healthyPursuit: number; anxiousProtest: number },
+  withdrawalType: { stonewalling: number; healthySpace: number },
+  repairQuality: ReturnType<typeof assessRepairQuality>,
+  repairTiming: ReturnType<typeof analyzeRepairTiming>,
+): {
+  subjectA_pursueScore: number
+  subjectB_pursueScore: number
+  subjectA_distanceScore: number
+  subjectB_distanceScore: number
+  subjectA_repairScore: number
+  subjectB_repairScore: number
+} {
+  // Pursue Score: Higher is more pursuit (0-100)
+  const subjectA_pursueScore = Math.min(100, bidirectionalPDR.subjectA_pursues_B * 10 + pursuitType.healthyPursuit * 5)
+  const subjectB_pursueScore = Math.min(100, bidirectionalPDR.subjectB_pursues_A * 10 + pursuitType.healthyPursuit * 5)
+
+  // Distance Score: Higher is more distance (0-100)
+  const subjectA_distanceScore = Math.min(
+    100,
+    bidirectionalPDR.subjectA_distances_from_B * 10 + withdrawalType.stonewalling * 5,
+  )
+  const subjectB_distanceScore = Math.min(
+    100,
+    bidirectionalPDR.subjectB_distances_from_A * 10 + withdrawalType.stonewalling * 5,
+  )
+
+  // Repair Score: Higher is better repair (0-100)
+  const qualityMultiplier =
+    repairQuality.overallQuality === "high" ? 1.5 : repairQuality.overallQuality === "moderate" ? 1.0 : 0.5
+  const timingMultiplier =
+    repairTiming.timingQuality === "excellent" ? 1.5 : repairTiming.timingQuality === "good" ? 1.0 : 0.5
+
+  const subjectA_repairScore = Math.min(
+    100,
+    bidirectionalPDR.subjectA_repairs_toward_B * 10 * qualityMultiplier * timingMultiplier,
+  )
+  const subjectB_repairScore = Math.min(
+    100,
+    bidirectionalPDR.subjectB_repairs_toward_A * 10 * qualityMultiplier * timingMultiplier,
+  )
+
+  return {
+    subjectA_pursueScore,
+    subjectB_pursueScore,
+    subjectA_distanceScore,
+    subjectB_distanceScore,
+    subjectA_repairScore,
+    subjectB_repairScore,
+  }
+}
+
 function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: string, conversationText: string): any {
   const analysisStartTime = Date.now()
 
@@ -1437,6 +1844,83 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     `[v0] Emotional labor: ${emotionalLabor.laborImbalance} (${emotionalLabor.whoDoesMore} does ${emotionalLabor.laborImbalance === "balanced" ? "equal" : "more"})`,
   )
 
+  const bidirectionalPDR = hasMinimalData
+    ? {
+        subjectA_pursues_B: 2,
+        subjectB_pursues_A: 2,
+        subjectA_distances_from_B: 1,
+        subjectB_distances_from_A: 1,
+        subjectA_repairs_toward_B: 1,
+        subjectB_repairs_toward_A: 1,
+        pursuitAsymmetry: 0,
+        distanceAsymmetry: 0,
+        repairAsymmetry: 0,
+      }
+    : analyzeBidirectionalPDR(conversationText, subjectALabel, subjectBLabel)
+
+  const pursueWithdrawLoop = hasMinimalData
+    ? {
+        loopDetected: false,
+        loopCount: 0,
+        pursuer: subjectALabel,
+        withdrawer: subjectBLabel,
+        escalates: false,
+        description: "Limited data for loop detection",
+      }
+    : detectPursueWithdrawLoop(conversationText, subjectALabel, subjectBLabel)
+
+  const repairQuality = hasMinimalData
+    ? { superficial: 0, genuine: 1, accountable: 0, empathic: 0, overallQuality: "moderate" as const }
+    : assessRepairQuality(conversationText)
+
+  const repairTiming = hasMinimalData
+    ? { immediate: 1, delayed: 0, absent: 0, timingQuality: "good" as const }
+    : analyzeRepairTiming(conversationText)
+
+  const subjectA_pursuitType = hasMinimalData
+    ? { healthyPursuit: 1, anxiousProtest: 0, pursuitType: "healthy" as const }
+    : distinguishPursuitType(conversationText, subjectALabel, subjectATiming)
+
+  const subjectB_pursuitType = hasMinimalData
+    ? { healthyPursuit: 1, anxiousProtest: 0, pursuitType: "healthy" as const }
+    : distinguishPursuitType(conversationText, subjectBLabel, subjectBTiming)
+
+  const subjectA_withdrawalType = hasMinimalData
+    ? { stonewalling: 0, healthySpace: 0, withdrawalType: "mixed" as const }
+    : distinguishWithdrawalType(conversationText, subjectALabel)
+
+  const subjectB_withdrawalType = hasMinimalData
+    ? { stonewalling: 0, healthySpace: 0, withdrawalType: "mixed" as const }
+    : distinguishWithdrawalType(conversationText, subjectBLabel)
+
+  const patternEvolution = hasMinimalData
+    ? {
+        early: { pursuit: 1, distance: 0, repair: 1 },
+        middle: { pursuit: 1, distance: 0, repair: 1 },
+        late: { pursuit: 1, distance: 0, repair: 1 },
+        trend: "stable" as const,
+        description: "Limited data for evolution tracking",
+      }
+    : trackPatternEvolution(conversationText)
+
+  const pdrScores = calculatePDRScores(
+    bidirectionalPDR,
+    subjectA_pursuitType,
+    subjectA_withdrawalType,
+    repairQuality,
+    repairTiming,
+  )
+
+  console.log(
+    `[v0] PDR Scores - ${subjectALabel}: Pursue=${pdrScores.subjectA_pursueScore}, Distance=${pdrScores.subjectA_distanceScore}, Repair=${pdrScores.subjectA_repairScore}`,
+  )
+  console.log(
+    `[v0] PDR Scores - ${subjectBLabel}: Pursue=${pdrScores.subjectB_pursueScore}, Distance=${pdrScores.subjectB_distanceScore}, Repair=${pdrScores.subjectB_repairScore}`,
+  )
+  console.log(`[v0] Pursue-Withdraw Loop: ${pursueWithdrawLoop.description}`)
+  console.log(`[v0] Repair Quality: ${repairQuality.overallQuality}, Timing: ${repairTiming.timingQuality}`)
+  console.log(`[v0] Pattern Evolution: ${patternEvolution.trend} - ${patternEvolution.description}`)
+
   const punctuationPatterns = hasMinimalData
     ? { periods: 2, exclamations: 3, ellipses: 1, multipleQuestions: 0, noPunctuation: 2, emotionalIntensity: 1.5 }
     : analyzePunctuationPatterns(conversationText)
@@ -1551,7 +2035,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
   const dataQuality = Math.min(100, (conversationText.length / 500) * 100)
   const messageBalance =
     (Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)) * 100
-  const extractionConfidence = Math.round((dataQuality + messageBalance) / 2)
+  const extractionConfidence = Math.min(100, Math.round((dataQuality + messageBalance) / 2))
   const emotionalInferenceConfidence = Math.round((subjectAMotivation.confidence + subjectBMotivation.confidence) / 2)
 
   console.log(
@@ -1651,6 +2135,70 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     ? `This analysis is based on limited conversation data. The insights below are preliminary observations that may deepen with more conversation context. What matters most is how these patterns feel to you—your lived experience is the ultimate guide.`
     : `Observing ${totalMessages} messages between ${subjectALabel} and ${subjectBLabel}, a picture emerges: ${emotionalThemes[0]} The conversation moves through phases of ${emotionalFlow.dominantPhase}, with ${emotionalFlow.transitionCount} emotional transitions. ${subjectALabel} appears primarily ${subjectAMotivation.primaryMotive.replace("-driven", "")}, while ${subjectBLabel} seems ${subjectBMotivation.primaryMotive.replace("-driven", "")}. Beneath the surface of words lies a deeper story—both partners navigating the inherent vulnerability of intimacy, each seeking safety in their own way. ${emotionalFlow.nervousSystemSummary}`
 
+  const subjectAValidationPatterns = [
+    {
+      pattern: subjectA_pursuitType.pursuitType === "healthy" ? "Healthy Connection-Seeking" : "Anxious Pursuit",
+      frequency: bidirectionalPDR.subjectA_pursues_B,
+      context:
+        subjectA_pursuitType.pursuitType === "healthy"
+          ? `${subjectALabel} reaches out for connection in balanced ways (${subjectA_pursuitType.healthyPursuit} healthy bids)`
+          : `${subjectALabel} seeks reassurance through frequent contact (${subjectA_pursuitType.anxiousProtest} anxious bids)`,
+      nervousSystemState:
+        subjectA_pursuitType.pursuitType === "healthy" ? "🟢 ventral (safe connection)" : "🟡 sympathetic (anxious)",
+    },
+    {
+      pattern: subjectA_withdrawalType.withdrawalType === "healthy" ? "Healthy Space-Taking" : "Stonewalling",
+      frequency: bidirectionalPDR.subjectA_distances_from_B,
+      context:
+        subjectA_withdrawalType.withdrawalType === "healthy"
+          ? `${subjectALabel} takes space to process (${subjectA_withdrawalType.healthySpace} healthy requests)`
+          : `${subjectALabel} withdraws defensively (${subjectA_withdrawalType.stonewalling} stonewalling instances)`,
+      nervousSystemState:
+        subjectA_withdrawalType.withdrawalType === "healthy" ? "🟢 ventral (self-regulation)" : "🔵 dorsal (shutdown)",
+    },
+    {
+      pattern: repairQuality.overallQuality === "high" ? "Genuine Repair" : "Emerging Repair",
+      frequency: bidirectionalPDR.subjectA_repairs_toward_B,
+      context:
+        repairQuality.overallQuality === "high"
+          ? `${subjectALabel} offers accountable, empathic repairs (${repairQuality.accountable + repairQuality.empathic} high-quality)`
+          : `${subjectALabel} attempts repair with room to deepen (${repairQuality.superficial + repairQuality.genuine} attempts)`,
+      nervousSystemState: "🟢 ventral (connection-oriented)",
+    },
+  ]
+
+  const subjectBValidationPatterns = [
+    {
+      pattern: subjectB_pursuitType.pursuitType === "healthy" ? "Healthy Connection-Seeking" : "Anxious Pursuit",
+      frequency: bidirectionalPDR.subjectB_pursues_A,
+      context:
+        subjectB_pursuitType.pursuitType === "healthy"
+          ? `${subjectBLabel} reaches out for connection in balanced ways (${subjectB_pursuitType.healthyPursuit} healthy bids)`
+          : `${subjectBLabel} seeks reassurance through frequent contact (${subjectB_pursuitType.anxiousProtest} anxious bids)`,
+      nervousSystemState:
+        subjectB_pursuitType.pursuitType === "healthy" ? "🟢 ventral (safe connection)" : "🟡 sympathetic (anxious)",
+    },
+    {
+      pattern: subjectB_withdrawalType.withdrawalType === "healthy" ? "Healthy Space-Taking" : "Stonewalling",
+      frequency: bidirectionalPDR.subjectB_distances_from_A,
+      context:
+        subjectB_withdrawalType.withdrawalType === "healthy"
+          ? `${subjectBLabel} takes space to process (${subjectB_withdrawalType.healthySpace} healthy requests)`
+          : `${subjectBLabel} withdraws defensively (${subjectB_withdrawalType.stonewalling} stonewalling instances)`,
+      nervousSystemState:
+        subjectB_withdrawalType.withdrawalType === "healthy" ? "🟢 ventral (self-regulation)" : "🔵 dorsal (shutdown)",
+    },
+    {
+      pattern: repairQuality.overallQuality === "high" ? "Genuine Repair" : "Emerging Repair",
+      frequency: bidirectionalPDR.subjectB_repairs_toward_A,
+      context:
+        repairQuality.overallQuality === "high"
+          ? `${subjectBLabel} offers accountable, empathic repairs (${repairQuality.accountable + repairQuality.empathic} high-quality)`
+          : `${subjectBLabel} attempts repair with room to deepen (${repairQuality.superficial + repairQuality.genuine} attempts)`,
+      nervousSystemState: "🟢 ventral (connection-oriented)",
+    },
+  ]
+
   return {
     reflectiveSummary,
 
@@ -1739,7 +2287,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
       messageRhythmAndPacing:
         Math.abs(subjectAMessages - subjectBMessages) < 2
           ? `Both partners contribute fairly equally to the conversation, which might suggest mutual investment in the relationship. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`
-          : `${subjectAIsMoreActive ? subjectALabel : subjectBLabel} tends to initiate or sustain conversation more often (${subjectAIsMoreActive ? subjectAMessages : subjectBMessages} vs ${subjectAIsMoreActive ? subjectBMessages : subjectAMessages} messages). This might reflect different communication styles, energy levels, or comfort with verbal expression—not necessarily different levels of care. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`,
+          : `${subjectALabel} tends to initiate or sustain conversation more often (${subjectALabel} ${subjectAMessages} vs ${subjectBLabel} ${subjectBMessages} messages). This might reflect different communication styles, energy levels, or comfort with verbal expression—not necessarily different levels of care. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`,
       subjectAStyle: `${subjectALabel} ${subjectAIsMoreActive ? "actively engages in dialogue" : "contributes steadily"} with ${subjectAStyle.expressiveStyle} messages (average ${Math.round(subjectAStyle.avgLength)} characters). ${subjectATiming.anxiousPursuit ? "Sends rapid-fire messages when anxious or seeking connection." : ""} ${subjectAStyle.oneWordReplies > 1 ? "Brief replies may indicate emotional fatigue or overwhelm rather than disengagement." : ""} ${emotionalPatterns.vulnerabilityBids > 1 ? "Sometimes shares vulnerable feelings" : "Navigating when and how to share feelings"}. ${subjectAAccountability.takesResponsibility > 0 ? "Takes responsibility when appropriate" : subjectAAccountability.blamesOther > 1 ? "Tends to blame rather than own their part" : "Learning accountability"}. ${emotionalPatterns.defensiveResponses > 1 ? "When feeling criticized, there's a tendency to defend or explain, which could be a natural protective response." : "There's an openness to hearing feedback, even when it's difficult."}`,
       subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages (average ${Math.round(subjectBStyle.avgLength)} characters). ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Shows accountability for their actions" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
       punctuationInsights:
@@ -1828,7 +2376,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
               : `Attachment patterns are developing. Both partners are learning to balance their need for closeness with their need for autonomy.`,
       loveLanguageFriction:
         Math.abs(subjectAMessages - subjectBMessages) > 3 || emotionalLabor.laborImbalance !== "balanced"
-          ? `You may express and receive love differently. ${subjectAIsMoreActive || emotionalLabor.subjectALabor > emotionalLabor.subjectBLabor ? subjectALabel : subjectBLabel} might value verbal connection and emotional processing more, while the other might show love through actions, presence, or practical support. Neither is wrong—they're just different.`
+          ? `You may express and receive love differently. ${subjectALabel} might value verbal connection and emotional processing more, while the other might show love through actions, presence, or practical support. Neither is wrong—they're just different.`
           : `Your ways of expressing care seem fairly aligned, though there's always room to learn each other's unique love language.`,
       gottmanConflictMarkers:
         gottmanFlags.criticism || gottmanFlags.contempt || gottmanFlags.defensiveness || gottmanFlags.stonewalling
@@ -1946,42 +2494,40 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
             : "",
         ].filter(Boolean),
       },
-      forBoth: {
-        sharedStrengths: [
-          emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
-            ? "You both make efforts to repair after disconnection"
-            : "You're both learning that repair is possible",
-          !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
-            ? "You maintain respect for each other, even in conflict"
-            : "You're working to restore mutual respect",
-          "You're both here, seeking to understand. That matters.",
-          subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
-            ? "Both partners take responsibility for their actions"
-            : "",
-        ].filter(Boolean),
-        sharedGrowthNudges: [
-          "Practice the 5:1 ratio: five positive interactions for every negative one. Relationships may need more deposits than withdrawals.",
-          "Develop a shared vocabulary for emotions. 'I'm feeling flooded' or 'I need reassurance' could prevent misunderstanding.",
-          "Remember: you're on the same team. The problem might be the pattern, not your partner.",
-          contemptMarkers.contemptScore > 0
-            ? "Eliminate contempt from your relationship. It's the #1 predictor of divorce. Replace sarcasm with direct communication, mockery with curiosity, name-calling with 'I feel' statements."
-            : "",
-          emotionalLabor.laborImbalance !== "balanced"
-            ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work to maintain connection. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
-            : "",
-          profanityAnalysis.emotionalEscalation
-            ? "When emotions escalate to profanity or high intensity, take a 20-minute break to self-soothe before continuing the conversation."
-            : "",
-        ].filter(Boolean),
-        sharedConnectionBoosters: [
-          "Weekly relationship check-in: 'What's one thing I did that made you feel loved? What's one thing I could do differently?'",
-          "Daily appreciation ritual: share three specific things you're grateful for about each other",
-          "Monthly adventure: try something new together to build positive shared experiences",
-          repairDynamics.repairEffectiveness === "low"
-            ? "Learn and practice effective repair: acknowledge impact, take responsibility, express care, ask what they need"
-            : "",
-        ].filter(Boolean),
-      },
+      sharedStrengths: [
+        emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
+          ? "You both make efforts to repair after disconnection"
+          : "You're both learning that repair is possible",
+        !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
+          ? "You maintain respect for each other, even in conflict"
+          : "You're working to restore mutual respect",
+        "You're both here, seeking to understand. That matters.",
+        subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
+          ? "Both partners take responsibility for their actions"
+          : "",
+      ].filter(Boolean),
+      sharedGrowthNudges: [
+        "Practice the 5:1 ratio: five positive interactions for every negative one. Relationships may need more deposits than withdrawals.",
+        "Develop a shared vocabulary for emotions. 'I'm feeling flooded' or 'I need reassurance' could prevent misunderstanding.",
+        "Remember: you're on the same team. The problem might be the pattern, not your partner.",
+        contemptMarkers.contemptScore > 0
+          ? "Eliminate contempt from your relationship. It's the #1 predictor of divorce. Replace sarcasm with direct communication, mockery with curiosity, name-calling with 'I feel' statements."
+          : "",
+        emotionalLabor.laborImbalance !== "balanced"
+          ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work to maintain connection. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
+          : "",
+        profanityAnalysis.emotionalEscalation
+          ? "When emotions escalate to profanity or high intensity, take a 20-minute break to self-soothe before continuing the conversation."
+          : "",
+      ].filter(Boolean),
+      sharedConnectionBoosters: [
+        "Weekly relationship check-in: 'What's one thing I did that made you feel loved? What's one thing I could do differently?'",
+        "Daily appreciation ritual: share three specific things you're grateful for about each other",
+        "Monthly adventure: try something new together to build positive shared experiences",
+        repairDynamics.repairEffectiveness === "low"
+          ? "Learn and practice effective repair: acknowledge impact, take responsibility, express care, ask what they need"
+          : "",
+      ].filter(Boolean),
     },
 
     visualInsightsData: {
@@ -2357,6 +2903,142 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
       `Emotional flow: ${emotionalFlow.dominantPhase} phase with ${emotionalFlow.transitionCount} transitions`,
       `Primary motivations: ${subjectALabel} (${subjectAMotivation.primaryMotive}), ${subjectBLabel} (${subjectBMotivation.primaryMotive})`,
     ].filter(Boolean),
+
+    pursueDistanceRepairDynamics: {
+      summary:
+        pursueWithdrawLoop.loopDetected && pursueWithdrawLoop.escalates
+          ? `${pursueWithdrawLoop.description} ${patternEvolution.description}`
+          : `Both partners navigate pursuit and distance in their own ways. ${patternEvolution.description}`,
+
+      bidirectionalPatterns: {
+        pursuit: {
+          [subjectALabel]: {
+            score: pdrScores.subjectA_pursueScore,
+            type: subjectA_pursuitType.pursuitType,
+            frequency: bidirectionalPDR.subjectA_pursues_B,
+            description:
+              subjectA_pursuitType.pursuitType === "healthy"
+                ? `Seeks connection through balanced outreach`
+                : `Seeks reassurance through frequent contact (may reflect attachment anxiety)`,
+          },
+          [subjectBLabel]: {
+            score: pdrScores.subjectB_pursueScore,
+            type: subjectB_pursuitType.pursuitType,
+            frequency: bidirectionalPDR.subjectB_pursues_A,
+            description:
+              subjectB_pursuitType.pursuitType === "healthy"
+                ? `Seeks connection through balanced outreach`
+                : `Seeks reassurance through frequent contact (may reflect attachment anxiety)`,
+          },
+          asymmetry:
+            bidirectionalPDR.pursuitAsymmetry > 0.7
+              ? `Significant imbalance: ${bidirectionalPDR.subjectA_pursues_B > bidirectionalPDR.subjectB_pursues_A ? subjectALabel : subjectBLabel} pursues ${Math.round(bidirectionalPDR.pursuitAsymmetry * 100)}% more`
+              : "Relatively balanced pursuit patterns",
+        },
+        distance: {
+          [subjectALabel]: {
+            score: pdrScores.subjectA_distanceScore,
+            type: subjectA_withdrawalType.withdrawalType,
+            frequency: bidirectionalPDR.subjectA_distances_from_B,
+            description:
+              subjectA_withdrawalType.withdrawalType === "healthy"
+                ? `Takes space to self-regulate`
+                : subjectA_withdrawalType.withdrawalType === "stonewalling"
+                  ? `Withdraws defensively (stonewalling pattern)`
+                  : `Mixed withdrawal patterns`,
+          },
+          [subjectBLabel]: {
+            score: pdrScores.subjectB_distanceScore,
+            type: subjectB_withdrawalType.withdrawalType,
+            frequency: bidirectionalPDR.subjectB_distances_from_A,
+            description:
+              subjectB_withdrawalType.withdrawalType === "healthy"
+                ? `Takes space to self-regulate`
+                : subjectB_withdrawalType.withdrawalType === "stonewalling"
+                  ? `Withdraws defensively (stonewalling pattern)`
+                  : `Mixed withdrawal patterns`,
+          },
+          asymmetry:
+            bidirectionalPDR.distanceAsymmetry > 0.7
+              ? `Significant imbalance: ${bidirectionalPDR.subjectA_distances_from_B > bidirectionalPDR.subjectB_distances_from_A ? subjectALabel : subjectBLabel} distances ${Math.round(bidirectionalPDR.distanceAsymmetry * 100)}% more`
+              : "Relatively balanced distance patterns",
+        },
+        repair: {
+          [subjectALabel]: {
+            score: pdrScores.subjectA_repairScore,
+            frequency: bidirectionalPDR.subjectA_repairs_toward_B,
+            quality: repairQuality.overallQuality,
+            timing: repairTiming.timingQuality,
+            description:
+              repairQuality.overallQuality === "high"
+                ? `Offers genuine, accountable repairs with good timing`
+                : repairQuality.overallQuality === "moderate"
+                  ? `Attempts repair with room to deepen quality`
+                  : `Repair attempts are superficial or poorly timed`,
+          },
+          [subjectBLabel]: {
+            score: pdrScores.subjectB_repairScore,
+            frequency: bidirectionalPDR.subjectB_repairs_toward_A,
+            quality: repairQuality.overallQuality,
+            timing: repairTiming.timingQuality,
+            description:
+              repairQuality.overallQuality === "high"
+                ? `Offers genuine, accountable repairs with good timing`
+                : repairQuality.overallQuality === "moderate"
+                  ? `Attempts repair with room to deepen quality`
+                  : `Repair attempts are superficial or poorly timed`,
+          },
+          asymmetry:
+            bidirectionalPDR.repairAsymmetry > 0.7
+              ? `Significant imbalance: ${bidirectionalPDR.subjectA_repairs_toward_B > bidirectionalPDR.subjectB_repairs_toward_A ? subjectALabel : subjectBLabel} repairs ${Math.round(bidirectionalPDR.repairAsymmetry * 100)}% more (repair burden)`
+              : "Relatively balanced repair efforts",
+        },
+      },
+
+      repairAnalysis: {
+        quality: {
+          superficial: repairQuality.superficial,
+          genuine: repairQuality.genuine,
+          accountable: repairQuality.accountable,
+          empathic: repairQuality.empathic,
+          overall: repairQuality.overallQuality,
+        },
+        timing: {
+          immediate: repairTiming.immediate,
+          delayed: repairTiming.delayed,
+          absent: repairTiming.absent,
+          overall: repairTiming.timingQuality,
+        },
+        effectiveness:
+          repairQuality.overallQuality === "high" && repairTiming.timingQuality === "excellent"
+            ? "Repairs are genuine, timely, and effective"
+            : repairQuality.overallQuality === "moderate" || repairTiming.timingQuality === "good"
+              ? "Repairs are attempted but could be more genuine or timely"
+              : "Repairs are superficial, delayed, or absent—this needs attention",
+      },
+
+      patternEvolution: {
+        trend: patternEvolution.trend,
+        description: patternEvolution.description,
+        early: `Early: ${patternEvolution.early.pursuit} pursuit, ${patternEvolution.early.distance} distance, ${patternEvolution.early.repair} repair`,
+        middle: `Middle: ${patternEvolution.middle.pursuit} pursuit, ${patternEvolution.middle.distance} distance, ${patternEvolution.middle.repair} repair`,
+        late: `Late: ${patternEvolution.late.pursuit} pursuit, ${patternEvolution.late.distance} distance, ${patternEvolution.late.repair} repair`,
+      },
+
+      clinicalInsight:
+        pursueWithdrawLoop.loopDetected && pursueWithdrawLoop.escalates
+          ? `The pursue-withdraw loop is escalating and requires immediate intervention. ${pursueWithdrawLoop.pursuer} needs to soften pursuit, ${pursueWithdrawLoop.withdrawer} needs to lean in rather than pull back.`
+          : pursueWithdrawLoop.loopDetected
+            ? `A pursue-withdraw pattern exists but hasn't escalated. Both partners can learn to break this cycle with awareness and practice.`
+            : bidirectionalPDR.repairAsymmetry > 0.7
+              ? `The repair burden falls heavily on one partner. Both need to take responsibility for reconnection.`
+              : `PDR patterns are relatively balanced. Continue building on this foundation.`,
+    },
+
+    validationAndReassurancePatterns: {
+      [subjectALabel]: subjectAValidationPatterns,
+      [subjectBLabel]: subjectBValidationPatterns,
+    },
   }
 }
 
