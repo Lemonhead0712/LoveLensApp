@@ -1979,7 +1979,8 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     const profanityPenalty = profanityAnalysis.profanityCount * 2
     const baseScore = Math.max(
       20,
-      Math.round(
+      Math.min(
+        100,
         40 +
           balanceRatio * 25 +
           Math.min(25, bidResponseRatio * 25) +
@@ -2289,7 +2290,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
           ? `Both partners contribute fairly equally to the conversation, which might suggest mutual investment in the relationship. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`
           : `${subjectALabel} tends to initiate or sustain conversation more often (${subjectALabel} ${subjectAMessages} vs ${subjectBLabel} ${subjectBMessages} messages). This might reflect different communication styles, energy levels, or comfort with verbal expression—not necessarily different levels of care. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`,
       subjectAStyle: `${subjectALabel} ${subjectAIsMoreActive ? "actively engages in dialogue" : "contributes steadily"} with ${subjectAStyle.expressiveStyle} messages (average ${Math.round(subjectAStyle.avgLength)} characters). ${subjectATiming.anxiousPursuit ? "Sends rapid-fire messages when anxious or seeking connection." : ""} ${subjectAStyle.oneWordReplies > 1 ? "Brief replies may indicate emotional fatigue or overwhelm rather than disengagement." : ""} ${emotionalPatterns.vulnerabilityBids > 1 ? "Sometimes shares vulnerable feelings" : "Navigating when and how to share feelings"}. ${subjectAAccountability.takesResponsibility > 0 ? "Takes responsibility when appropriate" : subjectAAccountability.blamesOther > 1 ? "Tends to blame rather than own their part" : "Learning accountability"}. ${emotionalPatterns.defensiveResponses > 1 ? "When feeling criticized, there's a tendency to defend or explain, which could be a natural protective response." : "There's an openness to hearing feedback, even when it's difficult."}`,
-      subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages (average ${Math.round(subjectBStyle.avgLength)} characters). ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Shows accountability for their actions" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
+      subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages (average ${Math.round(subjectBStyle.avgLength)} characters). ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Owns their part in conflicts" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
       punctuationInsights:
         punctuationInsights.length > 0
           ? punctuationInsights
@@ -2366,7 +2367,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     reflectiveFrameworks: {
       description:
         "These frameworks help us understand the deeper emotional patterns at play, recognizing that behavior is always an attempt to meet a need.",
-      attachmentEnergies:
+      attachmentTheoryAnalysis:
         emotionalSafetyScore > 75
           ? `The relationship shows secure attachment patterns—both partners can be vulnerable and responsive. This is the foundation for lasting intimacy.`
           : subjectATiming.anxiousPursuit || subjectBTiming.anxiousPursuit
@@ -2514,7 +2515,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
           ? "Eliminate contempt from your relationship. It's the #1 predictor of divorce. Replace sarcasm with direct communication, mockery with curiosity, name-calling with 'I feel' statements."
           : "",
         emotionalLabor.laborImbalance !== "balanced"
-          ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work to maintain connection. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
+          ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
           : "",
         profanityAnalysis.emotionalEscalation
           ? "When emotions escalate to profanity or high intensity, take a 20-minute break to self-soothe before continuing the conversation."
@@ -3027,7 +3028,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
 
       clinicalInsight:
         pursueWithdrawLoop.loopDetected && pursueWithdrawLoop.escalates
-          ? `The pursue-withdraw loop is escalating and requires immediate intervention. ${pursueWithdrawLoop.pursuer} needs to soften pursuit, ${pursueWithdrawLoop.withdrawer} needs to lean in rather than pull back.`
+          ? `${pursueWithdrawLoop.description} ${patternEvolution.description}`
           : pursueWithdrawLoop.loopDetected
             ? `A pursue-withdraw pattern exists but hasn't escalated. Both partners can learn to break this cycle with awareness and practice.`
             : bidirectionalPDR.repairAsymmetry > 0.7
