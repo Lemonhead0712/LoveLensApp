@@ -1,1461 +1,2362 @@
 "use server"
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs),
-  )
+// Helper function to add timeout to promises
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    setTimeout(() => reject(new Error(`${operationName} timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
   return Promise.race([promise, timeoutPromise])
 }
 
+// Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
   try {
-    console.log(`[v0] Reading file: ${file.name} (${file.size} bytes, type: ${file.type})`)
-
-    if (!file || !file.size) {
-      throw new Error("Invalid file: file is empty or undefined")
+    const arrayBuffer = await file.arrayBuffer()
+    const bytes = new Uint8Array(arrayBuffer)
+    let binary = ""
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i])
     }
-
-    if (file.size > 10 * 1024 * 1024) {
-      throw new Error(
-        `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
-      )
-    }
-
-    if (!file.type.startsWith("image/")) {
-      throw new Error(`File "${file.name}" is not an image (type: ${file.type})`)
-    }
-
-    let buffer: Buffer | null = null
-    let method = "unknown"
-
-    try {
-      const arrayBuffer = await withTimeout(file.arrayBuffer(), 10000, "File reading")
-      buffer = Buffer.from(arrayBuffer)
-      method = "arrayBuffer"
-    } catch (error) {
-      console.warn(`[v0] arrayBuffer() failed:`, error)
-
-      // Fallback: try bytes() if available
-      if (typeof (file as any).bytes === "function") {
-        try {
-          const bytes = await withTimeout((file as any).bytes(), 10000, "File reading (bytes)")
-          buffer = Buffer.from(bytes)
-          method = "bytes"
-        } catch (bytesError) {
-          console.warn(`[v0] bytes() also failed:`, bytesError)
-        }
-      }
-
-      // Final fallback: try stream reading
-      if (!buffer && typeof (file as any).stream === "function") {
-        try {
-          const stream = (file as any).stream()
-          const reader = stream.getReader()
-          const chunks: Uint8Array[] = []
-
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            chunks.push(value)
-          }
-
-          const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0)
-          const combined = new Uint8Array(totalLength)
-          let offset = 0
-          for (const chunk of chunks) {
-            combined.set(chunk, offset)
-            offset += chunk.length
-          }
-
-          buffer = Buffer.from(combined)
-          method = "stream"
-        } catch (streamError) {
-          console.warn(`[v0] stream() also failed:`, streamError)
-        }
-      }
-    }
-
-    if (!buffer) {
-      throw new Error(
-        `Unable to read file "${file.name}". This may be a browser compatibility issue. Please try: (1) refreshing the page, (2) using a different browser, or (3) re-uploading the image.`,
-      )
-    }
-
-    const base64 = buffer.toString("base64")
-    console.log(`[v0] Converted ${file.name} to base64 using ${method}`)
-
-    return `data:${file.type};base64,${base64}`
+    return btoa(binary)
   } catch (error) {
-    console.error(`[v0] Error converting file to base64:`, error)
-    throw error
+    console.error("[v0] Error converting file to base64:", error)
+    throw new Error("Failed to process image file")
   }
 }
 
-async function extractTextFromImage(
-  file: File,
-  imageIndex: number,
-): Promise<{
-  text: string
-  speaker1Label: string
-  speaker2Label: string
-  confidence: number
-  processingTime: number
-  platform?: string
+// Batch OCR extraction function
+async function extractTextFromMultipleImages(files: File[]): Promise<{
+  extractedTexts: Array<{ text: string; imageIndex: number }>
+  totalProcessingTime: number
 }> {
   const startTime = Date.now()
 
   try {
-    // Validate file can be read
-    await fileToBase64(file)
+    console.log(`[v0] Converting ${files.length} files to base64...`)
 
-    console.log(`[v0] [Image ${imageIndex + 1}] File validated successfully`)
+    // Convert all files to base64
+    const base64Images = await Promise.all(
+      files.map(async (file, index) => {
+        try {
+          const base64 = await fileToBase64(file)
+          return {
+            type: "image_url" as const,
+            image_url: {
+              url: `data:${file.type};base64,${base64}`,
+            },
+          }
+        } catch (error) {
+          console.error(`[v0] Failed to convert image ${index + 1}:`, error)
+          return null
+        }
+      }),
+    )
 
-    // The actual analysis will be based on conversation patterns, not OCR
+    const validImages = base64Images.filter((img) => img !== null)
+
+    if (validImages.length === 0) {
+      console.log("[v0] No valid images to process, returning empty results")
+      return {
+        extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
+        totalProcessingTime: Date.now() - startTime,
+      }
+    }
+
+    console.log(`[v0] Sending ${validImages.length} images to OpenAI for batch extraction...`)
+
+    // Attempt 1: Try batch extraction
+    let extractedText = ""
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `You are analyzing conversation screenshots for a relationship analysis tool. Extract ALL text from these images in chronological order.
+
+IMPORTANT INSTRUCTIONS:
+1. Identify the two main speakers and use consistent labels for them throughout (e.g., [Person A], [Person B])
+2. Format each message as: [Speaker Name]: "message text"
+3. Preserve the chronological order of messages across all images
+4. Include timestamps if visible (format: [Speaker Name] (timestamp): "message")
+5. Note the platform if identifiable (iMessage, WhatsApp, etc.)
+6. Preserve emotional markers like emojis, punctuation (!!!, ???, ...)
+7. If you see message reactions or read receipts, note them
+8. If text is unclear, use [unclear] but try your best to extract everything
+
+Extract the complete conversation now:`,
+                },
+                ...validImages,
+              ],
+            },
+          ],
+          max_tokens: 4000,
+          temperature: 0.1,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      extractedText = data.choices?.[0]?.message?.content || ""
+      console.log(`[v0] Batch extraction successful: ${extractedText.length} characters`)
+    } catch (error) {
+      console.error("[v0] Batch extraction attempt 1 failed:", error)
+
+      // Attempt 2: Retry once
+      try {
+        console.log("[v0] Retrying batch extraction...")
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+          body: JSON.JSONstringify({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "Extract all conversation text from these screenshots. Format as [Speaker]: 'message'. Preserve order and emotional markers.",
+                  },
+                  ...validImages,
+                ],
+              },
+            ],
+            max_tokens: 4000,
+            temperature: 0.1,
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          extractedText = data.choices?.[0]?.message?.content || ""
+          console.log(`[v0] Retry successful: ${extractedText.length} characters`)
+        }
+      } catch (retryError) {
+        console.error("[v0] Batch extraction attempt 2 failed:", retryError)
+      }
+    }
+
+    // Return results
+    const totalProcessingTime = Date.now() - startTime
     return {
-      text: "", // Empty text - analysis will use pattern-based logic
-      speaker1Label: "Person A",
-      speaker2Label: "Person B",
-      confidence: 1.0, // File validation successful
-      processingTime: Date.now() - startTime,
-      platform: "messaging",
+      extractedTexts: [{ text: extractedText, imageIndex: 0 }],
+      totalProcessingTime,
     }
   } catch (error) {
-    console.error(`[v0] [Image ${imageIndex + 1}] File validation error:`, error)
-    throw error
+    console.error("[v0] Batch extraction error:", error)
+    return {
+      extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
+      totalProcessingTime: Date.now() - startTime,
+    }
   }
 }
 
+// Normalize speaker labels
 function normalizeSpeakers(
-  extractedTexts: Array<{
-    text: string
-    speaker1Label: string
-    speaker2Label: string
-    confidence: number
-  }>,
-  subjectAName: string | null,
-  subjectBName: string | null,
+  extractedTexts: Array<{ text: string; imageIndex: number }>,
+  customNameA: string | null,
+  customNameB: string | null,
 ): {
   normalizedText: string
   subjectALabel: string
   subjectBLabel: string
 } {
-  const labelA = subjectAName || "Subject A"
-  const labelB = subjectBName || "Subject B"
+  // Combine all extracted text
+  const combinedText = extractedTexts.map((e) => e.text).join("\n\n")
 
-  console.log(`[v0] Using labels: ${labelA} and ${labelB}`)
+  if (!combinedText || combinedText.length < 10) {
+    // Not enough text, use custom names or defaults
+    return {
+      normalizedText: "",
+      subjectALabel: customNameA || "Person A",
+      subjectBLabel: customNameB || "Person B",
+    }
+  }
 
-  const normalizedText = extractedTexts
-    .map((extracted) => {
-      let text = extracted.text
-      text = text.replace(/\[Person A\]/gi, `[${labelA}]`)
-      text = text.replace(/\[Person B\]/gi, `[${labelB}]`)
-      return text
-    })
-    .join("\n\n")
+  // Try to detect speaker labels from the text
+  const speakerPattern = /\[([^\]]+)\]:/g
+  const speakers = new Set<string>()
+  let match
+
+  while ((match = speakerPattern.exec(combinedText)) !== null) {
+    speakers.add(match[1].trim())
+  }
+
+  const speakerArray = Array.from(speakers)
+
+  // Determine final labels
+  const subjectALabel = customNameA || speakerArray[0] || "Person A"
+  const subjectBLabel = customNameB || speakerArray[1] || "Person B"
+
+  // If custom names provided, replace detected names with custom names
+  let normalizedText = combinedText
+  if (customNameA && speakerArray[0]) {
+    normalizedText = normalizedText.replace(new RegExp(`\\[${speakerArray[0]}\\]`, "g"), `[${customNameA}]`)
+  }
+  if (customNameB && speakerArray[1]) {
+    normalizedText = normalizedText.replace(new RegExp(`\\[${speakerArray[1]}\\]`, "g"), `[${customNameB}]`)
+  }
+
+  console.log(`[v0] Detected speakers: ${speakerArray.join(", ")}`)
+  console.log(`[v0] Final labels: ${subjectALabel}, ${subjectBLabel}`)
 
   return {
     normalizedText,
-    subjectALabel: labelA,
-    subjectBLabel: labelB,
+    subjectALabel,
+    subjectBLabel,
   }
 }
 
-function calculateHarmonyScore(conversationText: string, subjectALabel: string, subjectBLabel: string): number {
-  let score = 70 // Base score
+// Analyze punctuation patterns for emotional subtext
+function analyzePunctuationPatterns(text: string): {
+  periods: number
+  exclamations: number
+  ellipses: number
+  multipleQuestions: number
+  noPunctuation: number
+  emotionalIntensity: number
+} {
+  const messages = text.split(/\n/)
 
-  // Harsh startup detection (first 2 turns)
-  const messages = conversationText.split("\n").filter((line) => line.trim().startsWith("["))
-  const firstTwoTurns = messages.slice(0, 4).join(" ").toLowerCase()
-  const harshStartupMarkers = [
-    "you always",
-    "you never",
-    "you're a",
-    "what's wrong with you",
-    "seriously?",
-    "are you kidding",
-  ]
-  if (harshStartupMarkers.some((marker) => firstTwoTurns.includes(marker))) {
-    score -= 10
-  }
-
-  // Contempt markers
-  const contemptMarkers = ["idiot", "stupid", "pathetic", "joke", "ridiculous", "whatever"]
-  const contemptCount = contemptMarkers.filter((marker) => conversationText.toLowerCase().includes(marker)).length
-  if (contemptCount > 3) {
-    score -= 15
-  }
-
-  // Repair attempts
-  const repairMarkers = [
-    "you're right",
-    "i'm sorry",
-    "i understand",
-    "thank you",
-    "i see",
-    "let's",
-    "we can",
-    "i appreciate",
-  ]
-  const repairCount = repairMarkers.filter((marker) => conversationText.toLowerCase().includes(marker)).length
-  if (repairCount >= 2) {
-    score += 10
-  }
-
-  // One-sided flooding (>8 messages in sequence from one person)
-  let maxSequence = 0
-  let currentSequence = 0
-  let lastSpeaker = ""
+  let periods = 0
+  let exclamations = 0
+  let ellipses = 0
+  let multipleQuestions = 0
+  let noPunctuation = 0
 
   messages.forEach((msg) => {
-    const speaker = msg.match(/\[(.*?)\]/)?.[1] || ""
-    if (speaker === lastSpeaker) {
-      currentSequence++
-      maxSequence = Math.max(maxSequence, currentSequence)
-    } else {
-      currentSequence = 1
-      lastSpeaker = speaker
-    }
+    const content = msg.replace(/\[.*?\]:/g, "").trim()
+    if (content.length < 3) return
+
+    if (content.endsWith(".") && !content.endsWith("...")) periods++
+    if (content.includes("!")) exclamations++
+    if (content.includes("...") || content.includes("…")) ellipses++
+    if (content.match(/\?\?+/)) multipleQuestions++
+    if (!/[.!?]$/.test(content) && content.length > 5) noPunctuation++
   })
 
-  if (maxSequence > 8) {
-    score -= 8
-  }
+  // Calculate emotional intensity based on punctuation
+  const emotionalIntensity = (exclamations * 2 + multipleQuestions * 3 + ellipses * 2) / Math.max(1, messages.length)
 
-  // Mutual plan formed
-  const planMarkers = ["tomorrow", "tonight", "let's meet", "i'll call", "see you", "talk later"]
-  if (planMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    score += 8
+  return {
+    periods,
+    exclamations,
+    ellipses,
+    multipleQuestions,
+    noPunctuation,
+    emotionalIntensity,
   }
-
-  return Math.max(0, Math.min(100, score))
 }
 
-function calculateEmotionalSafetyScore(conversationText: string): number {
-  let score = 65 // Base score
+// Analyze message length and expression style
+function analyzeMessageStyle(
+  text: string,
+  speakerLabel: string,
+): {
+  avgLength: number
+  shortMessages: number
+  longMessages: number
+  oneWordReplies: number
+  expressiveStyle: "brief" | "balanced" | "expressive"
+} {
+  const pattern = new RegExp(`\\[${speakerLabel}\\]:\\s*"?([^"\\n]+)"?`, "gi")
+  const messages: string[] = []
+  let match
 
-  // Intense language
-  const intenseMarkers = ["!!!", "???", "WHAT", "WHY", "HOW COULD"]
-  const intenseCount = intenseMarkers.filter((marker) => conversationText.includes(marker)).length
-  if (intenseCount > 3) {
-    score -= 5
+  while ((match = pattern.exec(text)) !== null) {
+    messages.push(match[1].trim())
   }
 
-  // Personal attacks
-  const attackMarkers = ["you're a", "you never", "you always", "you're so", "you can't"]
-  const attackCount = attackMarkers.filter((marker) => conversationText.toLowerCase().includes(marker)).length
-  score -= Math.min(20, attackCount * 10)
-
-  // Boundary + respect
-  const boundaryMarkers = ["i need", "i can't", "i have to", "i understand", "i respect"]
-  if (boundaryMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    score += 10
+  if (messages.length === 0) {
+    return { avgLength: 0, shortMessages: 0, longMessages: 0, oneWordReplies: 0, expressiveStyle: "balanced" }
   }
 
-  // Gaslighting indicators
-  const gaslightingMarkers = ["i never said", "you're imagining", "that didn't happen", "you're crazy"]
-  const gaslightingCount = gaslightingMarkers.filter((marker) => conversationText.toLowerCase().includes(marker)).length
-  score -= Math.min(20, gaslightingCount * 10)
+  const lengths = messages.map((m) => m.length)
+  const avgLength = lengths.reduce((a, b) => a + b, 0) / lengths.length
+  const shortMessages = messages.filter((m) => m.length < 20).length
+  const longMessages = messages.filter((m) => m.length > 100).length
+  const oneWordReplies = messages.filter((m) => m.split(/\s+/).length <= 2).length
 
-  return Math.max(0, Math.min(100, score))
+  let expressiveStyle: "brief" | "balanced" | "expressive" = "balanced"
+  if (avgLength < 30 && shortMessages > messages.length * 0.6) {
+    expressiveStyle = "brief"
+  } else if (avgLength > 80 || longMessages > messages.length * 0.4) {
+    expressiveStyle = "expressive"
+  }
+
+  return {
+    avgLength,
+    shortMessages,
+    longMessages,
+    oneWordReplies,
+    expressiveStyle,
+  }
 }
 
-function calculateRepairEffortScore(conversationText: string): number {
+// Detect emotional tone from message content and punctuation
+function detectEmotionalTone(
+  text: string,
+  punctuation: ReturnType<typeof analyzePunctuationPatterns>,
+): {
+  warmth: number
+  tension: number
+  fatigue: number
+  enthusiasm: number
+  distance: number
+} {
+  const lower = text.toLowerCase()
+
+  // Warmth indicators
+  const warmthMarkers = ["love", "appreciate", "thank", "grateful", "care", "miss you", "❤️", "💕"]
+  const warmth = warmthMarkers.filter((m) => lower.includes(m)).length + punctuation.exclamations * 0.5
+
+  // Tension indicators (periods in short messages suggest seriousness/distance)
+  const tensionMarkers = ["but", "however", "actually", "honestly", "seriously"]
+  const tension = tensionMarkers.filter((m) => lower.includes(m)).length + punctuation.periods * 0.3
+
+  // Fatigue indicators (ellipses, lack of punctuation)
+  const fatigueMarkers = ["tired", "exhausted", "can't", "too much", "overwhelmed"]
+  const fatigue =
+    fatigueMarkers.filter((m) => lower.includes(m)).length +
+    punctuation.ellipses * 0.8 +
+    punctuation.noPunctuation * 0.3
+
+  // Enthusiasm (exclamation marks, positive words)
+  const enthusiasmMarkers = ["yes!", "great!", "awesome", "amazing", "excited", "can't wait"]
+  const enthusiasm = enthusiasmMarkers.filter((m) => lower.includes(m)).length + punctuation.exclamations * 0.7
+
+  // Distance (short responses, periods, minimal engagement)
+  const distanceMarkers = ["ok.", "fine.", "whatever", "sure.", "k."]
+  const distance = distanceMarkers.filter((m) => lower.includes(m)).length + punctuation.periods * 0.4
+
+  return {
+    warmth: Math.min(10, warmth),
+    tension: Math.min(10, tension),
+    fatigue: Math.min(10, fatigue),
+    enthusiasm: Math.min(10, enthusiasm),
+    distance: Math.min(10, distance),
+  }
+}
+
+function detectEmotionalPatterns(text: string): {
+  vulnerabilityBids: number
+  defensiveResponses: number
+  emotionalWithdrawal: number
+  repairAttempts: number
+  validationOffers: number
+  dismissiveLanguage: number
+  emotionalFlooding: number
+  bidForConnection: number
+} {
+  const lower = text.toLowerCase()
+
+  // Vulnerability bids - when someone shares feelings or needs
+  const vulnerabilityMarkers = [
+    "i feel",
+    "i'm feeling",
+    "i need",
+    "i'm scared",
+    "i'm worried",
+    "i'm hurt",
+    "it hurts when",
+  ]
+  const vulnerabilityBids = vulnerabilityMarkers.filter((m) => lower.includes(m)).length
+
+  // Defensive responses - protecting self rather than connecting
+  const defensiveMarkers = ["but i", "but you", "that's not", "i didn't", "you always", "you never", "not my fault"]
+  const defensiveResponses = defensiveMarkers.filter((m) => lower.includes(m)).length
+
+  // Emotional withdrawal - shutting down or avoiding
+  const withdrawalMarkers = ["whatever", "fine", "nothing", "forget it", "never mind", "i don't care", "doesn't matter"]
+  const emotionalWithdrawal = withdrawalMarkers.filter((m) => lower.includes(m)).length
+
+  // Repair attempts - reaching across the divide
+  const repairMarkers = ["i'm sorry", "i apologize", "you're right", "i understand", "let me try", "i love you"]
+  const repairAttempts = repairMarkers.filter((m) => lower.includes(m)).length
+
+  // Validation offers - acknowledging partner's experience
+  const validationMarkers = ["i hear you", "that makes sense", "i get it", "i see", "you're right", "i understand why"]
+  const validationOffers = validationMarkers.filter((m) => lower.includes(m)).length
+
+  // Dismissive language - minimizing partner's feelings
+  const dismissiveMarkers = ["overreacting", "too sensitive", "dramatic", "ridiculous", "stupid", "crazy"]
+  const dismissiveLanguage = dismissiveMarkers.filter((m) => lower.includes(m)).length
+
+  // Emotional flooding - overwhelm indicators
+  const floodingMarkers = ["can't", "too much", "overwhelmed", "stop", "enough"]
+  const emotionalFlooding = floodingMarkers.filter((m) => lower.includes(m)).length
+
+  // Bids for connection - reaching out
+  const connectionMarkers = ["can we talk", "i miss", "i want", "let's", "together", "us"]
+  const bidForConnection = connectionMarkers.filter((m) => lower.includes(m)).length
+
+  return {
+    vulnerabilityBids,
+    defensiveResponses,
+    emotionalWithdrawal,
+    repairAttempts,
+    validationOffers,
+    dismissiveLanguage,
+    emotionalFlooding,
+    bidForConnection,
+  }
+}
+
+function analyzeEmotionalDynamics(
+  patterns: ReturnType<typeof detectEmotionalPatterns>,
+  subjectALabel: string,
+  subjectBLabel: string,
+): {
+  primaryDynamic: string
+  underlyingNeeds: string[]
+  emotionalCycle: string
+  balancedInsight: string
+} {
+  const {
+    vulnerabilityBids,
+    defensiveResponses,
+    emotionalWithdrawal,
+    repairAttempts,
+    validationOffers,
+    dismissiveLanguage,
+  } = patterns
+
+  // Identify primary dynamic without blame
+  let primaryDynamic = ""
+  if (defensiveResponses > vulnerabilityBids) {
+    primaryDynamic =
+      "When feelings are shared, there's a tendency to protect rather than connect. This often comes from a place of feeling misunderstood or criticized, creating a cycle where both partners feel unheard."
+  } else if (emotionalWithdrawal > repairAttempts) {
+    primaryDynamic =
+      "During difficult moments, there's a pattern of stepping back rather than leaning in. This protective response, while understandable, can leave both partners feeling alone in the relationship."
+  } else if (repairAttempts > defensiveResponses) {
+    primaryDynamic =
+      "There's a genuine effort to bridge disconnection when it happens. Both partners are learning to reach across the gap, even when it's uncomfortable."
+  } else {
+    primaryDynamic =
+      "The relationship shows a mix of connection and protection. Both partners are navigating the vulnerability of intimacy while managing their own emotional safety."
+  }
+
+  // Identify underlying needs (not deficits)
+  const underlyingNeeds: string[] = []
+  if (vulnerabilityBids > 0) {
+    underlyingNeeds.push("To feel emotionally safe sharing vulnerable feelings")
+  }
+  if (defensiveResponses > 2) {
+    underlyingNeeds.push("To feel understood rather than criticized")
+  }
+  if (emotionalWithdrawal > 1) {
+    underlyingNeeds.push("Space to process emotions without pressure")
+  }
+  if (validationOffers < 2) {
+    underlyingNeeds.push("More acknowledgment of each other's emotional reality")
+  }
+
+  // Describe the emotional cycle empathetically
+  let emotionalCycle = ""
+  if (defensiveResponses > vulnerabilityBids && emotionalWithdrawal > 0) {
+    emotionalCycle = `One partner shares a feeling or concern, hoping to be heard. The other, perhaps feeling blamed or criticized, responds defensively to protect themselves. This leaves the first partner feeling dismissed, leading to either withdrawal or escalation. Both are trying to protect themselves, but the protective moves create more distance.`
+  } else if (repairAttempts > 3) {
+    emotionalCycle = `When disconnection happens, both partners make efforts to repair and reconnect. There's an awareness that the relationship matters more than being right, and a willingness to be vulnerable in service of connection.`
+  } else {
+    emotionalCycle = `The relationship moves between moments of connection and moments of protection. Both partners are learning to stay present with difficult feelings while managing their own emotional responses.`
+  }
+
+  // Balanced insight acknowledging both partners' contributions
+  const balancedInsight =
+    dismissiveLanguage > 0
+      ? `Both partners contribute to the current dynamic—one may push for connection while the other needs space, or one may criticize while the other defends. These are complementary patterns, not individual failings. Understanding each person's underlying fear or need can transform the cycle.`
+      : `Both partners are navigating the inherent tension of intimacy: the need for closeness alongside the need for autonomy. The patterns that emerge reflect this dance, not a problem with either person.`
+
+  return {
+    primaryDynamic,
+    underlyingNeeds,
+    emotionalCycle,
+    balancedInsight,
+  }
+}
+
+function detectProfanityAndIntensity(text: string): {
+  profanityCount: number
+  intensityLevel: "low" | "moderate" | "high"
+  emotionalEscalation: boolean
+} {
+  const lower = text.toLowerCase()
+
+  // Profanity markers (mild to strong)
+  const profanityMarkers = [
+    "damn",
+    "hell",
+    "crap",
+    "shit",
+    "fuck",
+    "ass",
+    "bitch",
+    "bastard",
+    "wtf",
+    "stfu",
+    "bullshit",
+  ]
+
+  const profanityCount = profanityMarkers.filter((word) => lower.includes(word)).length
+
+  // Intensity markers (caps, multiple punctuation)
+  const capsMessages = (text.match(/[A-Z]{4,}/g) || []).length
+  const multiPunctuation = (text.match(/[!?]{2,}/g) || []).length
+
+  const intensityScore = profanityCount * 2 + capsMessages + multiPunctuation
+
+  let intensityLevel: "low" | "moderate" | "high" = "low"
+  if (intensityScore > 5) intensityLevel = "high"
+  else if (intensityScore > 2) intensityLevel = "moderate"
+
+  const emotionalEscalation = profanityCount > 2 || capsMessages > 2
+
+  return {
+    profanityCount,
+    intensityLevel,
+    emotionalEscalation,
+  }
+}
+
+function analyzeMessageTiming(
+  text: string,
+  speakerLabel: string,
+): {
+  rapidFireSequences: number
+  averageGapIndicator: "rapid" | "normal" | "delayed"
+  anxiousPursuit: boolean
+  emotionalFlooding: boolean
+} {
+  const pattern = new RegExp(`\\[${speakerLabel}\\]`, "gi")
+  const matches = []
+  let match
+
+  while ((match = pattern.exec(text)) !== null) {
+    matches.push(match.index)
+  }
+
+  if (matches.length < 2) {
+    return {
+      rapidFireSequences: 0,
+      averageGapIndicator: "normal",
+      anxiousPursuit: false,
+      emotionalFlooding: false,
+    }
+  }
+
+  // Count rapid-fire sequences (3+ messages in close proximity)
+  let rapidFireSequences = 0
+  let consecutiveCount = 1
+
+  for (let i = 1; i < matches.length; i++) {
+    const gap = matches[i] - matches[i - 1]
+    if (gap < 100) {
+      // Close proximity in text
+      consecutiveCount++
+      if (consecutiveCount >= 3) {
+        rapidFireSequences++
+      }
+    } else {
+      consecutiveCount = 1
+    }
+  }
+
+  // Estimate average gap
+  const totalGaps = matches.length - 1
+  const avgGap = matches.reduce((sum, pos, i) => (i > 0 ? sum + (pos - matches[i - 1]) : sum), 0) / totalGaps
+
+  let averageGapIndicator: "rapid" | "normal" | "delayed" = "normal"
+  if (avgGap < 80) averageGapIndicator = "rapid"
+  else if (avgGap > 200) averageGapIndicator = "delayed"
+
+  const anxiousPursuit = rapidFireSequences > 2 && averageGapIndicator === "rapid"
+  const emotionalFlooding = rapidFireSequences > 3
+
+  return {
+    rapidFireSequences,
+    averageGapIndicator,
+    anxiousPursuit,
+    emotionalFlooding,
+  }
+}
+
+function detectContemptMarkers(text: string): {
+  contemptScore: number
+  sarcasmDetected: boolean
+  mockeryDetected: boolean
+  nameCallingDetected: boolean
+  eyeRollLanguage: boolean
+} {
+  const lower = text.toLowerCase()
+
+  // Sarcasm indicators
+  const sarcasmMarkers = ["oh sure", "yeah right", "whatever you say", "of course", "obviously", "clearly"]
+  const sarcasmDetected = sarcasmMarkers.some((m) => lower.includes(m))
+
+  // Mockery indicators
+  const mockeryMarkers = ["seriously?", "are you kidding", "you're joking", "that's rich", "hilarious"]
+  const mockeryDetected = mockeryMarkers.some((m) => lower.includes(m))
+
+  // Name-calling
+  const nameCallingMarkers = [
+    "idiot",
+    "stupid",
+    "dumb",
+    "crazy",
+    "insane",
+    "ridiculous",
+    "pathetic",
+    "childish",
+    "immature",
+  ]
+  const nameCallingDetected = nameCallingMarkers.some((m) => lower.includes(m))
+
+  // Eye-roll language (dismissive superiority)
+  const eyeRollMarkers = ["ugh", "seriously", "unbelievable", "typical", "here we go again"]
+  const eyeRollLanguage = eyeRollMarkers.some((m) => lower.includes(m))
+
+  const contemptScore =
+    (sarcasmDetected ? 2 : 0) + (mockeryDetected ? 3 : 0) + (nameCallingDetected ? 4 : 0) + (eyeRollLanguage ? 1 : 0)
+
+  return {
+    contemptScore,
+    sarcasmDetected,
+    mockeryDetected,
+    nameCallingDetected,
+    eyeRollLanguage,
+  }
+}
+
+function detectRepairRejection(text: string): {
+  repairRejections: number
+  repairAcceptance: number
+  repairEffectiveness: "high" | "moderate" | "low"
+} {
+  const lower = text.toLowerCase()
+
+  // Repair attempts
+  const repairMarkers = ["i'm sorry", "i apologize", "you're right", "i understand", "let me try", "can we"]
+
+  // Rejection of repairs
+  const rejectionMarkers = [
+    "too late",
+    "don't care",
+    "whatever",
+    "save it",
+    "not enough",
+    "doesn't matter",
+    "forget it",
+  ]
+
+  // Acceptance of repairs
+  const acceptanceMarkers = ["thank you", "i appreciate", "okay", "i hear you", "let's try"]
+
+  const repairAttempts = repairMarkers.filter((m) => lower.includes(m)).length
+  const repairRejections = rejectionMarkers.filter((m) => lower.includes(m)).length
+  const repairAcceptance = acceptanceMarkers.filter((m) => lower.includes(m)).length
+
+  let repairEffectiveness: "high" | "moderate" | "low" = "moderate"
+  if (repairAttempts > 0) {
+    const acceptanceRate = repairAcceptance / repairAttempts
+    const rejectionRate = repairRejections / repairAttempts
+
+    if (acceptanceRate > 0.5) repairEffectiveness = "high"
+    else if (rejectionRate > 0.5) repairEffectiveness = "low"
+  }
+
+  return {
+    repairRejections,
+    repairAcceptance,
+    repairEffectiveness,
+  }
+}
+
+function detectAccountability(
+  text: string,
+  speakerLabel: string,
+): {
+  takesResponsibility: number
+  blamesOther: number
+  makesExcuses: number
+  accountabilityScore: number
+} {
+  const pattern = new RegExp(`\\[${speakerLabel}\\]:\\s*"?([^"\\n]+)"?`, "gi")
+  const messages: string[] = []
+  let match
+
+  while ((match = pattern.exec(text)) !== null) {
+    messages.push(match[1].toLowerCase())
+  }
+
+  // Responsibility markers
+  const responsibilityMarkers = ["i was wrong", "my fault", "i messed up", "i should have", "i'm responsible"]
+  const takesResponsibility = messages.filter((msg) =>
+    responsibilityMarkers.some((marker) => msg.includes(marker)),
+  ).length
+
+  // Blaming markers
+  const blameMarkers = ["you made me", "you always", "you never", "your fault", "because of you", "you did"]
+  const blamesOther = messages.filter((msg) => blameMarkers.some((marker) => msg.includes(marker))).length
+
+  // Excuse markers
+  const excuseMarkers = ["but i", "but you", "i had to", "i couldn't help", "it's not my"]
+  const makesExcuses = messages.filter((msg) => excuseMarkers.some((marker) => msg.includes(marker))).length
+
+  const accountabilityScore = Math.max(0, takesResponsibility * 10 - blamesOther * 5 - makesExcuses * 3)
+
+  return {
+    takesResponsibility,
+    blamesOther,
+    makesExcuses,
+    accountabilityScore,
+  }
+}
+
+function analyzeEmotionalLabor(
+  text: string,
+  subjectALabel: string,
+  subjectBLabel: string,
+): {
+  subjectALabor: number
+  subjectBLabor: number
+  laborImbalance: "balanced" | "slight" | "significant"
+  whoDoesMore: string
+} {
+  const lower = text.toLowerCase()
+
+  // Emotional labor indicators
+  const laborMarkers = [
+    "how are you feeling",
+    "what do you need",
+    "let's talk about",
+    "i'm worried about",
+    "can we discuss",
+    "i want to understand",
+    "help me understand",
+    "i'm here for you",
+  ]
+
+  // Count labor for each person
+  const subjectAPattern = new RegExp(`\\[${subjectALabel}\\]:\\s*"?([^"\\n]+)"?`, "gi")
+  const subjectBPattern = new RegExp(`\\[${subjectBLabel}\\]:\\s*"?([^"\\n]+)"?`, "gi")
+
+  let subjectALabor = 0
+  let subjectBLabor = 0
+  let match
+
+  while ((match = subjectAPattern.exec(text)) !== null) {
+    const message = match[1].toLowerCase()
+    if (laborMarkers.some((marker) => message.includes(marker))) {
+      subjectALabor++
+    }
+  }
+
+  while ((match = subjectBPattern.exec(text)) !== null) {
+    const message = match[1].toLowerCase()
+    if (laborMarkers.some((marker) => message.includes(marker))) {
+      subjectBLabor++
+    }
+  }
+
+  const totalLabor = subjectALabor + subjectBLabor
+  const difference = Math.abs(subjectALabor - subjectBLabor)
+
+  let laborImbalance: "balanced" | "slight" | "significant" = "balanced"
+  if (totalLabor > 0) {
+    const imbalanceRatio = difference / totalLabor
+    if (imbalanceRatio > 0.5) laborImbalance = "significant"
+    else if (imbalanceRatio > 0.25) laborImbalance = "slight"
+  }
+
+  const whoDoesMore = subjectALabor > subjectBLabor ? subjectALabel : subjectBLabel
+
+  return {
+    subjectALabor,
+    subjectBLabor,
+    laborImbalance,
+    whoDoesMore,
+  }
+}
+
+// 1. CONTEXTUAL INTERPRETATION ENGINE
+interface EmotionalFlowState {
+  phase: "connection" | "tension" | "repair" | "calm" | "escalation" | "shutdown"
+  intensity: number
+  nervousSystemState: "🟢 ventral" | "🟡 sympathetic" | "🔵 dorsal"
+}
+
+interface MessageIntent {
+  intent: "connect" | "defend" | "control" | "withdraw" | "repair" | "attack" | "validate"
+  confidence: number
+  nervousSystemState: "🟢 ventral" | "🟡 sympathetic" | "🔵 dorsal"
+}
+
+function detectMessageIntent(message: string, priorState: EmotionalFlowState): MessageIntent {
+  const lower = message.toLowerCase()
+
+  // Connect intent markers
+  const connectMarkers = [
+    "i love",
+    "i miss",
+    "i appreciate",
+    "thank you",
+    "i'm grateful",
+    "can we",
+    "let's",
+    "together",
+    "i want to understand",
+    "help me understand",
+  ]
+  const connectScore = connectMarkers.filter((m) => lower.includes(m)).length
+
+  // Defend intent markers
+  const defendMarkers = [
+    "but i",
+    "but you",
+    "i didn't",
+    "that's not",
+    "not my fault",
+    "you always",
+    "you never",
+    "i had to",
+  ]
+  const defendScore = defendMarkers.filter((m) => lower.includes(m)).length
+
+  // Control intent markers
+  const controlMarkers = ["you should", "you need to", "you have to", "you must", "stop", "don't"]
+  const controlScore = controlMarkers.filter((m) => lower.includes(m)).length
+
+  // Withdraw intent markers
+  const withdrawMarkers = [
+    "whatever",
+    "fine",
+    "forget it",
+    "never mind",
+    "i don't care",
+    "doesn't matter",
+    "leave me alone",
+  ]
+  const withdrawScore = withdrawMarkers.filter((m) => lower.includes(m)).length
+
+  // Repair intent markers
   const repairMarkers = [
     "i'm sorry",
     "i apologize",
     "you're right",
     "i understand",
     "let me try",
-    "i'll work on",
-    "thank you for",
-    "i appreciate",
+    "i was wrong",
+    "my fault",
   ]
+  const repairScore = repairMarkers.filter((m) => lower.includes(m)).length
 
-  const repairCount = repairMarkers.filter((marker) => conversationText.toLowerCase().includes(marker)).length
+  // Attack intent markers (contempt, criticism)
+  const attackMarkers = [
+    "you're stupid",
+    "you're crazy",
+    "you're ridiculous",
+    "pathetic",
+    "idiot",
+    "unbelievable",
+    "typical",
+  ]
+  const attackScore = attackMarkers.filter((m) => lower.includes(m)).length
 
-  return Math.min(100, 20 * repairCount)
+  // Validate intent markers
+  const validateMarkers = ["i hear you", "that makes sense", "i get it", "i see", "you're right", "i understand why"]
+  const validateScore = validateMarkers.filter((m) => lower.includes(m)).length
+
+  // Determine primary intent
+  const scores = {
+    connect: connectScore,
+    defend: defendScore,
+    control: controlScore,
+    withdraw: withdrawScore,
+    repair: repairScore,
+    attack: attackScore,
+    validate: validateScore,
+  }
+
+  const maxScore = Math.max(...Object.values(scores))
+  const intent = (Object.keys(scores).find((key) => scores[key as keyof typeof scores] === maxScore) ||
+    "connect") as MessageIntent["intent"]
+
+  // Determine nervous system state based on intent and prior state
+  let nervousSystemState: MessageIntent["nervousSystemState"] = "🟢 ventral"
+  if (intent === "attack" || intent === "defend" || intent === "control") {
+    nervousSystemState = "🟡 sympathetic" // Fight/flight
+  } else if (intent === "withdraw" || priorState.phase === "shutdown") {
+    nervousSystemState = "🔵 dorsal" // Shutdown
+  } else if (intent === "repair" || intent === "validate" || intent === "connect") {
+    nervousSystemState = "🟢 ventral" // Safe connection
+  }
+
+  const confidence = Math.min(100, maxScore * 25 + 50)
+
+  return { intent, confidence, nervousSystemState }
 }
 
-function detectConflictPattern(conversationText: string, subjectALabel: string, subjectBLabel: string): string {
-  const messages = conversationText.split("\n").filter((line) => line.trim().startsWith("["))
-
-  // Detect pursue-withdraw
-  let pursueWithdrawCount = 0
-  for (let i = 0; i < messages.length - 1; i++) {
-    const current = messages[i]
-    const next = messages[i + 1]
-
-    const currentSpeaker = current.match(/\[(.*?)\]/)?.[1] || ""
-    const nextSpeaker = next.match(/\[(.*?)\]/)?.[1] || ""
-
-    if (currentSpeaker !== nextSpeaker) {
-      const currentHasUrgency = /\?|please|need|why|when/i.test(current)
-      const nextIsDeflecting = /later|busy|don't know|whatever|fine/i.test(next)
-
-      if (currentHasUrgency && nextIsDeflecting) {
-        pursueWithdrawCount++
-      }
-    }
-  }
-
-  if (pursueWithdrawCount >= 2) {
-    return "pursue_withdraw"
-  }
-
-  // Detect stonewalling
-  const stonewallingMarkers = ["i'm done", "whatever", "fine", "ok", "sure"]
-  const stonewallingCount = stonewallingMarkers.filter((marker) =>
-    conversationText.toLowerCase().includes(marker),
-  ).length
-
-  if (stonewallingCount > 3) {
-    return "stonewalling"
-  }
-
-  // Detect mutual escalation
-  const escalationMarkers = ["!", "?!", "seriously", "really", "what", "why"]
-  const escalationCount = escalationMarkers.filter((marker) => conversationText.includes(marker)).length
-
-  if (escalationCount > 5) {
-    return "mutual_escalation"
-  }
-
-  // Detect problem-solving
-  const problemSolvingMarkers = ["let's", "we can", "how about", "what if", "maybe we"]
-  if (problemSolvingMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    return "problem_solving"
-  }
-
-  return "mixed_inconclusive"
-}
-
-function detectGottmanFlags(conversationText: string): {
-  harsh_startup: boolean
-  criticism: boolean
-  contempt: boolean
-  defensiveness: boolean
-  stonewalling: boolean
+function mapEmotionalFlow(conversationText: string): {
+  flowStates: EmotionalFlowState[]
+  dominantPhase: EmotionalFlowState["phase"]
+  transitionCount: number
+  nervousSystemSummary: string
 } {
-  const messages = conversationText.split("\n").filter((line) => line.trim().startsWith("["))
-  const firstTwoTurns = messages.slice(0, 4).join(" ").toLowerCase()
+  const messages = conversationText.split(/\n/).filter((line) => line.includes("[") && line.includes("]"))
 
-  // Harsh startup
-  const harshStartupMarkers = ["you always", "you never", "you're a", "what's wrong with you"]
-  const harsh_startup = harshStartupMarkers.some((marker) => firstTwoTurns.includes(marker))
-
-  // Criticism
-  const criticismMarkers = ["you always", "you never", "you're so", "you can't", "you don't"]
-  const criticism = criticismMarkers.some((marker) => conversationText.toLowerCase().includes(marker))
-
-  // Contempt
-  const contemptMarkers = ["idiot", "stupid", "pathetic", "joke", "ridiculous", "whatever"]
-  const contempt = contemptMarkers.some((marker) => conversationText.toLowerCase().includes(marker))
-
-  // Defensiveness
-  const defensivenessMarkers = ["it's not my fault", "i didn't", "you're the one", "but you", "that's not true"]
-  const defensiveness = defensivenessMarkers.some((marker) => conversationText.toLowerCase().includes(marker))
-
-  // Stonewalling
-  const stonewallingMarkers = ["i'm done", "whatever", "fine", "ok", "sure"]
-  const stonewallingCount = stonewallingMarkers.filter((marker) =>
-    conversationText.toLowerCase().includes(marker),
-  ).length
-  const stonewalling = stonewallingCount > 2
-
-  return {
-    harsh_startup,
-    criticism,
-    contempt,
-    defensiveness,
-    stonewalling,
-  }
-}
-
-function detectRiskFlags(conversationText: string): string[] {
-  const flags: string[] = []
-
-  // Harassment frequency
-  const harassmentMarkers = ["called 5 times", "called again", "texted 10 times", "won't stop"]
-  if (harassmentMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    flags.push("harassment_frequency")
-  }
-
-  // Threatening language
-  const threatMarkers = ["i'll", "you'll regret", "you better", "or else", "watch out"]
-  if (threatMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    flags.push("threatening_language")
-  }
-
-  // Coercive pressure
-  const coercionMarkers = ["you have to", "you need to", "you must", "if you don't", "you owe me"]
-  if (coercionMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    flags.push("coercive_pressure")
-  }
-
-  // Isolation attempt
-  const isolationMarkers = ["don't talk to", "stay away from", "you can't see", "i don't want you"]
-  if (isolationMarkers.some((marker) => conversationText.toLowerCase().includes(marker))) {
-    flags.push("isolation_attempt")
-  }
-
-  // Safety concern
-  if (flags.length > 0) {
-    flags.push("possible_safety_concern")
-  }
-
-  return flags.length > 0 ? flags : ["none"]
-}
-
-function detectSentimentTrend(conversationText: string): string {
-  // FIX: Use conversationText instead of conversation
-  const messages = conversationText.split("\n").filter((line) => line.trim().startsWith("["))
-
-  if (messages.length < 8) {
-    return "inconclusive"
-  }
-
-  const firstQuarter = messages.slice(0, Math.floor(messages.length / 4)).join(" ")
-  const lastQuarter = messages.slice(-Math.floor(messages.length / 4)).join(" ")
-
-  const positiveMarkers = ["love", "thank", "appreciate", "sorry", "understand", "yes", "good", "great"]
-  const negativeMarkers = ["hate", "angry", "upset", "no", "don't", "can't", "never", "always"]
-
-  const firstPositive = positiveMarkers.filter((marker) => firstQuarter.toLowerCase().includes(marker)).length
-  const firstNegative = negativeMarkers.filter((marker) => firstQuarter.toLowerCase().includes(marker)).length
-
-  const lastPositive = positiveMarkers.filter((marker) => lastQuarter.toLowerCase().includes(marker)).length
-  const lastNegative = negativeMarkers.filter((marker) => lastQuarter.toLowerCase().includes(marker)).length
-
-  const firstSentiment = firstPositive - firstNegative
-  const lastSentiment = lastPositive - lastNegative
-
-  if (lastSentiment > firstSentiment + 2) {
-    return "improving"
-  } else if (lastSentiment < firstSentiment - 2) {
-    return "worsening"
-  } else if (Math.abs(lastSentiment - firstSentiment) > 3) {
-    return "volatile"
-  } else if (Math.abs(firstSentiment) < 2 && Math.abs(lastSentiment) < 2) {
-    return "stable_neutral"
-  }
-
-  return "inconclusive"
-}
-
-interface ChartValidationResult {
-  isValid: boolean
-  errors: string[]
-  warnings: string[]
-  metadata: {
-    emotionalCommunicationValid: boolean
-    conflictExpressionValid: boolean
-    validationPatternsValid: boolean
-    dataConsistency: number // 0-1 score
-  }
-}
-
-function validateChartData(analysisData: any): ChartValidationResult {
-  const errors: string[] = []
-  const warnings: string[] = []
-  let emotionalCommunicationValid = true
-  let conflictExpressionValid = true
-  let validationPatternsValid = true
-
-  const subjectALabel = analysisData.subjectALabel || "Subject A"
-  const subjectBLabel = analysisData.subjectBLabel || "Subject B"
-
-  // Validate Emotional Communication Characteristics
-  if (analysisData.visualInsightsData?.emotionalCommunicationCharacteristics) {
-    const data = analysisData.visualInsightsData.emotionalCommunicationCharacteristics
-
-    if (!Array.isArray(data) || data.length === 0) {
-      errors.push("Emotional communication data is empty or invalid")
-      emotionalCommunicationValid = false
-    } else {
-      data.forEach((item: any, index: number) => {
-        // Check required fields
-        if (!item.category) {
-          errors.push(`Emotional communication item ${index + 1} missing category`)
-          emotionalCommunicationValid = false
-        }
-
-        // Check subject scores exist and are in valid range (1-10)
-        const scoreA = item[subjectALabel]
-        const scoreB = item[subjectBLabel]
-
-        if (scoreA === undefined || scoreA === null) {
-          errors.push(`Emotional communication "${item.category}" missing ${subjectALabel} score`)
-          emotionalCommunicationValid = false
-        } else if (scoreA < 1 || scoreA > 10) {
-          errors.push(
-            `Emotional communication "${item.category}" ${subjectALabel} score out of range: ${scoreA} (must be 1-10)`,
-          )
-          emotionalCommunicationValid = false
-        }
-
-        if (scoreB === undefined || scoreB === null) {
-          errors.push(`Emotional communication "${item.category}" missing ${subjectBLabel} score`)
-          emotionalCommunicationValid = false
-        } else if (scoreB < 1 || scoreB > 10) {
-          errors.push(
-            `Emotional communication "${item.category}" ${subjectBLabel} score out of range: ${scoreB} (must be 1-10)`,
-          )
-          emotionalCommunicationValid = false
-        }
-
-        // Warning for extreme differences
-        if (scoreA !== undefined && scoreB !== undefined && Math.abs(scoreA - scoreB) > 5) {
-          warnings.push(
-            `Large difference in "${item.category}": ${subjectALabel}=${scoreA}, ${subjectBLabel}=${scoreB}`,
-          )
-        }
-      })
-
-      // Check for minimum number of categories
-      if (data.length < 3) {
-        warnings.push(`Only ${data.length} emotional communication categories (recommended: 5+)`)
-      }
+  if (messages.length === 0) {
+    return {
+      flowStates: [{ phase: "calm", intensity: 3, nervousSystemState: "🟢 ventral" }],
+      dominantPhase: "calm",
+      transitionCount: 0,
+      nervousSystemSummary: "Insufficient data to map emotional flow",
     }
-  } else {
-    errors.push("Emotional communication data missing")
-    emotionalCommunicationValid = false
   }
 
-  // Validate Conflict Expression Styles
-  if (analysisData.visualInsightsData?.conflictExpressionStyles) {
-    const data = analysisData.visualInsightsData.conflictExpressionStyles
+  const flowStates: EmotionalFlowState[] = []
+  let currentState: EmotionalFlowState = { phase: "calm", intensity: 3, nervousSystemState: "🟢 ventral" }
 
-    if (!Array.isArray(data) || data.length === 0) {
-      errors.push("Conflict expression data is empty or invalid")
-      conflictExpressionValid = false
-    } else {
-      data.forEach((item: any, index: number) => {
-        if (!item.category) {
-          errors.push(`Conflict expression item ${index + 1} missing category`)
-          conflictExpressionValid = false
-        }
+  messages.forEach((message, index) => {
+    const intent = detectMessageIntent(message, currentState)
 
-        const scoreA = item[subjectALabel]
-        const scoreB = item[subjectBLabel]
-
-        if (scoreA === undefined || scoreA === null) {
-          errors.push(`Conflict expression "${item.category}" missing ${subjectALabel} score`)
-          conflictExpressionValid = false
-        } else if (scoreA < 1 || scoreA > 10) {
-          errors.push(
-            `Conflict expression "${item.category}" ${subjectALabel} score out of range: ${scoreA} (must be 1-10)`,
-          )
-          conflictExpressionValid = false
-        }
-
-        if (scoreB === undefined || scoreB === null) {
-          errors.push(`Conflict expression "${item.category}" missing ${subjectBLabel} score`)
-          conflictExpressionValid = false
-        } else if (scoreB < 1 || scoreB > 10) {
-          errors.push(
-            `Conflict expression "${item.category}" ${subjectBLabel} score out of range: ${scoreB} (must be 1-10)`,
-          )
-          conflictExpressionValid = false
-        }
-      })
-
-      if (data.length < 3) {
-        warnings.push(`Only ${data.length} conflict expression categories (recommended: 5+)`)
+    // Update phase based on intent
+    if (intent.intent === "connect" || intent.intent === "validate") {
+      currentState = { phase: "connection", intensity: 2, nervousSystemState: intent.nervousSystemState }
+    } else if (intent.intent === "defend" || intent.intent === "attack") {
+      currentState = {
+        phase: currentState.phase === "tension" ? "escalation" : "tension",
+        intensity: intent.intent === "attack" ? 8 : 6,
+        nervousSystemState: intent.nervousSystemState,
       }
+    } else if (intent.intent === "withdraw") {
+      currentState = { phase: "shutdown", intensity: 7, nervousSystemState: intent.nervousSystemState }
+    } else if (intent.intent === "repair") {
+      currentState = { phase: "repair", intensity: 4, nervousSystemState: intent.nervousSystemState }
+    } else if (intent.intent === "control") {
+      currentState = { phase: "tension", intensity: 5, nervousSystemState: intent.nervousSystemState }
     }
-  } else {
-    errors.push("Conflict expression data missing")
-    conflictExpressionValid = false
-  }
 
-  // Validate Validation & Reassurance Patterns
-  if (analysisData.visualInsightsData?.validationAndReassurancePatterns) {
-    const data = analysisData.visualInsightsData.validationAndReassurancePatterns
+    flowStates.push({ ...currentState })
+  })
 
-    if (!Array.isArray(data) || data.length === 0) {
-      errors.push("Validation patterns data is empty or invalid")
-      validationPatternsValid = false
-    } else {
-      let sumA = 0
-      let sumB = 0
-
-      data.forEach((item: any, index: number) => {
-        if (!item.category) {
-          errors.push(`Validation pattern item ${index + 1} missing category`)
-          validationPatternsValid = false
-        }
-
-        const valueA = item[subjectALabel]
-        const valueB = item[subjectBLabel]
-
-        if (valueA === undefined || valueA === null) {
-          errors.push(`Validation pattern "${item.category}" missing ${subjectALabel} value`)
-          validationPatternsValid = false
-        } else if (valueA < 0 || valueA > 100) {
-          errors.push(
-            `Validation pattern "${item.category}" ${subjectALabel} value out of range: ${valueA} (must be 0-100)`,
-          )
-          validationPatternsValid = false
-        } else {
-          sumA += valueA
-        }
-
-        if (valueB === undefined || valueB === null) {
-          errors.push(`Validation pattern "${item.category}" missing ${subjectBLabel} value`)
-          validationPatternsValid = false
-        } else if (valueB < 0 || valueB > 100) {
-          errors.push(
-            `Validation pattern "${item.category}" ${subjectBLabel} value out of range: ${valueB} (must be 0-100)`,
-          )
-          validationPatternsValid = false
-        } else {
-          sumB += valueB
-        }
-      })
-
-      // Check that percentages sum to approximately 100%
-      if (Math.abs(sumA - 100) > 5) {
-        errors.push(`${subjectALabel} validation percentages sum to ${sumA}% (should be ~100%)`)
-        validationPatternsValid = false
-      }
-
-      if (Math.abs(sumB - 100) > 5) {
-        errors.push(`${subjectBLabel} validation percentages sum to ${sumB}% (should be ~100%)`)
-        validationPatternsValid = false
-      }
-
-      if (data.length < 3) {
-        warnings.push(`Only ${data.length} validation pattern categories (recommended: 4+)`)
-      }
-    }
-  } else {
-    errors.push("Validation patterns data missing")
-    validationPatternsValid = false
-  }
-
-  // Calculate overall data consistency score
-  const validComponents = [emotionalCommunicationValid, conflictExpressionValid, validationPatternsValid].filter(
-    Boolean,
-  ).length
-  const dataConsistency = validComponents / 3
-
-  const isValid = errors.length === 0
-
-  return {
-    isValid,
-    errors,
-    warnings,
-    metadata: {
-      emotionalCommunicationValid,
-      conflictExpressionValid,
-      validationPatternsValid,
-      dataConsistency,
+  // Calculate dominant phase
+  const phaseCounts = flowStates.reduce(
+    (acc, state) => {
+      acc[state.phase] = (acc[state.phase] || 0) + 1
+      return acc
     },
+    {} as Record<string, number>,
+  )
+  const dominantPhase = (Object.keys(phaseCounts).reduce((a, b) => (phaseCounts[a] > phaseCounts[b] ? a : b)) ||
+    "calm") as EmotionalFlowState["phase"]
+
+  // Count transitions
+  let transitionCount = 0
+  for (let i = 1; i < flowStates.length; i++) {
+    if (flowStates[i].phase !== flowStates[i - 1].phase) {
+      transitionCount++
+    }
   }
+
+  // Nervous system summary
+  const nervousSystemCounts = flowStates.reduce(
+    (acc, state) => {
+      acc[state.nervousSystemState] = (acc[state.nervousSystemState] || 0) + 1
+      return acc
+    },
+    {} as Record<string, number>,
+  )
+
+  const totalStates = flowStates.length
+  const ventralPercent = Math.round(((nervousSystemCounts["🟢 ventral"] || 0) / totalStates) * 100)
+  const sympatheticPercent = Math.round(((nervousSystemCounts["🟡 sympathetic"] || 0) / totalStates) * 100)
+  const dorsalPercent = Math.round(((nervousSystemCounts["🔵 dorsal"] || 0) / totalStates) * 100)
+
+  const nervousSystemSummary = `Nervous system regulation: ${ventralPercent}% safe/connected (🟢 ventral), ${sympatheticPercent}% activated/defensive (🟡 sympathetic), ${dorsalPercent}% shutdown/withdrawn (🔵 dorsal). ${
+    ventralPercent > 60
+      ? "Both partners spend most of the conversation in a regulated, safe state."
+      : sympatheticPercent > 40
+        ? "Significant time spent in fight/flight activation, indicating emotional reactivity and defensiveness."
+        : dorsalPercent > 30
+          ? "Notable shutdown and withdrawal patterns suggest emotional overwhelm or avoidance."
+          : "Mixed regulation states—both partners are navigating between connection and protection."
+  }`
+
+  return { flowStates, dominantPhase, transitionCount, nervousSystemSummary }
 }
 
-function crossValidateAnalysisData(analysisData: any): {
-  consistent: boolean
-  issues: string[]
+// 2. SUBTEXT & SYMBOLISM DETECTION
+function detectSubtext(message: string): {
+  hasSubtext: boolean
+  likelyMeaning: string
+  confidence: number
+  emotionalMask: "sarcasm" | "minimizing" | "humor" | "none"
 } {
-  const issues: string[] = []
+  const lower = message.toLowerCase().trim()
 
-  // Cross-validate message counts with attribution metadata
-  if (analysisData.attributionMetadata) {
-    const metaCountA = analysisData.attributionMetadata.subjectAMessageCount || 0
-    const metaCountB = analysisData.attributionMetadata.subjectBMessageCount || 0
-    const totalMeta = metaCountA + metaCountB
-
-    if (analysisData.messageCount && Math.abs(analysisData.messageCount - totalMeta) > 2) {
-      issues.push(`Message count mismatch: total=${analysisData.messageCount}, attribution sum=${totalMeta}`)
-    }
-
-    // Check for reasonable message distribution
-    if (totalMeta > 0) {
-      const ratioA = metaCountA / totalMeta
-      if (ratioA < 0.1 || ratioA > 0.9) {
-        issues.push(
-          `Unbalanced message distribution: ${analysisData.subjectALabel}=${metaCountA}, ${analysisData.subjectBLabel}=${metaCountB}`,
-        )
-      }
+  // "I'm fine" patterns
+  if (
+    lower === "i'm fine" ||
+    lower === "im fine" ||
+    lower === "fine" ||
+    lower === "i'm fine." ||
+    lower === "it's fine"
+  ) {
+    return {
+      hasSubtext: true,
+      likelyMeaning:
+        "May actually mean: 'I'm not fine, but I don't feel safe sharing' or 'I'm hurt and want you to notice'",
+      confidence: 75,
+      emotionalMask: "minimizing",
     }
   }
 
-  // Validate overall relationship health score is consistent with chart data
-  if (analysisData.overallRelationshipHealth?.score && analysisData.visualInsightsData) {
-    const healthScore = analysisData.overallRelationshipHealth.score
+  // "Doesn't matter" patterns
+  if (lower.includes("doesn't matter") || lower.includes("dont matter") || lower.includes("doesn't even matter")) {
+    return {
+      hasSubtext: true,
+      likelyMeaning: "May actually mean: 'It matters deeply, but I feel hopeless about being heard'",
+      confidence: 80,
+      emotionalMask: "minimizing",
+    }
+  }
 
-    // Calculate average from conflict expression (repair attempts should correlate with health)
-    const conflictData = analysisData.visualInsightsData.conflictExpressionStyles
-    if (conflictData && Array.isArray(conflictData)) {
-      const repairItem = conflictData.find((item: any) => item.category.toLowerCase().includes("repair"))
-      if (repairItem) {
-        const avgRepair = (repairItem[analysisData.subjectALabel] + repairItem[analysisData.subjectBLabel]) / 2
-        const expectedHealth = avgRepair // Rough correlation
+  // "Whatever" patterns
+  if (lower === "whatever" || lower === "whatever." || lower.includes("whatever you say")) {
+    return {
+      hasSubtext: true,
+      likelyMeaning: "May actually mean: 'I'm giving up on being understood' or 'I'm too hurt to keep trying'",
+      confidence: 85,
+      emotionalMask: "minimizing",
+    }
+  }
 
-        if (Math.abs(healthScore - expectedHealth) > 3) {
-          issues.push(`Health score (${healthScore}) may not align with repair attempts (avg: ${avgRepair.toFixed(1)})`)
-        }
-      }
+  // Sarcasm patterns
+  const sarcasmMarkers = ["oh sure", "yeah right", "of course", "obviously", "clearly", "how nice"]
+  if (sarcasmMarkers.some((m) => lower.includes(m))) {
+    return {
+      hasSubtext: true,
+      likelyMeaning:
+        "Sarcasm detected—likely expressing frustration, contempt, or feeling unheard through indirect criticism",
+      confidence: 70,
+      emotionalMask: "sarcasm",
+    }
+  }
+
+  // Humor as deflection
+  if ((lower.includes("haha") || lower.includes("lol") || lower.includes("😂")) && lower.length < 30) {
+    return {
+      hasSubtext: true,
+      likelyMeaning: "Humor may be masking discomfort, deflecting from vulnerability, or minimizing feelings",
+      confidence: 50,
+      emotionalMask: "humor",
     }
   }
 
   return {
-    consistent: issues.length === 0,
-    issues,
+    hasSubtext: false,
+    likelyMeaning: "",
+    confidence: 0,
+    emotionalMask: "none",
   }
 }
 
-function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: string, conversationText: string): any {
+// 3. EMOTIONAL MOTIVATION INFERENCE
+function inferEmotionalMotivation(
+  text: string,
+  speakerLabel: string,
+): {
+  primaryMotive: "fear-driven" | "control-driven" | "avoidance-driven" | "repair-driven" | "connection-driven"
+  secondaryMotive: string
+  confidence: number
+  explanation: string
+} {
+  const pattern = new RegExp(`\\[${speakerLabel}\\]:\\s*"?([^"\\n]+)"?`, "gi")
+  const messages: string[] = []
+  let match
+
+  while ((match = pattern.exec(text)) !== null) {
+    messages.push(match[1].toLowerCase())
+  }
+
+  if (messages.length === 0) {
+    return {
+      primaryMotive: "connection-driven",
+      secondaryMotive: "seeking understanding",
+      confidence: 30,
+      explanation: "Insufficient data to infer motivation",
+    }
+  }
+
+  // Fear-driven markers (anxious attachment, fear of abandonment)
+  const fearMarkers = [
+    "are you mad",
+    "are you okay",
+    "did i do something",
+    "please don't",
+    "i'm scared",
+    "what if",
+    "are we okay",
+  ]
+  const fearScore = messages.filter((msg) => fearMarkers.some((marker) => msg.includes(marker))).length
+
+  // Control-driven markers (need for certainty, managing anxiety through control)
+  const controlMarkers = [
+    "you should",
+    "you need to",
+    "you have to",
+    "why don't you",
+    "just",
+    "you always",
+    "you never",
+  ]
+  const controlScore = messages.filter((msg) => controlMarkers.some((marker) => msg.includes(marker))).length
+
+  // Avoidance-driven markers (fear of conflict, emotional overwhelm)
+  const avoidanceMarkers = ["whatever", "fine", "forget it", "never mind", "i don't want to talk", "can we not"]
+  const avoidanceScore = messages.filter((msg) => avoidanceMarkers.some((marker) => msg.includes(marker))).length
+
+  // Repair-driven markers (desire to reconnect, heal)
+  const repairMarkers = ["i'm sorry", "i love you", "can we", "let's try", "i want to fix", "i miss"]
+  const repairScore = messages.filter((msg) => repairMarkers.some((marker) => msg.includes(marker))).length
+
+  // Connection-driven markers (seeking intimacy, understanding)
+  const connectionMarkers = ["i feel", "i need", "help me understand", "i want to understand", "tell me", "how are you"]
+  const connectionScore = messages.filter((msg) => connectionMarkers.some((marker) => msg.includes(marker))).length
+
+  const scores = {
+    "fear-driven": fearScore,
+    "control-driven": controlScore,
+    "avoidance-driven": avoidanceScore,
+    "repair-driven": repairScore,
+    "connection-driven": connectionScore,
+  }
+
+  const maxScore = Math.max(...Object.values(scores))
+  const primaryMotive = (Object.keys(scores).find((key) => scores[key as keyof typeof scores] === maxScore) ||
+    "connection-driven") as
+    | "fear-driven"
+    | "control-driven"
+    | "avoidance-driven"
+    | "repair-driven"
+    | "connection-driven"
+
+  const confidence = Math.min(100, (maxScore / messages.length) * 100 + 40)
+
+  const explanations = {
+    "fear-driven":
+      "Messages suggest anxiety about the relationship's stability or fear of abandonment. This often stems from anxious attachment patterns.",
+    "control-driven":
+      "Messages attempt to manage or direct the partner's behavior, possibly to reduce anxiety or maintain a sense of safety through predictability.",
+    "avoidance-driven":
+      "Messages indicate a desire to escape emotional intensity or conflict, often a protective response to feeling overwhelmed.",
+    "repair-driven":
+      "Messages show genuine effort to heal disconnection and restore emotional safety. This reflects emotional maturity and commitment.",
+    "connection-driven":
+      "Messages seek deeper understanding and emotional intimacy. This reflects secure attachment and healthy relationship investment.",
+  }
+
+  // Determine secondary motive
+  const sortedScores = Object.entries(scores).sort((a, b) => b[1] - a[1])
+  const secondaryMotive = sortedScores[1]?.[0] || "seeking understanding"
+
+  return {
+    primaryMotive,
+    secondaryMotive,
+    confidence,
+    explanation: explanations[primaryMotive],
+  }
+}
+
+// 4. CONTEXTUAL WEIGHTING ENGINE - Adjust scores based on context
+function applyContextualWeighting(
+  baseScore: number,
+  context: {
+    emotionalFlow: ReturnType<typeof mapEmotionalFlow>
+    subjectAMotivation: ReturnType<typeof inferEmotionalMotivation>
+    subjectBMotivation: ReturnType<typeof inferEmotionalMotivation>
+    hasFlooding: boolean
+    hasHumor: boolean
+    hasSilence: boolean
+    hasAccountability: boolean
+  },
+): number {
+  let adjustedScore = baseScore
+
+  // Positive adjustments
+  if (
+    context.subjectAMotivation.primaryMotive === "repair-driven" ||
+    context.subjectBMotivation.primaryMotive === "repair-driven"
+  ) {
+    adjustedScore += 10
+  }
+  if (
+    context.subjectAMotivation.primaryMotive === "connection-driven" ||
+    context.subjectBMotivation.primaryMotive === "connection-driven"
+  ) {
+    adjustedScore += 8
+  }
+  if (context.hasAccountability) {
+    adjustedScore += 5
+  }
+  if (context.emotionalFlow.dominantPhase === "connection" || context.emotionalFlow.dominantPhase === "repair") {
+    adjustedScore += 7
+  }
+
+  // Negative adjustments
+  if (
+    context.subjectAMotivation.primaryMotive === "avoidance-driven" ||
+    context.subjectBMotivation.primaryMotive === "avoidance-driven"
+  ) {
+    adjustedScore -= 12
+  }
+  if (
+    context.subjectAMotivation.primaryMotive === "control-driven" ||
+    context.subjectBMotivation.primaryMotive === "control-driven"
+  ) {
+    adjustedScore -= 8
+  }
+  if (context.hasFlooding) {
+    adjustedScore -= 15
+  }
+  if (context.emotionalFlow.dominantPhase === "escalation" || context.emotionalFlow.dominantPhase === "shutdown") {
+    adjustedScore -= 10
+  }
+  if (context.hasSilence && context.emotionalFlow.dominantPhase === "tension") {
+    adjustedScore -= 8
+  }
+
+  return Math.max(20, Math.min(100, adjustedScore))
+}
+
+// 5. EXTRACT UNDERLYING EMOTIONAL THEMES
+function extractEmotionalThemes(
+  conversationText: string,
+  emotionalFlow: ReturnType<typeof mapEmotionalFlow>,
+  subjectAMotivation: ReturnType<typeof inferEmotionalMotivation>,
+  subjectBMotivation: ReturnType<typeof inferEmotionalMotivation>,
+): string[] {
+  const themes: string[] = []
+
+  // Pursue/withdraw loop
+  if (
+    (subjectAMotivation.primaryMotive === "fear-driven" && subjectBMotivation.primaryMotive === "avoidance-driven") ||
+    (subjectBMotivation.primaryMotive === "fear-driven" && subjectAMotivation.primaryMotive === "avoidance-driven")
+  ) {
+    themes.push(
+      "Pursue/Withdraw Loop: One partner seeks reassurance while the other needs space, creating a cycle where both feel increasingly unsafe.",
+    )
+  }
+
+  // Fear of rejection
+  if (subjectAMotivation.primaryMotive === "fear-driven" || subjectBMotivation.primaryMotive === "fear-driven") {
+    themes.push(
+      "Fear of Rejection: Underlying anxiety about being abandoned or not being 'enough' drives protective behaviors.",
+    )
+  }
+
+  // Control as safety
+  if (subjectAMotivation.primaryMotive === "control-driven" || subjectBMotivation.primaryMotive === "control-driven") {
+    themes.push(
+      "Control as Safety: Attempts to manage or direct behavior reflect a need for predictability and emotional safety.",
+    )
+  }
+
+  // Vulnerability avoidance
+  if (
+    emotionalFlow.dominantPhase === "shutdown" ||
+    subjectAMotivation.primaryMotive === "avoidance-driven" ||
+    subjectBMotivation.primaryMotive === "avoidance-driven"
+  ) {
+    themes.push(
+      "Vulnerability Avoidance: Stepping back from emotional intensity protects against overwhelm but prevents deeper connection.",
+    )
+  }
+
+  // Repair and resilience
+  if (
+    subjectAMotivation.primaryMotive === "repair-driven" ||
+    subjectBMotivation.primaryMotive === "repair-driven" ||
+    emotionalFlow.dominantPhase === "repair"
+  ) {
+    themes.push(
+      "Repair and Resilience: Both partners demonstrate capacity to reach across disconnection and restore emotional safety.",
+    )
+  }
+
+  // Unspoken needs
+  const lower = conversationText.toLowerCase()
+  if (
+    (lower.includes("fine") || lower.includes("whatever") || lower.includes("doesn't matter")) &&
+    emotionalFlow.transitionCount > 3
+  ) {
+    themes.push(
+      "Unspoken Needs: Important feelings and needs remain unexpressed, creating distance and misunderstanding.",
+    )
+  }
+
+  // Default if no themes detected
+  if (themes.length === 0) {
+    themes.push(
+      "Navigating Intimacy: Both partners are learning to balance their need for closeness with their need for autonomy and emotional safety.",
+    )
+  }
+
+  return themes.slice(0, 2) // Return max 2 themes
+}
+
+function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: string, conversationText: string): any {
   const analysisStartTime = Date.now()
-  console.log(`[v0] Creating evidence-based analysis for ${subjectALabel} and ${subjectBLabel}`)
 
-  const hasInsufficientData = conversationText.length < 50
+  console.log("[v0] ===== Love Lens v2.5 Analysis Engine =====")
 
-  const subjectAMessages = hasInsufficientData
+  // Analyze conversation text
+  const hasMinimalData = conversationText.length < 50
+  const totalMessages = hasMinimalData ? 6 : (conversationText.match(/\[/g) || []).length
+  const subjectAMessages = hasMinimalData
     ? 3
     : Math.max(3, (conversationText.match(new RegExp(`\\[${subjectALabel}\\]`, "gi")) || []).length)
-  const subjectBMessages = hasInsufficientData
+  const subjectBMessages = hasMinimalData
     ? 3
     : Math.max(3, (conversationText.match(new RegExp(`\\[${subjectBLabel}\\]`, "gi")) || []).length)
-  // </CHANGE>
 
   console.log(`[v0] Message distribution: ${subjectALabel}=${subjectAMessages}, ${subjectBLabel}=${subjectBMessages}`)
 
-  const harmonyScore = hasInsufficientData ? 70 : calculateHarmonyScore(conversationText, subjectALabel, subjectBLabel)
-  const emotionalSafetyScore = hasInsufficientData ? 70 : calculateEmotionalSafetyScore(conversationText)
-  const repairEffortScore = hasInsufficientData ? 60 : calculateRepairEffortScore(conversationText)
-  const conflictPattern = hasInsufficientData
-    ? "mixed_inconclusive"
-    : detectConflictPattern(conversationText, subjectALabel, subjectBLabel)
-  const gottmanFlags = hasInsufficientData
+  const emotionalFlow = hasMinimalData
     ? {
-        harsh_startup: false,
-        criticism: false,
-        contempt: false,
-        defensiveness: false,
-        stonewalling: false,
+        flowStates: [{ phase: "calm" as const, intensity: 3, nervousSystemState: "🟢 ventral" as const }],
+        dominantPhase: "calm" as const,
+        transitionCount: 0,
+        nervousSystemSummary: "Limited data available for emotional flow mapping",
       }
-    : detectGottmanFlags(conversationText)
-  const riskFlags = hasInsufficientData ? ["none"] : detectRiskFlags(conversationText)
-  const sentimentTrend = hasInsufficientData ? "inconclusive" : detectSentimentTrend(conversationText)
+    : mapEmotionalFlow(conversationText)
 
-  console.log(`[v0] Harmony: ${harmonyScore}, Safety: ${emotionalSafetyScore}, Repair: ${repairEffortScore}`)
-  console.log(`[v0] Conflict Pattern: ${conflictPattern}, Sentiment: ${sentimentTrend}`)
-  console.log(`[v0] Gottman Flags:`, gottmanFlags)
-  console.log(`[v0] Risk Flags:`, riskFlags)
+  console.log(
+    `[v0] Emotional flow: ${emotionalFlow.dominantPhase} (${emotionalFlow.transitionCount} transitions), ${emotionalFlow.nervousSystemSummary}`,
+  )
 
+  const subjectAMotivation = hasMinimalData
+    ? {
+        primaryMotive: "connection-driven" as const,
+        secondaryMotive: "seeking understanding",
+        confidence: 40,
+        explanation: "Limited data available",
+      }
+    : inferEmotionalMotivation(conversationText, subjectALabel)
+
+  const subjectBMotivation = hasMinimalData
+    ? {
+        primaryMotive: "connection-driven" as const,
+        secondaryMotive: "seeking understanding",
+        confidence: 40,
+        explanation: "Limited data available",
+      }
+    : inferEmotionalMotivation(conversationText, subjectBLabel)
+
+  console.log(
+    `[v0] Motivations: ${subjectALabel}=${subjectAMotivation.primaryMotive} (${subjectAMotivation.confidence}% confidence), ${subjectBLabel}=${subjectBMotivation.primaryMotive} (${subjectBMotivation.confidence}% confidence)`,
+  )
+
+  const emotionalThemes = hasMinimalData
+    ? ["Navigating Intimacy: Both partners are learning to balance closeness with autonomy"]
+    : extractEmotionalThemes(conversationText, emotionalFlow, subjectAMotivation, subjectBMotivation)
+
+  console.log(`[v0] Emotional themes: ${emotionalThemes.join("; ")}`)
+
+  const profanityAnalysis = hasMinimalData
+    ? { profanityCount: 0, intensityLevel: "low" as const, emotionalEscalation: false }
+    : detectProfanityAndIntensity(conversationText)
+
+  const subjectATiming = hasMinimalData
+    ? { rapidFireSequences: 0, averageGapIndicator: "normal" as const, anxiousPursuit: false, emotionalFlooding: false }
+    : analyzeMessageTiming(conversationText, subjectALabel)
+
+  const subjectBTiming = hasMinimalData
+    ? { rapidFireSequences: 0, averageGapIndicator: "normal" as const, anxiousPursuit: false, emotionalFlooding: false }
+    : analyzeMessageTiming(conversationText, subjectBLabel)
+
+  const contemptMarkers = hasMinimalData
+    ? {
+        contemptScore: 0,
+        sarcasmDetected: false,
+        mockeryDetected: false,
+        nameCallingDetected: false,
+        eyeRollLanguage: false,
+      }
+    : detectContemptMarkers(conversationText)
+
+  const repairDynamics = hasMinimalData
+    ? { repairRejections: 0, repairAcceptance: 2, repairEffectiveness: "moderate" as const }
+    : detectRepairRejection(conversationText)
+
+  const subjectAAccountability = hasMinimalData
+    ? { takesResponsibility: 1, blamesOther: 0, makesExcuses: 0, accountabilityScore: 10 }
+    : detectAccountability(conversationText, subjectALabel)
+
+  const subjectBAccountability = hasMinimalData
+    ? { takesResponsibility: 1, blamesOther: 0, makesExcuses: 0, accountabilityScore: 10 }
+    : detectAccountability(conversationText, subjectBLabel)
+
+  const emotionalLabor = hasMinimalData
+    ? { subjectALabor: 2, subjectBLabor: 2, laborImbalance: "balanced" as const, whoDoesMore: subjectALabel }
+    : analyzeEmotionalLabor(conversationText, subjectALabel, subjectBLabel)
+
+  console.log(
+    `[v0] Profanity: ${profanityAnalysis.profanityCount}, Intensity: ${profanityAnalysis.intensityLevel}, Escalation: ${profanityAnalysis.emotionalEscalation}`,
+  )
+  console.log(
+    `[v0] Timing - ${subjectALabel}: ${subjectATiming.averageGapIndicator} (${subjectATiming.rapidFireSequences} rapid sequences), ${subjectBLabel}: ${subjectBTiming.averageGapIndicator} (${subjectBTiming.rapidFireSequences} rapid sequences)`,
+  )
+  console.log(
+    `[v0] Contempt score: ${contemptMarkers.contemptScore}, Sarcasm: ${contemptMarkers.sarcasmDetected}, Name-calling: ${contemptMarkers.nameCallingDetected}`,
+  )
+  console.log(
+    `[v0] Repair: ${repairDynamics.repairEffectiveness} effectiveness, ${repairDynamics.repairRejections} rejections, ${repairDynamics.repairAcceptance} acceptances`,
+  )
+  console.log(
+    `[v0] Accountability - ${subjectALabel}: ${subjectAAccountability.accountabilityScore}, ${subjectBLabel}: ${subjectBAccountability.accountabilityScore}`,
+  )
+  console.log(
+    `[v0] Emotional labor: ${emotionalLabor.laborImbalance} (${emotionalLabor.whoDoesMore} does ${emotionalLabor.laborImbalance === "balanced" ? "equal" : "more"})`,
+  )
+
+  const punctuationPatterns = hasMinimalData
+    ? { periods: 2, exclamations: 3, ellipses: 1, multipleQuestions: 0, noPunctuation: 2, emotionalIntensity: 1.5 }
+    : analyzePunctuationPatterns(conversationText)
+
+  const subjectAStyle = hasMinimalData
+    ? { avgLength: 50, shortMessages: 1, longMessages: 1, oneWordReplies: 0, expressiveStyle: "balanced" as const }
+    : analyzeMessageStyle(conversationText, subjectALabel)
+
+  const subjectBStyle = hasMinimalData
+    ? { avgLength: 45, shortMessages: 1, longMessages: 1, oneWordReplies: 0, expressiveStyle: "balanced" as const }
+    : analyzeMessageStyle(conversationText, subjectBLabel)
+
+  const emotionalTone = hasMinimalData
+    ? { warmth: 6, tension: 3, fatigue: 2, enthusiasm: 5, distance: 2 }
+    : detectEmotionalTone(conversationText, punctuationPatterns)
+
+  const emotionalPatterns = hasMinimalData
+    ? {
+        vulnerabilityBids: 2,
+        defensiveResponses: 1,
+        emotionalWithdrawal: 1,
+        repairAttempts: 2,
+        validationOffers: 2,
+        dismissiveLanguage: 0,
+        emotionalFlooding: 0,
+        bidForConnection: 2,
+      }
+    : detectEmotionalPatterns(conversationText)
+
+  const emotionalDynamics = analyzeEmotionalDynamics(emotionalPatterns, subjectALabel, subjectBLabel)
+
+  const styleMismatchDescription = (() => {
+    if (subjectAStyle.expressiveStyle === "brief" && subjectBStyle.expressiveStyle === "expressive")
+      return "There's a mismatch in communication styles, with one partner preferring brevity and the other more elaborate expression. This difference, while natural, may require conscious bridging to prevent misunderstandings."
+    if (subjectAStyle.expressiveStyle === "expressive" && subjectBStyle.expressiveStyle === "brief")
+      return "Communication styles differ: one partner tends toward more detailed expression, while the other prefers conciseness. Both styles are valid—the key is honoring each other's preferences while finding middle ground."
+    return ""
+  })()
+
+  const contextForWeighting = {
+    emotionalFlow,
+    subjectAMotivation,
+    subjectBMotivation,
+    hasFlooding: profanityAnalysis.emotionalEscalation || emotionalPatterns.emotionalFlooding > 1,
+    hasHumor: conversationText.toLowerCase().includes("haha") || conversationText.toLowerCase().includes("lol"),
+    hasSilence: subjectATiming.averageGapIndicator === "delayed" || subjectBTiming.averageGapIndicator === "delayed",
+    hasAccountability: subjectAAccountability.takesResponsibility > 0 || subjectBAccountability.takesResponsibility > 0,
+  }
+
+  const calculateHarmonyScore = () => {
+    if (hasMinimalData) return 70
+    const balanceRatio = Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)
+    const bidResponseRatio = emotionalPatterns.validationOffers / Math.max(1, emotionalPatterns.vulnerabilityBids)
+    const toneBalance = (emotionalTone.warmth - emotionalTone.distance) / 10
+    const contemptPenalty = contemptMarkers.contemptScore * 3
+    const profanityPenalty = profanityAnalysis.profanityCount * 2
+    const baseScore = Math.max(
+      20,
+      Math.round(
+        40 +
+          balanceRatio * 25 +
+          Math.min(25, bidResponseRatio * 25) +
+          toneBalance * 10 -
+          contemptPenalty -
+          profanityPenalty,
+      ),
+    )
+    return applyContextualWeighting(baseScore, contextForWeighting)
+  }
+
+  const calculateEmotionalSafetyScore = () => {
+    if (hasMinimalData) return 70
+    const safetyIndicators =
+      emotionalPatterns.validationOffers + emotionalPatterns.repairAttempts + emotionalTone.warmth
+    const unsafetyIndicators =
+      emotionalPatterns.dismissiveLanguage +
+      emotionalPatterns.emotionalWithdrawal +
+      emotionalTone.distance +
+      contemptMarkers.contemptScore * 2 +
+      profanityAnalysis.profanityCount
+    const netSafety = safetyIndicators - unsafetyIndicators * 2
+    const baseScore = Math.max(20, Math.min(100, 50 + netSafety * 5))
+    return applyContextualWeighting(baseScore, contextForWeighting)
+  }
+
+  const calculateRepairScore = () => {
+    if (hasMinimalData) return 60
+    const repairCapacity = emotionalPatterns.repairAttempts * 15
+    const defensiveBarrier = emotionalPatterns.defensiveResponses * 5
+    const enthusiasmBoost = emotionalTone.enthusiasm * 2
+    const repairRejectionPenalty = repairDynamics.repairRejections * 10
+    const repairAcceptanceBonus = repairDynamics.repairAcceptance * 5
+    const baseScore = Math.max(
+      20,
+      Math.min(
+        100,
+        repairCapacity - defensiveBarrier + enthusiasmBoost + repairAcceptanceBonus - repairRejectionPenalty + 30,
+      ),
+    )
+    return applyContextualWeighting(baseScore, contextForWeighting)
+  }
+
+  const harmonyScore = calculateHarmonyScore()
+  const emotionalSafetyScore = calculateEmotionalSafetyScore()
+  const repairEffortScore = calculateRepairScore()
   const overallHealthScore = Math.round((harmonyScore + emotionalSafetyScore + repairEffortScore) / 30)
 
-  const repairAttemptsScore = Math.max(1, Math.min(10, Math.round(repairEffortScore / 10) || 5))
+  console.log(
+    `[v0] Scores (v2.5 contextually weighted) - Harmony: ${harmonyScore}, Safety: ${emotionalSafetyScore}, Repair: ${repairEffortScore}, Overall: ${overallHealthScore}/10`,
+  )
 
+  const dataQuality = Math.min(100, (conversationText.length / 500) * 100)
+  const messageBalance =
+    (Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)) * 100
+  const extractionConfidence = Math.round((dataQuality + messageBalance) / 2)
+  const emotionalInferenceConfidence = Math.round((subjectAMotivation.confidence + subjectBMotivation.confidence) / 2)
+
+  console.log(
+    `[v0] Confidence levels - Extraction: ${extractionConfidence}%, Emotional inference: ${emotionalInferenceConfidence}%, Data completeness: ${dataQuality > 70 ? "high" : dataQuality > 40 ? "medium" : "low"}`,
+  )
+
+  const punctuationInsights: string[] = []
+  if (profanityAnalysis.profanityCount > 0) {
+    punctuationInsights.push(
+      `Profanity appears ${profanityAnalysis.profanityCount} time(s), which may reflect emotional intensity, frustration, or loss of emotional regulation. This isn't about being "bad"—it could suggest that feelings are running high and need attention.`,
+    )
+  }
+
+  if (profanityAnalysis.intensityLevel === "high") {
+    punctuationInsights.push(
+      "High emotional intensity detected through caps, multiple punctuation, and strong language. This might indicate emotional flooding—when feelings become so overwhelming that thoughtful communication becomes difficult.",
+    )
+  }
+
+  const timingInsights: string[] = []
+  if (subjectATiming.anxiousPursuit) {
+    timingInsights.push(
+      `${subjectALabel} sends multiple messages in quick succession, which may indicate anxious pursuit—a possible need for reassurance or fear of disconnection. This isn't clinginess; it could be an attachment response.`,
+    )
+  }
+  if (subjectBTiming.anxiousPursuit) {
+    timingInsights.push(
+      `${subjectBLabel} sends rapid-fire messages, possibly reflecting anxiety about the relationship or urgency to be heard and understood.`,
+    )
+  }
+  if (subjectATiming.averageGapIndicator === "delayed" || subjectBTiming.averageGapIndicator === "delayed") {
+    timingInsights.push(
+      "Long pauses between messages may indicate emotional withdrawal, need for processing time, or stonewalling. Context matters—sometimes space is healthy, sometimes it might be avoidance.",
+    )
+  }
+
+  const contemptInsights: string[] = []
+  if (contemptMarkers.sarcasmDetected) {
+    contemptInsights.push(
+      "Sarcasm detected—a form of contempt that may communicate superiority or disgust. This is one of Gottman's 'Four Horsemen' and could be a strong predictor of relationship distress.",
+    )
+  }
+  if (contemptMarkers.mockeryDetected) {
+    contemptInsights.push(
+      "Mockery or ridicule present in the conversation. This may create emotional unsafety and could signal contempt—one of the most toxic conflict patterns.",
+    )
+  }
+  if (contemptMarkers.nameCallingDetected) {
+    contemptInsights.push(
+      "Name-calling or character attacks detected. This crosses from complaint (about behavior) to criticism (about character) and may damage trust and safety.",
+    )
+  }
+
+  const oneWordReplyInsight =
+    subjectAStyle.oneWordReplies > subjectAMessages * 0.3 || subjectBStyle.oneWordReplies > subjectBMessages * 0.3
+      ? `One-word or very brief replies appear in the conversation. These might represent emotional shutdown, anxiety, or overwhelm rather than disinterest. When someone responds with "ok" or "fine," they may be protecting themselves from emotional flooding, not rejecting connection.`
+      : null
+
+  const gottmanFlags = {
+    criticism:
+      conversationText.toLowerCase().includes("always") ||
+      conversationText.toLowerCase().includes("never") ||
+      subjectAAccountability.blamesOther > 1 ||
+      subjectBAccountability.blamesOther > 1,
+    contempt: contemptMarkers.contemptScore > 0,
+    defensiveness: emotionalPatterns.defensiveResponses > 2,
+    stonewalling:
+      emotionalPatterns.emotionalWithdrawal > 2 ||
+      subjectATiming.averageGapIndicator === "delayed" ||
+      subjectBTiming.averageGapIndicator === "delayed",
+  }
+
+  // Generate distinct validation patterns for each subject
   const subjectAIsMoreActive = subjectAMessages > subjectBMessages
   const subjectBIsMoreActive = subjectBMessages > subjectAMessages
-  const highRepair = repairEffortScore > 40
-  const lowSafety = emotionalSafetyScore < 50
-  const highSafety = emotionalSafetyScore > 70
+  const highRepair = repairEffortScore > 60
 
-  // Subject A validation pattern - first person tends to be more expressive
-  const subjectA_acknowledges = subjectAIsMoreActive ? 35 : subjectAMessages === subjectBMessages ? 30 : 25
-  const subjectA_reassures = highRepair ? 30 : highSafety ? 25 : 20
-  const subjectA_validates = highSafety ? 25 : emotionalSafetyScore > 50 ? 20 : 15
-  const subjectA_dismisses = gottmanFlags.criticism || gottmanFlags.contempt ? 15 : gottmanFlags.harsh_startup ? 10 : 5
-  const subjectA_neutral = Math.max(
-    0,
-    100 - (subjectA_acknowledges + subjectA_reassures + subjectA_validates + subjectA_dismisses),
-  )
+  // Subject A validation pattern (first person gets higher acknowledgment)
+  const subjectA_acknowledges =
+    30 + (subjectAIsMoreActive ? 5 : 0) + (emotionalLabor.subjectALabor > emotionalLabor.subjectBLabor ? 5 : 0)
+  const subjectA_reassures = highRepair ? 30 : 25
+  const subjectA_validates = emotionalSafetyScore > 70 ? 25 : 20
+  const subjectA_dismisses = gottmanFlags.criticism || gottmanFlags.contempt ? 10 : 5
+  const subjectA_neutral = 100 - (subjectA_acknowledges + subjectA_reassures + subjectA_validates + subjectA_dismisses)
 
-  // Subject B validation pattern - second person tends to be more validating
-  const subjectB_acknowledges = subjectBIsMoreActive ? 35 : subjectAMessages === subjectBMessages ? 25 : 20
-  const subjectB_reassures = highRepair ? 25 : highSafety ? 20 : 15
-  const subjectB_validates = highSafety ? 30 : emotionalSafetyScore > 50 ? 25 : 20
-  const subjectB_dismisses = gottmanFlags.stonewalling
-    ? 15
-    : gottmanFlags.defensiveness
-      ? 10
-      : gottmanFlags.criticism
-        ? 8
-        : 5
-  const subjectB_neutral = Math.max(
-    0,
-    100 - (subjectB_acknowledges + subjectB_reassures + subjectB_validates + subjectB_dismisses),
-  )
+  // Subject B validation pattern (second person gets higher validation)
+  const subjectB_acknowledges =
+    25 + (subjectBIsMoreActive ? 5 : 0) + (emotionalLabor.subjectBLabor > emotionalLabor.subjectALabor ? 5 : 0)
+  const subjectB_reassures = highRepair ? 25 : 20
+  const subjectB_validates = emotionalSafetyScore > 70 ? 30 : 25
+  const subjectB_dismisses = gottmanFlags.stonewalling ? 12 : gottmanFlags.defensiveness ? 8 : 5
+  const subjectB_neutral = 100 - (subjectB_acknowledges + subjectB_reassures + subjectB_validates + subjectB_dismisses)
 
-  const totalMessages = subjectAMessages + subjectBMessages
-  const messageBalance =
-    totalMessages > 0
-      ? Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)
-      : 0.5
-  const extractionConfidence = Math.round(50 + messageBalance * 50) // 50-100 based on balance
+  const processingTime = Date.now() - analysisStartTime
 
-  const attributionConfidence =
-    totalMessages > 0 && subjectAMessages > 0 && subjectBMessages > 0
-      ? Math.round((0.7 + messageBalance * 0.3) * 100) / 100 // 0.70-1.00 based on balance
-      : 0.7
+  const reflectiveSummary = hasMinimalData
+    ? `This analysis is based on limited conversation data. The insights below are preliminary observations that may deepen with more conversation context. What matters most is how these patterns feel to you—your lived experience is the ultimate guide.`
+    : `Observing ${totalMessages} messages between ${subjectALabel} and ${subjectBLabel}, a picture emerges: ${emotionalThemes[0]} The conversation moves through phases of ${emotionalFlow.dominantPhase}, with ${emotionalFlow.transitionCount} emotional transitions. ${subjectALabel} appears primarily ${subjectAMotivation.primaryMotive.replace("-driven", "")}, while ${subjectBLabel} seems ${subjectBMotivation.primaryMotive.replace("-driven", "")}. Beneath the surface of words lies a deeper story—both partners navigating the inherent vulnerability of intimacy, each seeking safety in their own way. ${emotionalFlow.nervousSystemSummary}`
 
-  const analysisData = {
-    overallScore: overallHealthScore,
-    summary: `${hasInsufficientData ? "Based on limited conversation data, this " : ""}Evidence-based analysis of communication patterns between ${subjectALabel} and ${subjectBLabel} reveals ${overallHealthScore >= 8 ? "strong relational foundations" : overallHealthScore >= 6 ? "moderate connection with growth opportunities" : "areas requiring focused attention"}.${hasInsufficientData ? " Note: Analysis is based on limited data and may not fully reflect relationship dynamics." : ""}`,
+  return {
+    reflectiveSummary,
 
-    deterministic_scores: {
-      harmony_score: harmonyScore,
-      emotional_safety_score: emotionalSafetyScore,
-      repair_effort_score: repairEffortScore,
+    underlyingEmotionalThemes: emotionalThemes,
+
+    analysisConfidence: {
+      extractionConfidence,
+      emotionalInferenceConfidence,
+      dataCompleteness: dataQuality > 70 ? "high" : dataQuality > 40 ? "medium" : "low",
+      explanation:
+        dataQuality > 70
+          ? "High-quality data with sufficient message volume for reliable emotional pattern analysis."
+          : dataQuality > 40
+            ? "Moderate data quality—insights are directionally accurate but may deepen with more conversation context."
+            : "Limited data available—insights are preliminary and should be considered alongside your personal knowledge of the relationship.",
     },
 
-    conflict_pattern: conflictPattern,
-    sentiment_trend: sentimentTrend,
+    emotionalFlowMapping: {
+      dominantPhase: emotionalFlow.dominantPhase,
+      transitionCount: emotionalFlow.transitionCount,
+      nervousSystemSummary: emotionalFlow.nervousSystemSummary,
+      interpretation:
+        emotionalFlow.dominantPhase === "connection"
+          ? "The conversation primarily exists in a space of connection and safety, with both partners reaching toward each other."
+          : emotionalFlow.dominantPhase === "tension"
+            ? "Tension characterizes much of the exchange, suggesting underlying needs or fears that haven't been fully addressed."
+            : emotionalFlow.dominantPhase === "repair"
+              ? "The conversation shows active repair efforts—both partners are working to bridge disconnection and restore safety."
+              : emotionalFlow.dominantPhase === "escalation"
+                ? "Emotional escalation dominates, indicating that protective responses are overwhelming connection attempts."
+                : emotionalFlow.dominantPhase === "shutdown"
+                  ? "Withdrawal and shutdown patterns suggest emotional overwhelm or a need for self-protection."
+                  : "The conversation maintains a relatively calm, neutral tone with balanced emotional engagement.",
+    },
 
-    gottman_flags: gottmanFlags,
+    emotionalMotivations: {
+      [subjectALabel]: {
+        primaryMotive: subjectAMotivation.primaryMotive,
+        secondaryMotive: subjectAMotivation.secondaryMotive,
+        confidence: subjectAMotivation.confidence,
+        explanation: subjectAMotivation.explanation,
+      },
+      [subjectBLabel]: {
+        primaryMotive: subjectBMotivation.primaryMotive,
+        secondaryMotive: subjectBMotivation.secondaryMotive,
+        confidence: subjectBMotivation.confidence,
+        explanation: subjectBMotivation.explanation,
+      },
+      dynamicInterplay:
+        subjectAMotivation.primaryMotive === subjectBMotivation.primaryMotive
+          ? `Both partners share a ${subjectAMotivation.primaryMotive.replace("-driven", "")} orientation, which could create alignment or amplify the same pattern.`
+          : `${subjectALabel}'s ${subjectAMotivation.primaryMotive.replace("-driven", "")} approach meets ${subjectBLabel}'s ${subjectBMotivation.primaryMotive.replace("-driven", "")} response, creating a complementary dynamic that shapes the relationship's emotional rhythm.`,
+    },
 
-    risk_flags: riskFlags,
+    introductionNote: hasMinimalData
+      ? `This analysis is based on limited conversation data (${conversationText.length} characters from ${totalMessages} messages). The insights below are preliminary observations that may deepen with more conversation context. What matters most is how these patterns feel to you—your lived experience is the ultimate guide.`
+      : `Based on ${totalMessages} messages between ${subjectALabel} and ${subjectBLabel}, this analysis explores the emotional patterns, communication dynamics, and relational needs that shape your connection. These insights are offered with compassion, recognizing that all relationships involve two people doing their best to love and be loved.`,
 
     overallRelationshipHealth: {
       score: overallHealthScore,
-      description: `${hasInsufficientData ? "Based on available information, the " : "The "}relationship shows ${overallHealthScore >= 8 ? "strong" : overallHealthScore >= 6 ? "moderate" : "concerning"} patterns${hasInsufficientData ? " (limited data available)" : " based on evidence-based analysis"}. ${hasInsufficientData ? "With more conversation data, a more detailed assessment would be possible." : `Communication reveals ${gottmanFlags.contempt ? "contempt markers requiring immediate attention" : gottmanFlags.criticism ? "criticism patterns that need addressing" : gottmanFlags.harsh_startup ? "harsh startup patterns to work on" : "opportunities for continued growth"}.`} The harmony score of ${harmonyScore}/100 indicates ${harmonyScore >= 70 ? "positive relational dynamics" : harmonyScore >= 50 ? "mixed relational dynamics" : "challenging relational dynamics"}, while emotional safety measures ${emotionalSafetyScore}/100, suggesting ${emotionalSafetyScore >= 70 ? "strong emotional security" : emotionalSafetyScore >= 50 ? "moderate emotional security" : "emotional safety needs attention"}.`,
+      description:
+        overallHealthScore >= 8
+          ? `Your relationship shows strong emotional attunement and healthy repair capacity. You're building something meaningful together.`
+          : overallHealthScore >= 6
+            ? `Your relationship has a solid foundation with room to deepen emotional connection and understanding.`
+            : overallHealthScore >= 4
+              ? `Your relationship is navigating some challenges. With awareness and effort, these patterns can shift toward greater connection.`
+              : `Your relationship is experiencing significant strain. Professional support could help you both feel heard and find your way back to each other.`,
     },
-
-    introductionNote: `This analysis examines ${subjectAMessages + subjectBMessages} messages to identify communication patterns, emotional dynamics, and relationship strengths using evidence-based frameworks including the Gottman Method and attachment theory.${hasInsufficientData ? " Note: Analysis is based on limited conversation data. For more accurate insights, consider analyzing a longer conversation with more messages." : ""}`,
 
     communicationStylesAndEmotionalTone: {
-      description: `${subjectALabel} sent ${subjectAMessages} messages (${Math.round((subjectAMessages / (subjectAMessages + subjectBMessages)) * 100)}%) while ${subjectBLabel} sent ${subjectBMessages} messages (${Math.round((subjectBMessages / (subjectAMessages + subjectBMessages)) * 100)}%).${hasInsufficientData ? " Note: Analysis is based on limited conversation data." : ""} ${conflictPattern === "pursue_withdraw" ? "One partner seeks connection while the other needs space, creating a cycle that can be addressed with awareness." : conflictPattern === "mutual_escalation" ? "Both partners intensify emotional responses during conflict." : conflictPattern === "problem_solving" ? "Both partners work together to find solutions." : "Communication shows mixed patterns with varied approaches."}`,
-      // </CHANGE>
-
+      description: `${emotionalDynamics.primaryDynamic} ${styleMismatchDescription} ${timingInsights.length > 0 ? timingInsights[0] : ""} ${contemptInsights.length > 0 ? contemptInsights[0] : ""}`,
       emotionalVibeTags: [
-        sentimentTrend === "improving"
-          ? "Trending Positive"
-          : sentimentTrend === "worsening"
-            ? "Needs Attention"
-            : sentimentTrend === "volatile"
-              ? "Emotionally Variable"
-              : "Mixed Signals",
-        gottmanFlags.contempt ? "Contempt Present" : gottmanFlags.criticism ? "Criticism Detected" : "Respectful Tone",
-        repairEffortScore > 40 ? "Repair-Oriented" : repairEffortScore > 20 ? "Some Repair Efforts" : "Limited Repair",
-        harmonyScore > 70 ? "Harmonious" : harmonyScore > 50 ? "Moderate Harmony" : "Friction Present",
-        emotionalSafetyScore > 70
-          ? "Emotionally Safe"
-          : emotionalSafetyScore > 50
-            ? "Moderate Safety"
-            : "Safety Concerns",
-        conflictPattern === "problem_solving"
-          ? "Solution-Focused"
-          : conflictPattern === "pursue_withdraw"
-            ? "Pursue-Withdraw Dynamic"
-            : "Varied Conflict Styles",
-        riskFlags.includes("possible_safety_concern") ? "Safety Alert" : "Stable Environment",
+        emotionalTone.warmth > 5 ? "Warm" : "Building Warmth",
+        emotionalTone.tension > 5 || profanityAnalysis.intensityLevel === "high" ? "High Tension" : "Generally Relaxed",
+        emotionalPatterns.repairAttempts > 2 && repairDynamics.repairEffectiveness === "high"
+          ? "Effective Repair"
+          : "Learning to Repair",
+        emotionalTone.enthusiasm > 5 ? "Enthusiastic" : "Measured",
+        contemptMarkers.contemptScore > 0 ? "Contempt Present" : "Respectful",
       ],
-
-      subjectAStyle: `${subjectALabel} sent ${subjectAMessages} ${subjectAMessages === 1 ? "message" : "messages"}, representing ${Math.round((subjectAMessages / (subjectAMessages + subjectBMessages)) * 100)}% of the conversation. ${subjectAMessages > subjectBMessages * 1.5 ? "This high message frequency may suggest pursuit behaviors, anxiety about connection, or a more expressive communication style." : subjectAMessages > subjectBMessages ? "This slightly elevated message frequency suggests active engagement and investment in the conversation." : subjectAMessages < subjectBMessages * 0.5 ? "This lower message frequency may indicate withdrawal, processing time needs, or a more reserved communication style." : "This balanced message frequency suggests mutual engagement and reciprocal communication."} ${gottmanFlags.criticism ? "Communication patterns include criticism, which can erode connection over time." : "Communication generally avoids criticism, maintaining respect."} ${repairEffortScore > 40 ? "Demonstrates capacity for repair attempts, showing emotional intelligence and relationship investment." : repairEffortScore > 20 ? "Shows some repair attempts, with room to develop this crucial skill further." : "Limited repair efforts observed; developing this skill could significantly improve relationship dynamics."}`,
-
-      subjectBStyle: `${subjectBLabel} sent ${subjectBMessages} ${subjectBMessages === 1 ? "message" : "messages"}, representing ${Math.round((subjectBMessages / (subjectAMessages + subjectBMessages)) * 100)}% of the conversation. ${subjectBMessages < subjectAMessages * 0.5 ? "This notably lower message frequency may suggest withdrawal patterns, need for processing time, or discomfort with the conversation topic." : subjectBMessages < subjectAMessages ? "This slightly lower message frequency suggests thoughtful, measured responses." : subjectBMessages > subjectAMessages * 1.5 ? "This high message frequency indicates strong engagement and active participation in the dialogue." : "This balanced message frequency demonstrates mutual investment in communication."} ${gottmanFlags.defensiveness ? "Shows defensive patterns that may block accountability and prevent resolution." : "Generally open to feedback without excessive defensiveness."} ${gottmanFlags.stonewalling ? "Exhibits stonewalling behaviors, which can leave partners feeling abandoned during important conversations." : "Remains engaged even during difficult topics, which supports connection."}`,
-
-      regulationPatternsObserved: `${emotionalSafetyScore > 70 ? "Both partners demonstrate strong emotional regulation, maintaining composure and thoughtfulness even during challenging exchanges." : emotionalSafetyScore > 50 ? "Partners show moderate emotional regulation with occasional dysregulation during heightened moments." : "Emotional dysregulation is present, with intensity levels that may overwhelm productive communication."} ${gottmanFlags.harsh_startup ? "Harsh startups create immediate tension and defensiveness, making it difficult to have productive conversations. Practicing soft startups could significantly improve outcomes." : "Conversations generally begin constructively, setting a positive tone for dialogue."} ${conflictPattern === "mutual_escalation" ? "Mutual escalation patterns need interruption through timeout agreements and self-soothing practices." : conflictPattern === "pursue_withdraw" ? "The pursue-withdraw cycle requires both partners to work on self-regulation and staying present." : "Conflict patterns remain generally manageable with current regulation strategies."}`,
-
-      messageRhythmAndPacing: `${subjectAMessages > subjectBMessages * 2 ? `${subjectALabel} initiates significantly more communication, creating potential imbalance. This pattern may reflect anxious attachment activation or unmet connection needs.` : subjectAMessages < subjectBMessages * 0.5 ? `${subjectBLabel} carries more of the communication load, which may create feelings of pursuit or unreciprocated effort.` : "Message rhythm shows relative balance, with both partners contributing to the conversational flow."} ${conflictPattern === "pursue_withdraw" ? "The pursue-withdraw cycle is evident in pacing, with one partner increasing communication attempts while the other reduces engagement." : "Pacing patterns support connection and allow for mutual expression."}`,
-    },
-
-    reflectiveFrameworks: {
-      description: `Evidence-based psychological frameworks reveal patterns requiring attention and illuminate growth opportunities. The analysis integrates attachment theory, Gottman Method principles, love languages, and emotional intelligence research to provide comprehensive insights.`,
-
-      attachmentEnergies: `${conflictPattern === "pursue_withdraw" ? `Classic anxious-avoidant dynamic is present: ${subjectAMessages > subjectBMessages ? subjectALabel : subjectBLabel} demonstrates pursuit behaviors (hyperactivating strategies) while ${subjectAMessages > subjectBMessages ? subjectBLabel : subjectALabel} shows withdrawal patterns (deactivating strategies). This creates a painful cycle where pursuit triggers more withdrawal, and withdrawal triggers more pursuit.` : "Attachment patterns show mixed characteristics without clear anxious-avoidant polarization."} ${repairEffortScore > 40 ? "The capacity for repair attempts demonstrates potential for secure functioning and earned security." : "Limited repair capacity suggests insecure attachment patterns dominating the relationship dynamic."} ${emotionalSafetyScore > 70 ? "High emotional safety provides a foundation for developing more secure attachment patterns." : "Lower emotional safety perpetuates insecure attachment cycles and prevents vulnerability."}`,
-
-      loveLanguageFriction: `${gottmanFlags.criticism ? "Criticism patterns suggest unmet needs for affirmation and appreciation (Words of Affirmation love language). Partners may be expressing needs through criticism rather than direct requests." : "Love language compatibility appears reasonable, with partners generally expressing appreciation constructively."} ${repairEffortScore < 20 ? "Limited repair attempts may indicate disconnection in how partners give and receive emotional support, suggesting love language misalignment." : "Active repair attempts show partners are attuned to each other's emotional needs."} ${harmonyScore < 50 ? "Low harmony scores may reflect fundamental differences in how partners express and receive love, requiring explicit discussion of love language preferences." : "Harmony levels suggest reasonable alignment in how partners express care and affection."}`,
-
-      gottmanConflictMarkers: `Gottman Method analysis reveals critical patterns: ${gottmanFlags.harsh_startup ? "**Harsh startup** - Conversations begin with criticism or contempt rather than gentle approach, predicting negative outcomes" : "**Soft startup** - Conversations begin constructively, increasing likelihood of positive resolution"}, ${gottmanFlags.criticism ? "**criticism detected** - Attacking character rather than addressing specific behaviors" : "**no criticism** - Feedback focuses on specific behaviors rather than character attacks"}, ${gottmanFlags.contempt ? "**CONTEMPT PRESENT (CRITICAL)** - The single strongest predictor of relationship failure. Contempt communicates disgust and superiority, creating toxic relational environment requiring immediate intervention" : "**no contempt** - Respect is maintained even during disagreements, a crucial protective factor"}, ${gottmanFlags.defensiveness ? "**defensiveness observed** - Deflecting responsibility prevents accountability and resolution" : "**accountability present** - Partners take responsibility for their contributions to problems"}, ${gottmanFlags.stonewalling ? "**stonewalling evident** - Withdrawal and shutdown prevent resolution and leave partners feeling abandoned" : "**engagement maintained** - Partners stay present even during difficult conversations"}. ${gottmanFlags.contempt ? "**URGENT**: Contempt is the strongest predictor of relationship failure in Gottman's research and requires immediate professional intervention." : gottmanFlags.criticism && gottmanFlags.defensiveness ? "The criticism-defensiveness cycle creates escalation and prevents resolution." : "The absence of the Four Horsemen (criticism, contempt, defensiveness, stonewalling) is a significant protective factor."}`,
-
-      emotionalIntelligenceIndicators: `Emotional safety score: ${emotionalSafetyScore}/100, indicating ${emotionalSafetyScore > 70 ? "high emotional intelligence with strong capacity for empathy, self-awareness, and emotional regulation" : emotionalSafetyScore > 50 ? "moderate emotional intelligence with room for growth in empathy and self-regulation" : "low emotional intelligence requiring focused development of self-awareness, empathy, and regulation skills"}. ${repairEffortScore > 40 ? "Repair capacity demonstrates empathy and perspective-taking, core components of emotional intelligence." : "Limited empathy in conflict situations suggests emotional intelligence development would benefit the relationship."} ${harmonyScore > 70 ? "High harmony reflects emotional attunement and responsiveness to each other's emotional states." : "Lower harmony may indicate difficulty reading or responding to each other's emotional cues."}`,
+      regulationPatternsObserved:
+        emotionalPatterns.emotionalFlooding > 1 || profanityAnalysis.emotionalEscalation
+          ? `There are moments when emotions feel overwhelming, leading to shutdown, escalation, or loss of emotional regulation (${profanityAnalysis.intensityLevel} intensity detected). This may be a sign that nervous systems need support, not a character flaw in either person. ${punctuationInsights.length > 0 ? "Punctuation patterns suggest: " + punctuationInsights[0] : ""}`
+          : `Both partners appear to be managing their emotional responses with varying degrees of success. The capacity for self-regulation is developing. ${punctuationInsights.length > 0 ? punctuationInsights[0] : ""}`,
+      messageRhythmAndPacing:
+        Math.abs(subjectAMessages - subjectBMessages) < 2
+          ? `Both partners contribute fairly equally to the conversation, which might suggest mutual investment in the relationship. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`
+          : `${subjectAIsMoreActive ? subjectALabel : subjectBLabel} tends to initiate or sustain conversation more often (${subjectAIsMoreActive ? subjectAMessages : subjectBMessages} vs ${subjectAIsMoreActive ? subjectBMessages : subjectAMessages} messages). This might reflect different communication styles, energy levels, or comfort with verbal expression—not necessarily different levels of care. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`,
+      subjectAStyle: `${subjectALabel} ${subjectAIsMoreActive ? "actively engages in dialogue" : "contributes steadily"} with ${subjectAStyle.expressiveStyle} messages (average ${Math.round(subjectAStyle.avgLength)} characters). ${subjectATiming.anxiousPursuit ? "Sends rapid-fire messages when anxious or seeking connection." : ""} ${subjectAStyle.oneWordReplies > 1 ? "Brief replies may indicate emotional fatigue or overwhelm rather than disengagement." : ""} ${emotionalPatterns.vulnerabilityBids > 1 ? "Sometimes shares vulnerable feelings" : "Navigating when and how to share feelings"}. ${subjectAAccountability.takesResponsibility > 0 ? "Takes responsibility when appropriate" : subjectAAccountability.blamesOther > 1 ? "Tends to blame rather than own their part" : "Learning accountability"}. ${emotionalPatterns.defensiveResponses > 1 ? "When feeling criticized, there's a tendency to defend or explain, which could be a natural protective response." : "There's an openness to hearing feedback, even when it's difficult."}`,
+      subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages (average ${Math.round(subjectBStyle.avgLength)} characters). ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Shows accountability for their actions" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
+      punctuationInsights:
+        punctuationInsights.length > 0
+          ? punctuationInsights
+          : ["Punctuation patterns suggest balanced emotional expression"],
+      timingInsights: timingInsights.length > 0 ? timingInsights : ["Message timing appears balanced and healthy"],
+      contemptInsights: contemptInsights.length > 0 ? contemptInsights : ["No contempt markers detected"],
     },
 
     recurringPatternsIdentified: {
-      description: `Evidence-based pattern analysis identifies **${conflictPattern}** as the primary relational dynamic, with ${sentimentTrend === "improving" ? "improving sentiment trends suggesting positive trajectory" : sentimentTrend === "worsening" ? "worsening sentiment trends requiring intervention" : "mixed sentiment patterns requiring attention"}.`,
-
-      positivePatterns:
-        [
-          repairEffortScore > 40
-            ? `Repair attempts present (score: ${repairEffortScore}/100) - demonstrates emotional intelligence and relationship investment`
-            : null,
-          !gottmanFlags.contempt
-            ? "Absence of contempt maintains fundamental respect and prevents the most toxic relational pattern"
-            : null,
-          harmonyScore > 70
-            ? "Harmonious interactions dominate the relationship, creating positive emotional climate"
-            : null,
-          sentimentTrend === "improving"
-            ? "Sentiment trending positively, indicating relationship is moving in healthy direction"
-            : null,
-          emotionalSafetyScore > 70
-            ? "Emotional safety maintained, allowing for vulnerability and authentic expression"
-            : null,
-          conflictPattern === "problem_solving"
-            ? "Problem-solving approach to conflicts demonstrates maturity and collaboration"
-            : null,
-          !gottmanFlags.harsh_startup ? "Soft startups create constructive tone for difficult conversations" : null,
-          !gottmanFlags.stonewalling
-            ? "Both partners remain engaged during conflicts, preventing abandonment feelings"
-            : null,
-        ].filter(Boolean).length > 0
-          ? [
-              repairEffortScore > 40
-                ? `Repair attempts present (score: ${repairEffortScore}/100) - demonstrates emotional intelligence and relationship investment`
-                : null,
-              !gottmanFlags.contempt
-                ? "Absence of contempt maintains fundamental respect and prevents the most toxic relational pattern"
-                : null,
-              harmonyScore > 70
-                ? "Harmonious interactions dominate the relationship, creating positive emotional climate"
-                : null,
-              sentimentTrend === "improving"
-                ? "Sentiment trending positively, indicating relationship is moving in healthy direction"
-                : null,
-              emotionalSafetyScore > 70
-                ? "Emotional safety maintained, allowing for vulnerability and authentic expression"
-                : null,
-              conflictPattern === "problem_solving"
-                ? "Problem-solving approach to conflicts demonstrates maturity and collaboration"
-                : null,
-              !gottmanFlags.harsh_startup ? "Soft startups create constructive tone for difficult conversations" : null,
-              !gottmanFlags.stonewalling
-                ? "Both partners remain engaged during conflicts, preventing abandonment feelings"
-                : null,
-            ].filter(Boolean)
-          : [
-              "Both partners are communicating and engaging with each other",
-              "Willingness to participate in relationship analysis shows investment in growth",
-              "Conversation is occurring, providing opportunity for connection",
-            ],
-
+      description: `${emotionalDynamics.emotionalCycle} ${emotionalLabor.laborImbalance !== "balanced" ? `There's a ${emotionalLabor.laborImbalance} imbalance in emotional labor, with ${emotionalLabor.whoDoesMore} doing more of the work to maintain emotional connection and process feelings.` : ""}`,
+      positivePatterns: [
+        emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
+          ? `Efforts to reconnect after disconnection (${emotionalPatterns.repairAttempts} repair attempts, ${repairDynamics.repairEffectiveness} effectiveness)`
+          : "Developing repair skills",
+        emotionalPatterns.validationOffers > 0
+          ? `Moments of genuine acknowledgment and validation`
+          : "Learning to validate each other",
+        emotionalPatterns.bidForConnection > 0
+          ? `Reaching out for connection and closeness`
+          : "Building connection rituals",
+        !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
+          ? "Respect remains mostly intact"
+          : "Working to restore mutual respect",
+        subjectAAccountability.takesResponsibility > 0 || subjectBAccountability.takesResponsibility > 0
+          ? "At least one partner takes responsibility for their actions"
+          : "Learning accountability",
+      ],
       loopingMiscommunicationsExamples:
-        [
-          conflictPattern === "pursue_withdraw"
-            ? `${subjectAMessages > subjectBMessages ? subjectALabel : subjectBLabel} pursues connection → ${subjectAMessages > subjectBMessages ? subjectBLabel : subjectALabel} withdraws for space → anxiety increases → pursuit intensifies → withdrawal deepens → cycle repeats and escalates`
-            : null,
-          gottmanFlags.criticism
-            ? "Criticism triggers defensiveness → defensiveness blocks accountability → frustration increases → more criticism → escalation continues"
-            : null,
-          gottmanFlags.harsh_startup
-            ? "Harsh startup creates immediate defensiveness → conflict escalates quickly → resolution becomes impossible → resentment builds"
-            : null,
-          conflictPattern === "mutual_escalation"
-            ? "Both partners escalate → intensity increases → rational discussion becomes impossible → no resolution achieved → pattern repeats"
-            : null,
-          gottmanFlags.stonewalling
-            ? "Intensity rises → stonewalling begins → pursuing partner feels abandoned → intensity increases further → more stonewalling"
-            : null,
-        ].filter(Boolean).length > 0
+        emotionalPatterns.defensiveResponses > 2 || contemptMarkers.contemptScore > 0
           ? [
-              conflictPattern === "pursue_withdraw"
-                ? `${subjectAMessages > subjectBMessages ? subjectALabel : subjectBLabel} pursues connection → ${subjectAMessages > subjectBMessages ? subjectBLabel : subjectALabel} withdraws for space → anxiety increases → pursuit intensifies → withdrawal deepens → cycle repeats and escalates`
-                : null,
-              gottmanFlags.criticism
-                ? "Criticism triggers defensiveness → defensiveness blocks accountability → frustration increases → more criticism → escalation continues"
-                : null,
-              gottmanFlags.harsh_startup
-                ? "Harsh startup creates immediate defensiveness → conflict escalates quickly → resolution becomes impossible → resentment builds"
-                : null,
-              conflictPattern === "mutual_escalation"
-                ? "Both partners escalate → intensity increases → rational discussion becomes impossible → no resolution achieved → pattern repeats"
-                : null,
-              gottmanFlags.stonewalling
-                ? "Intensity rises → stonewalling begins → pursuing partner feels abandoned → intensity increases further → more stonewalling"
-                : null,
-            ].filter(Boolean)
-          : [
-              "Communication patterns show room for improvement in clarity and directness",
-              "Emotional expression could be more explicit to prevent misunderstandings",
-              "Timing of difficult conversations may contribute to miscommunication",
-            ],
-
-      commonTriggersAndResponsesExamples:
-        [
-          gottmanFlags.criticism
-            ? "Trigger: Criticism of character → Response: Defensive justification and counter-criticism"
-            : null,
-          gottmanFlags.stonewalling
-            ? "Trigger: Emotional intensity or conflict → Response: Withdrawal and stonewalling"
-            : null,
-          conflictPattern === "pursue_withdraw"
-            ? "Trigger: Perceived distance or unavailability → Response: Increased pursuit and demands for connection"
-            : null,
-          emotionalSafetyScore < 50
-            ? "Trigger: Vulnerability or emotional expression → Response: Attack, dismissal, or minimization"
-            : null,
-          gottmanFlags.harsh_startup
-            ? "Trigger: Unmet needs or frustration → Response: Harsh startup with criticism"
-            : null,
-        ].filter(Boolean).length > 0
-          ? [
-              gottmanFlags.criticism
-                ? "Trigger: Criticism of character → Response: Defensive justification and counter-criticism"
-                : null,
-              gottmanFlags.stonewalling
-                ? "Trigger: Emotional intensity or conflict → Response: Withdrawal and stonewalling"
-                : null,
-              conflictPattern === "pursue_withdraw"
-                ? "Trigger: Perceived distance or unavailability → Response: Increased pursuit and demands for connection"
-                : null,
-              emotionalSafetyScore < 50
-                ? "Trigger: Vulnerability or emotional expression → Response: Attack, dismissal, or minimization"
-                : null,
-              gottmanFlags.harsh_startup
-                ? "Trigger: Unmet needs or frustration → Response: Harsh startup with criticism"
-                : null,
-            ].filter(Boolean)
-          : [
-              "Trigger: Stress or external pressures → Response: Reduced patience and increased reactivity",
-              "Trigger: Unmet expectations → Response: Frustration and withdrawal",
-              "Trigger: Misunderstanding → Response: Defensive clarification",
-            ],
-
+              "One person shares a concern → the other hears criticism → defensiveness or contempt arises → the first person feels unheard or attacked → the cycle continues",
+              "Both partners want to be understood, but the protective moves (defense, withdrawal, contempt) may prevent the very connection they're seeking",
+              repairDynamics.repairRejections > 0
+                ? "Repair attempts are made but rejected, leaving both partners feeling hopeless about change"
+                : "Repair attempts are inconsistent or ineffective",
+            ]
+          : ["Minor misunderstandings that get clarified through continued dialogue"],
+      commonTriggersAndResponsesExamples: [
+        emotionalPatterns.vulnerabilityBids > 0
+          ? "Vulnerability might trigger fear of judgment or rejection in the listener"
+          : "Building safety for emotional sharing",
+        emotionalPatterns.defensiveResponses > 0 ||
+        subjectAAccountability.blamesOther > 0 ||
+        subjectBAccountability.blamesOther > 0
+          ? "Perceived criticism may activate self-protection, blame, or counter-attack rather than curiosity"
+          : "Staying open during feedback",
+        emotionalPatterns.emotionalWithdrawal > 0 || gottmanFlags.stonewalling
+          ? "Overwhelm could lead to shutdown, withdrawal, or stonewalling as a way to regulate"
+          : "Staying engaged during intensity",
+        profanityAnalysis.emotionalEscalation
+          ? "High emotional intensity may lead to loss of regulation, profanity, or escalation"
+          : "Emotions are generally well-regulated",
+      ],
       repairAttemptsOrEmotionalAvoidancesExamples:
-        [
-          repairEffortScore > 40
-            ? `Repair attempts detected (score: ${repairEffortScore}/100) - includes apologies, acknowledgment, humor, or affection to de-escalate`
-            : null,
-          repairEffortScore < 20
-            ? "Limited repair efforts observed; conflicts may escalate without attempts to de-escalate or reconnect"
-            : null,
-          gottmanFlags.stonewalling
-            ? "Stonewalling prevents repair by creating emotional distance and blocking resolution attempts"
-            : null,
-          !gottmanFlags.defensiveness
-            ? "Absence of defensiveness allows repair attempts to be received and effective"
-            : null,
-        ].filter(Boolean).length > 0
+        emotionalPatterns.repairAttempts > 2 && repairDynamics.repairEffectiveness !== "low"
           ? [
-              repairEffortScore > 40
-                ? `Repair attempts detected (score: ${repairEffortScore}/100) - includes apologies, acknowledgment, humor, or affection to de-escalate`
-                : null,
-              repairEffortScore < 20
-                ? "Limited repair efforts observed; conflicts may escalate without attempts to de-escalate or reconnect"
-                : null,
-              gottmanFlags.stonewalling
-                ? "Stonewalling prevents repair by creating emotional distance and blocking resolution attempts"
-                : null,
-              !gottmanFlags.defensiveness
-                ? "Absence of defensiveness allows repair attempts to be received and effective"
-                : null,
+              "Apologies and acknowledgment of impact",
+              "Reaching out after conflict to reconnect",
+              "Expressing care even in the midst of disagreement",
+              repairDynamics.repairAcceptance > 0 ? "Repair attempts are received and acknowledged" : "",
             ].filter(Boolean)
-          : [
-              "Repair attempts are present but could be more consistent and explicit",
-              "Partners show willingness to move past conflicts, though repair skills need development",
-              "Emotional avoidance occasionally prevents full resolution of issues",
-            ],
+          : repairDynamics.repairRejections > 0
+            ? [
+                "Repair attempts are made but rejected or dismissed",
+                "One partner tries to reconnect but the other isn't ready",
+                "The window for repair closes before connection is restored",
+              ]
+            : [
+                "Repair attempts are emerging but not yet consistent",
+                "Learning to bridge disconnection takes practice",
+              ],
+    },
+
+    reflectiveFrameworks: {
+      description:
+        "These frameworks help us understand the deeper emotional patterns at play, recognizing that behavior is always an attempt to meet a need.",
+      attachmentEnergies:
+        emotionalSafetyScore > 75
+          ? `The relationship shows secure attachment patterns—both partners can be vulnerable and responsive. This is the foundation for lasting intimacy.`
+          : subjectATiming.anxiousPursuit || subjectBTiming.anxiousPursuit
+            ? `There's an anxious-avoidant dynamic emerging: one partner seeks reassurance through frequent contact while the other needs space. Both responses make sense—they're just different strategies for managing relationship anxiety.`
+            : emotionalPatterns.emotionalWithdrawal > 2
+              ? `Avoidant attachment patterns appear when emotions intensify—withdrawal as a way to manage overwhelm. This isn't rejection; it could be self-protection.`
+              : `Attachment patterns are developing. Both partners are learning to balance their need for closeness with their need for autonomy.`,
+      loveLanguageFriction:
+        Math.abs(subjectAMessages - subjectBMessages) > 3 || emotionalLabor.laborImbalance !== "balanced"
+          ? `You may express and receive love differently. ${subjectAIsMoreActive || emotionalLabor.subjectALabor > emotionalLabor.subjectBLabor ? subjectALabel : subjectBLabel} might value verbal connection and emotional processing more, while the other might show love through actions, presence, or practical support. Neither is wrong—they're just different.`
+          : `Your ways of expressing care seem fairly aligned, though there's always room to learn each other's unique love language.`,
+      gottmanConflictMarkers:
+        gottmanFlags.criticism || gottmanFlags.contempt || gottmanFlags.defensiveness || gottmanFlags.stonewalling
+          ? `Present: ${[
+              gottmanFlags.criticism && "Criticism (expressing complaints as character flaws or blame)",
+              gottmanFlags.contempt &&
+                `Contempt (${[contemptMarkers.sarcasmDetected && "sarcasm", contemptMarkers.mockeryDetected && "mockery", contemptMarkers.nameCallingDetected && "name-calling", contemptMarkers.eyeRollLanguage && "eye-roll language"].filter(Boolean).join(", ")})`,
+              gottmanFlags.defensiveness && "Defensiveness (protecting self rather than hearing partner)",
+              gottmanFlags.stonewalling && "Stonewalling (withdrawing to avoid overwhelm)",
+            ]
+              .filter(Boolean)
+              .join(
+                "; ",
+              )}. These patterns are common and changeable—they're learned responses, not fixed traits. ${contemptMarkers.contemptScore > 5 ? "Contempt is particularly concerning and may require immediate attention." : ""}`
+          : "No major destructive conflict patterns detected. You're managing disagreements with relative respect and openness.",
+      emotionalIntelligenceIndicators:
+        emotionalPatterns.validationOffers > 2 &&
+        (subjectAAccountability.takesResponsibility > 0 || subjectBAccountability.takesResponsibility > 0)
+          ? `Both partners show capacity for emotional awareness, empathy, and accountability. You're able to recognize and respond to each other's feelings, at least some of the time.`
+          : `Emotional intelligence is developing. Learning to name feelings, understand their origins, take responsibility, and respond with compassion takes practice.`,
     },
 
     whatsGettingInTheWay: {
-      description: `Evidence reveals ${riskFlags.includes("possible_safety_concern") ? "**SAFETY CONCERNS** requiring immediate professional attention and safety planning" : gottmanFlags.contempt ? "**CONTEMPT** - the most toxic pattern requiring urgent intervention" : "patterns requiring focused intervention and skill development"}.`,
+      description: `${emotionalDynamics.balancedInsight} ${contemptMarkers.contemptScore > 0 ? "Contempt patterns may create emotional unsafety and damage the foundation of respect." : ""} ${emotionalLabor.laborImbalance === "significant" ? `The significant imbalance in emotional labor (${emotionalLabor.whoDoesMore} does most of the emotional work) could create resentment and exhaustion.` : ""}`,
+      emotionalMismatches:
+        emotionalPatterns.vulnerabilityBids > emotionalPatterns.validationOffers
+          ? "One person's emotional bids aren't always met with the response they're hoping for. This isn't about one person being wrong—it's about learning each other's emotional language."
+          : "Emotional attunement is generally strong, with room to deepen understanding of each other's inner world.",
+      communicationGaps:
+        Math.abs(subjectAMessages - subjectBMessages) > 3
+          ? `Different levels of verbal engagement (${subjectALabel}: ${subjectAMessages}, ${subjectBLabel}: ${subjectBMessages}). This might reflect personality differences, communication preferences, or varying comfort with conflict—not different levels of investment. ${subjectATiming.anxiousPursuit || subjectBTiming.anxiousPursuit ? "Rapid-fire messaging may indicate anxious pursuit." : ""}`
+          : "Communication participation feels balanced and mutual.",
+      subtlePowerStrugglesOrMisfires:
+        gottmanFlags.criticism ||
+        gottmanFlags.defensiveness ||
+        subjectAAccountability.blamesOther > 1 ||
+        subjectBAccountability.blamesOther > 1
+          ? "There's a pursue-withdraw or blame-defend pattern emerging: one person pushes for connection or change, the other pulls back or counter-attacks to protect themselves. Both moves make sense from each person's perspective."
+          : "Power dynamics appear relatively balanced, with both partners having voice and influence.",
+      externalStressors: hasMinimalData
+        ? "Limited data prevents assessment of external pressures, but all relationships exist within broader life contexts that shape communication."
+        : "External stressors (work, family, health, finances) inevitably impact how partners show up for each other. Recognizing this can foster compassion.",
+    },
 
-      emotionalMismatches: `${conflictPattern === "pursue_withdraw" ? "Pursue-withdraw cycle creates painful dynamic where one partner's bid for connection triggers the other's need for space, and vice versa. This reflects fundamental differences in attachment needs and emotional regulation strategies." : "Communication styles show misalignment in how partners express and process emotions."} ${emotionalSafetyScore < 50 ? "Low emotional safety prevents vulnerability and authentic expression, keeping partners in protective defensive modes rather than open connection." : "Emotional safety levels support vulnerability, though continued attention to this foundation is important."}`,
-
-      communicationGaps: `${gottmanFlags.criticism ? "Criticism replaces specific requests, attacking character rather than addressing behaviors. This creates defensiveness and prevents problem-solving." : ""} ${gottmanFlags.harsh_startup ? "Harsh startups poison conversations from the beginning, making productive dialogue nearly impossible. The first three minutes of a conversation predict the outcome." : ""} ${gottmanFlags.stonewalling ? "Stonewalling blocks all resolution attempts, leaving the pursuing partner feeling abandoned and the stonewalling partner feeling overwhelmed." : ""} ${!gottmanFlags.criticism && !gottmanFlags.harsh_startup && !gottmanFlags.stonewalling ? "Communication gaps exist in timing, clarity, or directness of expression, though major toxic patterns are absent." : ""}`,
-
-      subtlePowerStrugglesOrMisfires: `${gottmanFlags.contempt ? "**CONTEMPT** indicates significant power imbalance and disrespect. Contempt communicates 'I am better than you' and creates toxic hierarchy in the relationship." : ""} ${gottmanFlags.defensiveness ? "Defensiveness prevents accountability and creates power struggles over who is 'right' rather than focusing on understanding and resolution." : ""} ${conflictPattern === "mutual_escalation" ? "Escalation battles reflect power struggles where both partners compete for control rather than collaborating for solutions." : ""} ${!gottmanFlags.contempt && !gottmanFlags.defensiveness && conflictPattern !== "mutual_escalation" ? "Power dynamics appear relatively balanced, though subtle patterns may exist around decision-making, emotional labor, or conflict initiation." : ""}`,
+    constructiveFeedback: {
+      subjectA: {
+        strengths: [
+          subjectA_acknowledges > 30
+            ? "You notice and acknowledge your partner's feelings"
+            : "You're learning to attune to your partner's emotions",
+          subjectA_reassures > 25 ? "You offer reassurance and comfort" : "You're developing your capacity to soothe",
+          subjectAIsMoreActive || emotionalLabor.subjectALabor > emotionalLabor.subjectBLabor
+            ? "You invest energy in maintaining connection and doing emotional labor"
+            : "You show up consistently",
+          subjectAAccountability.takesResponsibility > 0
+            ? "You take responsibility for your actions"
+            : "You're learning accountability",
+        ],
+        gentleGrowthNudges: [
+          emotionalPatterns.defensiveResponses > 1 || subjectAAccountability.blamesOther > 0
+            ? "When you feel criticized, notice the urge to defend or blame. Can you get curious about your partner's experience instead? This doesn't mean they're right—it means you're strong enough to hear them."
+            : "Continue staying open to feedback, even when it's uncomfortable",
+          emotionalPatterns.vulnerabilityBids < 2
+            ? "Consider sharing more of your inner world—your fears, needs, longings. Vulnerability may be the path to intimacy."
+            : "Keep sharing your feelings; it creates opportunities for connection",
+          subjectATiming.anxiousPursuit
+            ? "Notice when you're sending multiple messages in quick succession. This might be anxious pursuit. Can you pause, breathe, and trust that your partner will respond?"
+            : "Remember: your partner's feelings aren't an attack on you. They could be an invitation to understand them better.",
+          contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected || contemptMarkers.nameCallingDetected
+            ? "Sarcasm, mockery, and name-calling may create emotional unsafety. Practice expressing frustration without contempt: 'I feel hurt when...' instead of 'You're ridiculous.'"
+            : "",
+        ].filter(Boolean),
+        connectionBoosters: [
+          "Ask: 'What do you need from me right now?' and truly listen to the answer",
+          "Share one thing you appreciate about your partner daily—be specific",
+          "When conflict arises, try: 'Help me understand' instead of 'But I...'",
+          repairDynamics.repairRejections > 0
+            ? "When your partner tries to repair, receive it with grace even if you're still hurt"
+            : "",
+        ].filter(Boolean),
+      },
+      subjectB: {
+        strengths: [
+          subjectB_validates > 25
+            ? "You validate your partner's perspective"
+            : "You're learning to honor your partner's reality",
+          subjectB_reassures > 20 ? "You provide emotional reassurance" : "You're developing your comforting presence",
+          subjectBIsMoreActive || emotionalLabor.subjectBLabor > emotionalLabor.subjectALabor
+            ? "You actively engage in dialogue and emotional labor"
+            : "You offer steady, reliable presence",
+          subjectBAccountability.takesResponsibility > 0
+            ? "You own your part in conflicts"
+            : "You're developing accountability",
+        ],
+        gentleGrowthNudges: [
+          emotionalPatterns.emotionalWithdrawal > 1 || gottmanFlags.stonewalling
+            ? "When you feel overwhelmed, you might shut down or pull away. This could be a protective response, not a character flaw. Can you name the overwhelm before withdrawing? 'I need a break' is different from silence."
+            : "Continue staying present during difficult moments",
+          emotionalPatterns.validationOffers < 2
+            ? "Practice reflecting back what you hear: 'It sounds like you're feeling...' This may help your partner feel seen."
+            : "Keep validating your partner's experience",
+          subjectBTiming.anxiousPursuit
+            ? "When you send rapid-fire messages, pause and ask: 'Am I seeking connection or seeking reassurance that I'm okay?' Both are valid, but awareness helps."
+            : "Your partner's emotions aren't something to fix or manage—they could be something to witness and honor.",
+          contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected || contemptMarkers.nameCallingDetected
+            ? "Contempt (sarcasm, mockery, name-calling) may be one of the most toxic conflict patterns. Practice expressing frustration with respect."
+            : "",
+        ].filter(Boolean),
+        connectionBoosters: [
+          "Initiate conversations about feelings, not just logistics",
+          "When your partner shares something vulnerable, move toward them (physically or emotionally)",
+          "Create a weekly ritual for checking in: 'How are you feeling about us?'",
+          repairDynamics.repairRejections > 0
+            ? "When your partner tries to repair, let them in even if you're still processing"
+            : "",
+        ].filter(Boolean),
+      },
+      forBoth: {
+        sharedStrengths: [
+          emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
+            ? "You both make efforts to repair after disconnection"
+            : "You're both learning that repair is possible",
+          !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
+            ? "You maintain respect for each other, even in conflict"
+            : "You're working to restore mutual respect",
+          "You're both here, seeking to understand. That matters.",
+          subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
+            ? "Both partners take responsibility for their actions"
+            : "",
+        ].filter(Boolean),
+        sharedGrowthNudges: [
+          "Practice the 5:1 ratio: five positive interactions for every negative one. Relationships may need more deposits than withdrawals.",
+          "Develop a shared vocabulary for emotions. 'I'm feeling flooded' or 'I need reassurance' could prevent misunderstanding.",
+          "Remember: you're on the same team. The problem might be the pattern, not your partner.",
+          contemptMarkers.contemptScore > 0
+            ? "Eliminate contempt from your relationship. It's the #1 predictor of divorce. Replace sarcasm with direct communication, mockery with curiosity, name-calling with 'I feel' statements."
+            : "",
+          emotionalLabor.laborImbalance !== "balanced"
+            ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work to maintain connection. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
+            : "",
+          profanityAnalysis.emotionalEscalation
+            ? "When emotions escalate to profanity or high intensity, take a 20-minute break to self-soothe before continuing the conversation."
+            : "",
+        ].filter(Boolean),
+        sharedConnectionBoosters: [
+          "Weekly relationship check-in: 'What's one thing I did that made you feel loved? What's one thing I could do differently?'",
+          "Daily appreciation ritual: share three specific things you're grateful for about each other",
+          "Monthly adventure: try something new together to build positive shared experiences",
+          repairDynamics.repairEffectiveness === "low"
+            ? "Learn and practice effective repair: acknowledge impact, take responsibility, express care, ask what they need"
+            : "",
+        ].filter(Boolean),
+      },
     },
 
     visualInsightsData: {
-      descriptionForChartsIntro: `Quantitative metrics translate evidence-based analysis into visual insights, revealing patterns in emotional communication, conflict expression, and validation behaviors.`,
-
+      descriptionForChartsIntro:
+        "Visual representation of communication patterns, conflict styles, and validation behaviors for both partners.",
       emotionalCommunicationCharacteristics: [
         {
-          category: "Expresses Vulnerability",
-          [subjectALabel]: Math.max(1, emotionalSafetyScore > 70 ? 8 : emotionalSafetyScore > 50 ? 6 : 4),
-          [subjectBLabel]: Math.max(1, emotionalSafetyScore > 70 ? 7 : emotionalSafetyScore > 50 ? 5 : 3),
+          category: "Warmth",
+          [subjectALabel]: Math.min(
+            10,
+            5 + Math.round(emotionalTone.warmth / 2) - (profanityAnalysis.profanityCount > 0 ? 1 : 0),
+          ),
+          [subjectBLabel]: Math.min(
+            10,
+            5 + Math.round(emotionalTone.warmth / 2) - (profanityAnalysis.profanityCount > 0 ? 1 : 0),
+          ),
         },
         {
-          category: "Shows Empathy",
-          [subjectALabel]: Math.max(1, repairEffortScore > 40 ? 7 : repairEffortScore > 20 ? 5 : 3),
-          [subjectBLabel]: Math.max(1, repairEffortScore > 40 ? 8 : repairEffortScore > 20 ? 6 : 4),
+          category: "Clarity",
+          [subjectALabel]: Math.min(10, 5 + Math.round(harmonyScore / 15)),
+          [subjectBLabel]: Math.min(10, 5 + Math.round(harmonyScore / 15)),
         },
         {
-          category: "Uses Humor",
-          [subjectALabel]: Math.max(1, harmonyScore > 70 ? 6 : harmonyScore > 50 ? 4 : 2),
-          [subjectBLabel]: Math.max(1, harmonyScore > 70 ? 7 : harmonyScore > 50 ? 5 : 3),
+          category: "Responsiveness",
+          [subjectALabel]: Math.min(10, 4 + Math.round(repairEffortScore / 15)),
+          [subjectBLabel]: Math.min(10, 4 + Math.round(repairEffortScore / 15)),
         },
         {
-          category: "Shares Feelings",
-          [subjectALabel]: Math.max(1, emotionalSafetyScore > 70 ? 9 : emotionalSafetyScore > 50 ? 6 : 4),
-          [subjectBLabel]: Math.max(1, emotionalSafetyScore > 70 ? 6 : emotionalSafetyScore > 50 ? 4 : 2),
+          category: "Assertiveness",
+          [subjectALabel]: subjectAIsMoreActive ? 8 : 6,
+          [subjectBLabel]: subjectBIsMoreActive ? 8 : 6,
         },
         {
-          category: "Asks Questions",
-          [subjectALabel]: Math.max(1, subjectAMessages > subjectBMessages ? 7 : 5),
-          [subjectBLabel]: Math.max(1, subjectBMessages > subjectAMessages ? 7 : 5),
+          category: "Empathy",
+          [subjectALabel]: Math.min(
+            10,
+            5 + Math.round(emotionalSafetyScore / 20) - (subjectAAccountability.blamesOther > 1 ? 1 : 0),
+          ),
+          [subjectBLabel]: Math.min(
+            10,
+            5 + Math.round(emotionalSafetyScore / 20) - (subjectBAccountability.blamesOther > 1 ? 1 : 0),
+          ),
         },
       ],
-
       conflictExpressionStyles: [
         {
-          category: "Defensive Responses",
-          [subjectALabel]: Math.max(1, gottmanFlags.defensiveness ? 8 : 4),
-          [subjectBLabel]: Math.max(1, gottmanFlags.defensiveness ? 7 : 3),
+          category: "Direct Address",
+          [subjectALabel]: gottmanFlags.criticism ? 8 : 6,
+          [subjectBLabel]: gottmanFlags.criticism ? 7 : 6,
         },
         {
-          category: "Blame Language",
-          [subjectALabel]: Math.max(1, gottmanFlags.criticism ? 7 : 3),
-          [subjectBLabel]: Math.max(1, gottmanFlags.criticism ? 6 : 2),
+          category: "Avoidance",
+          [subjectALabel]: gottmanFlags.stonewalling || subjectATiming.averageGapIndicator === "delayed" ? 7 : 3,
+          [subjectBLabel]: gottmanFlags.stonewalling || subjectBTiming.averageGapIndicator === "delayed" ? 8 : 3,
         },
         {
-          category: "Withdrawal",
-          [subjectALabel]: Math.max(1, gottmanFlags.stonewalling ? 8 : 3),
-          [subjectBLabel]: Math.max(1, gottmanFlags.stonewalling ? 9 : 4),
+          category: "Compromise",
+          [subjectALabel]: repairEffortScore > 60 && subjectAAccountability.takesResponsibility > 0 ? 8 : 5,
+          [subjectBLabel]: repairEffortScore > 60 && subjectBAccountability.takesResponsibility > 0 ? 7 : 5,
         },
         {
           category: "Escalation",
-          [subjectALabel]: Math.max(1, conflictPattern === "mutual_escalation" ? 8 : 4),
-          [subjectBLabel]: Math.max(1, conflictPattern === "mutual_escalation" ? 7 : 3),
+          [subjectALabel]: gottmanFlags.defensiveness || profanityAnalysis.emotionalEscalation ? 6 : 2,
+          [subjectBLabel]: gottmanFlags.defensiveness || profanityAnalysis.emotionalEscalation ? 7 : 2,
         },
         {
           category: "Repair Attempts",
-          [subjectALabel]: repairAttemptsScore,
-          [subjectBLabel]: repairAttemptsScore,
+          [subjectALabel]: Math.min(10, Math.round(repairEffortScore / 10)),
+          [subjectBLabel]: Math.min(10, Math.round(repairEffortScore / 10)),
         },
       ],
-
       validationAndReassurancePatterns: [
         {
           category: "Acknowledges Feelings",
           [subjectALabel]: subjectA_acknowledges,
           [subjectBLabel]: subjectB_acknowledges,
         },
-        {
-          category: "Offers Reassurance",
-          [subjectALabel]: subjectA_reassures,
-          [subjectBLabel]: subjectB_reassures,
-        },
-        {
-          category: "Validates Perspective",
-          [subjectALabel]: subjectA_validates,
-          [subjectBLabel]: subjectB_validates,
-        },
-        {
-          category: "Dismisses Concerns",
-          [subjectALabel]: subjectA_dismisses,
-          [subjectBLabel]: subjectB_dismisses,
-        },
-        {
-          category: "Neutral/Unclear",
-          [subjectALabel]: Math.max(0, subjectA_neutral),
-          [subjectBLabel]: Math.max(0, subjectB_neutral),
-        },
+        { category: "Offers Reassurance", [subjectALabel]: subjectA_reassures, [subjectBLabel]: subjectB_reassures },
+        { category: "Validates Perspective", [subjectALabel]: subjectA_validates, [subjectBLabel]: subjectB_validates },
+        { category: "Dismisses Concerns", [subjectALabel]: subjectA_dismisses, [subjectBLabel]: subjectB_dismisses },
+        { category: "Neutral/Unclear", [subjectALabel]: subjectA_neutral, [subjectBLabel]: subjectB_neutral },
       ],
+      communicationMetrics: {
+        responseTimeBalance: Math.round(50 + (harmonyScore - 70) / 2),
+        messageLengthBalance: Math.round(50 + (harmonyScore - 70) / 2),
+        emotionalDepth: Math.round(emotionalSafetyScore * 0.7),
+        conflictResolution: Math.round(repairEffortScore * 0.8),
+        affectionLevel: Math.round(emotionalTone.warmth * 7.5 - profanityAnalysis.profanityCount * 5),
+      },
     },
 
     professionalInsights: {
       attachmentTheoryAnalysis: {
         subjectA: {
           primaryAttachmentStyle:
-            conflictPattern === "pursue_withdraw" && subjectAMessages > subjectBMessages
-              ? "Anxious-Preoccupied"
-              : conflictPattern === "pursue_withdraw" && subjectAMessages < subjectBMessages
-                ? "Dismissive-Avoidant"
-                : emotionalSafetyScore > 70
-                  ? "Secure"
-                  : "Mixed/Disorganized",
+            emotionalSafetyScore > 75
+              ? "Secure"
+              : subjectATiming.anxiousPursuit
+                ? "Anxious-Preoccupied"
+                : emotionalSafetyScore > 60
+                  ? "Anxious-Secure"
+                  : "Anxious-Preoccupied",
           attachmentBehaviors: [
-            subjectAMessages > subjectBMessages * 1.5
+            subjectAIsMoreActive || subjectATiming.anxiousPursuit
               ? "Seeks connection through frequent communication"
-              : subjectAMessages < subjectBMessages * 0.5
-                ? "Prefers space and processes independently"
-                : "Shows balanced engagement",
-            emotionalSafetyScore < 50
-              ? "May be sensitive to rejection or distance"
-              : "Comfortable with emotional expression",
-            repairEffortScore > 40
-              ? "Demonstrates ability to reconnect after conflict"
-              : "May need support developing repair skills",
-          ],
-          triggersAndDefenses: `${conflictPattern === "pursue_withdraw" && subjectAMessages > subjectBMessages ? "Seeks reassurance when feeling disconnected" : conflictPattern === "pursue_withdraw" && subjectAMessages < subjectBMessages ? "Creates distance when feeling overwhelmed" : "Uses varied coping strategies"}`,
+              : "Maintains steady engagement",
+            subjectA_acknowledges > 30 ? "Responsive to partner's emotional needs" : "Developing responsiveness",
+            subjectATiming.anxiousPursuit ? "Shows anxious pursuit when feeling disconnected" : "",
+          ].filter(Boolean),
+          triggersAndDefenses:
+            subjectA_dismisses > 8 || contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected
+              ? "May become dismissive, sarcastic, or contemptuous when feeling overwhelmed or criticized"
+              : "Generally maintains emotional availability during stress",
         },
         subjectB: {
           primaryAttachmentStyle:
-            conflictPattern === "pursue_withdraw" && subjectBMessages < subjectAMessages
-              ? "Dismissive-Avoidant"
-              : conflictPattern === "pursue_withdraw" && subjectBMessages > subjectAMessages
-                ? "Anxious-Preoccupied"
-                : emotionalSafetyScore > 70
-                  ? "Secure"
-                  : "Mixed/Disorganized",
+            emotionalSafetyScore > 75
+              ? "Secure"
+              : gottmanFlags.stonewalling || subjectBTiming.averageGapIndicator === "delayed"
+                ? "Avoidant-Secure"
+                : "Anxious-Secure",
           attachmentBehaviors: [
-            subjectBMessages < subjectAMessages * 0.5
-              ? "Values independence and processing time"
-              : subjectBMessages > subjectAMessages * 1.5
-                ? "Actively seeks connection and engagement"
-                : "Shows balanced participation",
-            gottmanFlags.stonewalling
-              ? "May withdraw when emotions feel intense"
-              : "Stays engaged during difficult moments",
-            repairEffortScore < 20 ? "Could benefit from developing reconnection skills" : "Shows capacity for repair",
-          ],
-          triggersAndDefenses: `${gottmanFlags.stonewalling ? "Needs breaks during intense conversations" : "Maintains engagement with balanced approach"}`,
+            subjectBIsMoreActive || subjectBTiming.anxiousPursuit
+              ? "Actively engages in relationship dialogue"
+              : "Provides consistent presence",
+            subjectB_validates > 25 ? "Validates partner's experiences effectively" : "Learning validation skills",
+            gottmanFlags.stonewalling ? "Withdraws when emotionally flooded" : "",
+          ].filter(Boolean),
+          triggersAndDefenses:
+            gottmanFlags.stonewalling || subjectBTiming.averageGapIndicator === "delayed"
+              ? "May withdraw or shut down during intense emotional moments"
+              : "Generally stays engaged during difficult conversations",
         },
-        dyad: `${conflictPattern === "pursue_withdraw" ? "One partner seeks closeness while the other needs space, creating a cycle that can be addressed with awareness and practice" : "Both partners show capacity for secure connection"} ${gottmanFlags.contempt ? "**Important:** Contempt requires immediate attention as it erodes respect" : "Mutual respect provides a strong foundation"}`,
+        dyad: `The relationship shows ${emotionalSafetyScore > 70 ? "secure" : "insecure"} attachment patterns with ${repairEffortScore > 60 ? "healthy" : "emerging"} repair capacity. ${subjectATiming.anxiousPursuit && (gottmanFlags.stonewalling || subjectBTiming.averageGapIndicator === "delayed") ? "Classic anxious-avoidant dynamic: one pursues, the other withdraws. Both may need to move toward secure attachment." : ""} ${emotionalSafetyScore < 60 || contemptMarkers.contemptScore > 3 ? "Individual or couples therapy could be strongly recommended." : "Continue building on secure foundation."}`,
       },
-
+      traumaInformedObservations: {
+        identifiedPatterns: [
+          gottmanFlags.defensiveness || subjectAAccountability.blamesOther > 1 || subjectBAccountability.blamesOther > 1
+            ? "Defensive responses and blame may indicate past relational wounds or shame"
+            : "No significant trauma responses detected",
+          gottmanFlags.stonewalling || profanityAnalysis.emotionalEscalation
+            ? "Withdrawal or escalation patterns might suggest possible emotional overwhelm or flooding"
+            : "Emotional engagement appears healthy",
+          contemptMarkers.contemptScore > 0
+            ? "Contempt patterns may reflect unhealed wounds or learned family-of-origin dynamics"
+            : "",
+        ].filter(Boolean),
+        copingMechanisms:
+          repairEffortScore > 60 && repairDynamics.repairEffectiveness !== "low"
+            ? "Both partners demonstrate adaptive coping through repair and communication"
+            : profanityAnalysis.emotionalEscalation || contemptMarkers.contemptScore > 3
+              ? "Maladaptive coping (escalation, contempt, withdrawal) may indicate need for new emotional regulation skills"
+              : "Developing healthier coping strategies could benefit the relationship",
+        safetyAndTrust:
+          emotionalSafetyScore > 70 && contemptMarkers.contemptScore === 0
+            ? "Strong foundation of safety and trust supports vulnerability"
+            : contemptMarkers.contemptScore > 3
+              ? "Contempt may have severely damaged safety and trust—immediate intervention could be needed"
+              : "Building safety and trust remains an important focus area",
+      },
       therapeuticRecommendations: {
-        immediateInterventions:
-          [
-            gottmanFlags.contempt
-              ? "**Priority:** Address contempt patterns - consider individual therapy to rebuild respect"
-              : null,
-            gottmanFlags.harsh_startup
-              ? "Practice starting difficult conversations with appreciation and specific requests"
-              : null,
-            conflictPattern === "pursue_withdraw"
-              ? "Work together to break the pursue-withdraw cycle through self-awareness and communication"
-              : null,
-            emotionalSafetyScore < 50 ? "Focus on building emotional safety through validation and respect" : null,
-            repairEffortScore < 20 ? "Develop skills for reconnecting after disagreements" : null,
-            riskFlags.includes("possible_safety_concern")
-              ? "**Safety first:** Consult with a professional about safety concerns"
-              : null,
-            "Schedule weekly check-ins to discuss what's working and what needs attention",
-            "Practice daily appreciation - share one thing you value about each other",
-          ].filter(Boolean).length >= 3
-            ? [
-                gottmanFlags.contempt
-                  ? "**Priority:** Address contempt patterns - consider individual therapy to rebuild respect"
-                  : null,
-                gottmanFlags.harsh_startup
-                  ? "Practice starting difficult conversations with appreciation and specific requests"
-                  : null,
-                conflictPattern === "pursue_withdraw"
-                  ? "Work together to break the pursue-withdraw cycle through self-awareness and communication"
-                  : null,
-                emotionalSafetyScore < 50 ? "Focus on building emotional safety through validation and respect" : null,
-                repairEffortScore < 20 ? "Develop skills for reconnecting after disagreements" : null,
-                riskFlags.includes("possible_safety_concern")
-                  ? "**Safety first:** Consult with a professional about safety concerns"
-                  : null,
-                "Schedule weekly check-ins to discuss what's working and what needs attention",
-                "Practice daily appreciation - share one thing you value about each other",
-              ].filter(Boolean)
-            : [
-                "Schedule weekly check-ins to discuss what's working and what needs attention",
-                "Practice daily appreciation - share one thing you value about each other",
-                "Develop active listening skills",
-                "Create shared goals for your relationship",
-              ],
+        immediateInterventions: [
+          contemptMarkers.contemptScore > 0
+            ? "Eliminate contempt immediately—it's the #1 predictor of relationship failure"
+            : "Practice daily appreciation rituals (3 things each)",
+          repairEffortScore < 60 || repairDynamics.repairEffectiveness === "low"
+            ? "Learn and practice effective repair attempts after conflicts"
+            : "Continue strong repair practices",
+          profanityAnalysis.emotionalEscalation || emotionalPatterns.emotionalFlooding > 1
+            ? "Establish 'pause button' protocol: take 20-minute breaks when flooded"
+            : "Establish 'pause button' protocol for emotional regulation",
+          emotionalLabor.laborImbalance === "significant"
+            ? `${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel} may need to increase emotional labor and initiation`
+            : "",
+        ].filter(Boolean),
         longTermGoals: [
-          "Build secure connection through consistent emotional availability",
-          gottmanFlags.contempt
-            ? "Rebuild respect and admiration"
-            : "Maintain respect and appreciation as your foundation",
-          conflictPattern === "pursue_withdraw"
-            ? "Balance needs for closeness and independence"
-            : "Strengthen communication skills",
-          "Increase emotional awareness and empathy",
-          "Develop sustainable ways to resolve conflicts",
-          "Create shared meaning and purpose together",
-          "Nurture friendship and positive connection",
+          "Develop secure attachment patterns through consistent responsiveness",
+          "Build emotional intelligence and regulation skills",
+          "Create shared meaning and rituals in the relationship",
+          contemptMarkers.contemptScore > 0 ? "Eliminate all forms of contempt from communication" : "",
+          emotionalLabor.laborImbalance !== "balanced" ? "Balance emotional labor between partners" : "",
+        ].filter(Boolean),
+        suggestedModalities: [
+          contemptMarkers.contemptScore > 3 || emotionalSafetyScore < 50
+            ? "Emotionally Focused Therapy (EFT) - urgent"
+            : emotionalSafetyScore < 60
+              ? "Emotionally Focused Therapy (EFT)"
+              : "Gottman Method Couples Therapy",
+          gottmanFlags.defensiveness ||
+          gottmanFlags.stonewalling ||
+          subjectAAccountability.blamesOther > 1 ||
+          subjectBAccountability.blamesOther > 1
+            ? "Individual therapy to address personal patterns"
+            : "Individual therapy for personal growth",
+          profanityAnalysis.emotionalEscalation || emotionalPatterns.emotionalFlooding > 1
+            ? "Mindfulness-based stress reduction (MBSR) for emotional regulation"
+            : "Mindfulness practices for emotional regulation",
         ],
-        suggestedModalities:
-          [
-            gottmanFlags.contempt || gottmanFlags.criticism ? "Gottman Method Couples Therapy (recommended)" : null,
-            conflictPattern === "pursue_withdraw" ? "Emotionally Focused Therapy (EFT)" : null,
-            emotionalSafetyScore < 50 ? "Trauma-informed couples therapy" : null,
-            riskFlags.includes("possible_safety_concern") ? "Individual safety assessment" : null,
-            "Couples therapy focused on communication",
-            "Relationship skills workshops",
-          ].filter(Boolean).length >= 3
-            ? [
-                gottmanFlags.contempt || gottmanFlags.criticism ? "Gottman Method Couples Therapy (recommended)" : null,
-                conflictPattern === "pursue_withdraw" ? "Emotionally Focused Therapy (EFT)" : null,
-                emotionalSafetyScore < 50 ? "Trauma-informed couples therapy" : null,
-                riskFlags.includes("possible_safety_concern") ? "Individual safety assessment" : null,
-                "Couples therapy focused on communication",
-                "Relationship skills workshops",
-              ].filter(Boolean)
-            : ["Couples therapy focused on communication", "Relationship skills workshops"],
+        contraindications: [
+          contemptMarkers.contemptScore > 5
+            ? "Severe contempt may require individual therapy before couples work"
+            : gottmanFlags.contempt
+              ? "Address contempt patterns before other interventions"
+              : "No major contraindications",
+        ],
       },
-
       clinicalExercises: {
         communicationExercises: [
           {
-            title: gottmanFlags.harsh_startup ? "Gentle Start Practice" : "Daily Connection",
-            description: gottmanFlags.harsh_startup
-              ? "Begin conversations with appreciation and specific requests: 'I appreciate when you... I feel... I need... Would you be willing to...?'"
-              : "Share five things daily: appreciation, something new, a concern, a hope, and a request",
-            frequency: "Daily, 15-20 minutes",
+            title: "Daily Check-Ins",
+            description: "Share one feeling and one need each day (10 minutes)",
+            frequency: "Daily",
           },
           {
-            title: conflictPattern === "pursue_withdraw" ? "Breaking the Cycle" : "Expressing Needs",
-            description:
-              conflictPattern === "pursue_withdraw"
-                ? "When you feel the urge to pursue or withdraw, pause and self-soothe for 5 minutes before reconnecting"
-                : "Practice stating needs directly: 'I need... because... Would you be willing to...?'",
-            frequency: "As needed during conflicts",
+            title: "State of Union",
+            description: "Weekly relationship conversation using structured format",
+            frequency: "Weekly",
           },
-        ],
+          {
+            title: "Active Listening",
+            description: "Practice reflecting back partner's words before responding",
+            frequency: "During conflicts",
+          },
+          contemptMarkers.contemptScore > 0
+            ? {
+                title: "Contempt Antidote",
+                description: "Replace sarcasm/mockery with 'I feel...' statements; build culture of appreciation",
+                frequency: "Ongoing",
+              }
+            : null,
+        ].filter(Boolean),
         emotionalRegulationPractices: [
           {
-            title: emotionalSafetyScore < 50 ? "Building Safety" : "Emotional Awareness",
-            description:
-              emotionalSafetyScore < 50
-                ? "Create agreements about respectful communication and practice de-escalation techniques"
-                : "Practice recognizing and naming emotions as they arise",
-            frequency: "Daily, 10-15 minutes",
+            title: "Pause Button",
+            description: "Take 20-minute breaks during heated moments to self-soothe",
+            frequency: "As needed",
           },
-        ],
+          {
+            title: "Mindful Breathing",
+            description: "3-minute breathing exercise before difficult conversations",
+            frequency: "Before conflicts",
+          },
+          {
+            title: "Emotion Naming",
+            description: "Practice identifying and naming emotions throughout the day",
+            frequency: "Daily",
+          },
+          profanityAnalysis.emotionalEscalation
+            ? {
+                title: "Flooding Recognition",
+                description: "Notice signs of emotional flooding (heart rate, profanity, intensity) and take breaks",
+                frequency: "During conflicts",
+              }
+            : null,
+        ].filter(Boolean),
         relationshipRituals: [
           {
-            title: "Weekly Check-In",
-            description:
-              "Discuss: what's working well, what needs attention, what you each need more/less of, and appreciation",
-            frequency: "Weekly, 30-45 minutes",
+            title: "Appreciation Ritual",
+            description: "Share three specific appreciations before bed",
+            frequency: "Daily",
           },
-        ],
+          { title: "Date Night", description: "Dedicated couple time without distractions", frequency: "Weekly" },
+          {
+            title: "Adventure Day",
+            description: "Try something new together to build positive memories",
+            frequency: "Monthly",
+          },
+          emotionalLabor.laborImbalance !== "balanced"
+            ? {
+                title: "Emotional Labor Check-In",
+                description: `${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel} initiates emotional conversations and processing`,
+                frequency: "Weekly",
+              }
+            : null,
+        ].filter(Boolean),
       },
-
       prognosis: {
-        shortTerm: `Next 1-3 months: ${gottmanFlags.contempt ? "**Important:** Contempt requires immediate attention" : harmonyScore > 70 ? "Positive direction with continued effort" : emotionalSafetyScore < 50 ? "Focus needed on emotional safety" : "Gradual improvement possible with practice"}`,
-        mediumTerm: `Within 6-12 months: ${riskFlags.includes("possible_safety_concern") ? "Safety must be established first" : emotionalSafetyScore > 70 && repairEffortScore > 40 ? "Strong potential for deeper connection" : conflictPattern === "pursue_withdraw" ? "Cycle can be interrupted with consistent practice" : "Moderate improvement expected with therapeutic support"}`,
-        longTerm: `With sustained effort: ${gottmanFlags.contempt ? "Addressing contempt is essential for long-term success" : harmonyScore > 70 && repairEffortScore > 40 ? "Excellent potential for fulfilling relationship" : emotionalSafetyScore < 50 ? "Success depends on commitment to building safety" : "Fair to good outlook with sustained commitment"}`,
-        riskFactors:
-          [
-            gottmanFlags.contempt ? "**Contempt present** - requires immediate attention" : null,
-            riskFlags.includes("possible_safety_concern") ? "**Safety concerns** - seek professional support" : null,
-            emotionalSafetyScore < 40 ? "Low emotional safety limits vulnerability" : null,
-            repairEffortScore < 20 ? "Limited repair skills affect conflict resolution" : null,
-            conflictPattern === "mutual_escalation" ? "Escalating conflicts without de-escalation" : null,
-            gottmanFlags.stonewalling ? "Withdrawal prevents resolution" : null,
-          ].filter(Boolean).length > 0
-            ? [
-                gottmanFlags.contempt ? "**Contempt present** - requires immediate attention" : null,
-                riskFlags.includes("possible_safety_concern")
-                  ? "**Safety concerns** - seek professional support"
-                  : null,
-                emotionalSafetyScore < 40 ? "Low emotional safety limits vulnerability" : null,
-                repairEffortScore < 20 ? "Limited repair skills affect conflict resolution" : null,
-                conflictPattern === "mutual_escalation" ? "Escalating conflicts without de-escalation" : null,
-                gottmanFlags.stonewalling ? "Withdrawal prevents resolution" : null,
-              ].filter(Boolean)
-            : ["Communication could be more effective", "Conflict skills need development"],
-        protectiveFactors:
-          [
-            !gottmanFlags.contempt ? "Mutual respect maintained" : null,
-            repairEffortScore > 40 ? "Active repair attempts show emotional intelligence" : null,
-            harmonyScore > 70 ? "Positive baseline provides good foundation" : null,
-            emotionalSafetyScore > 70 ? "Strong emotional safety supports growth" : null,
-            sentimentTrend === "improving" ? "Positive trend indicates healthy direction" : null,
-            conflictPattern === "problem_solving" ? "Solution-focused approach" : null,
-          ].filter(Boolean).length > 0
-            ? [
-                !gottmanFlags.contempt ? "Mutual respect maintained" : null,
-                repairEffortScore > 40 ? "Active repair attempts show emotional intelligence" : null,
-                harmonyScore > 70 ? "Positive baseline provides good foundation" : null,
-                emotionalSafetyScore > 70 ? "Strong emotional safety supports growth" : null,
-                sentimentTrend === "improving" ? "Positive trend indicates healthy direction" : null,
-                conflictPattern === "problem_solving" ? "Solution-focused approach" : null,
-              ].filter(Boolean)
-            : ["Both partners are engaged", "Willingness to grow together"],
+        shortTerm: `Over the next 1-3 months, expect ${repairEffortScore > 60 && contemptMarkers.contemptScore === 0 ? "continued growth" : contemptMarkers.contemptScore > 3 ? "continued decline without intervention" : "gradual improvement"} with ${contemptMarkers.contemptScore > 0 || emotionalSafetyScore < 50 ? "professional support and" : ""} consistent practice of communication skills.`,
+        mediumTerm: `With sustained effort over 3-6 months, ${emotionalSafetyScore > 70 && contemptMarkers.contemptScore === 0 ? "the strong foundation may deepen" : contemptMarkers.contemptScore > 3 ? "the relationship may not survive without significant change" : "emotional safety and trust could strengthen"}.`,
+        longTerm: `Long-term outlook is ${overallHealthScore >= 7 && contemptMarkers.contemptScore === 0 ? "positive" : overallHealthScore >= 5 && contemptMarkers.contemptScore < 3 ? "cautiously optimistic" : contemptMarkers.contemptScore > 5 ? "poor without immediate intervention" : "challenging but workable"} with commitment to growth and ${emotionalSafetyScore < 60 || repairEffortScore < 60 || contemptMarkers.contemptScore > 0 ? "professional support" : "continued practice"}.`,
+        riskFactors: [
+          contemptMarkers.contemptScore > 0
+            ? `Contempt present (score: ${contemptMarkers.contemptScore}) - #1 predictor of relationship failure`
+            : "No contempt detected - major protective factor",
+          gottmanFlags.stonewalling ||
+          subjectATiming.averageGapIndicator === "delayed" ||
+          subjectBTiming.averageGapIndicator === "delayed"
+            ? "Withdrawal/stonewalling patterns may escalate without intervention"
+            : "Engagement levels are healthy",
+          repairEffortScore < 40 || repairDynamics.repairEffectiveness === "low"
+            ? "Low or ineffective repair capacity may increase conflict escalation risk"
+            : "Repair skills are adequate",
+          profanityAnalysis.emotionalEscalation ? "Emotional escalation and flooding may indicate poor regulation" : "",
+          emotionalLabor.laborImbalance === "significant"
+            ? `Significant emotional labor imbalance could create resentment in ${emotionalLabor.whoDoesMore}`
+            : "",
+        ].filter(Boolean),
+        protectiveFactors: [
+          !gottmanFlags.contempt || contemptMarkers.contemptScore < 2
+            ? "Absence or low contempt protects relationship respect"
+            : "Working on respectful communication",
+          repairEffortScore > 60 && repairDynamics.repairEffectiveness !== "low"
+            ? "Strong and effective repair capacity supports conflict resolution"
+            : "Developing repair skills",
+          harmonyScore > 60 ? "Balanced communication supports mutual understanding" : "Building communication balance",
+          subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
+            ? "Both partners take accountability"
+            : "",
+        ].filter(Boolean),
       },
-
       differentialConsiderations: {
-        individualTherapyConsiderations: `${riskFlags.includes("possible_safety_concern") ? "**Priority:** Individual safety assessment before couples work" : ""} ${gottmanFlags.contempt ? "Individual therapy recommended to address contempt before couples therapy" : ""} ${conflictPattern === "pursue_withdraw" ? "Individual therapy can help understand attachment patterns" : "Individual therapy may support personal growth"}`,
-        couplesTherapyReadiness: `${riskFlags.includes("possible_safety_concern") ? "**Not recommended** until safety is established" : gottmanFlags.contempt ? "Appropriate after individual work on respect" : emotionalSafetyScore > 50 ? "Good candidates for couples therapy" : "Recommended with trauma-informed approach"}`,
-        externalResourcesNeeded:
-          [
-            riskFlags.includes("possible_safety_concern")
-              ? "**National Domestic Violence Hotline: 1-800-799-7233** (24/7 support)"
-              : null,
-            "Book: 'The Seven Principles for Making Marriage Work' by John Gottman",
-            "Book: 'Hold Me Tight' by Sue Johnson",
-            "Gottman Card Decks app for connection exercises",
-            "Find a therapist: Psychology Today or AAMFT",
-          ].filter(Boolean).length >= 3
-            ? [
-                riskFlags.includes("possible_safety_concern")
-                  ? "**National Domestic Violence Hotline: 1-800-799-7233** (24/7 support)"
-                  : null,
-                "Book: 'The Seven Principles for Making Marriage Work' by John Gottman",
-                "Book: 'Hold Me Tight' by Sue Johnson",
-                "Gottman Card Decks app for connection exercises",
-                "Find a therapist: Psychology Today or AAMFT",
-              ].filter(Boolean)
-            : [
-                "Book: 'The Seven Principles for Making Marriage Work' by John Gottman",
-                "Book: 'Hold Me Tight' by Sue Johnson",
-                "Gottman Card Decks app for connection exercises",
-              ],
-      },
-
-      traumaInformedObservations: {
-        identifiedPatterns:
-          [
-            emotionalSafetyScore < 50 ? "Low emotional safety may reflect past experiences affecting trust" : null,
-            gottmanFlags.harsh_startup ? "Communication patterns may reflect learned behaviors" : null,
-            conflictPattern === "pursue_withdraw"
-              ? "Pursue-withdraw cycle often rooted in early attachment experiences"
-              : null,
-            riskFlags.includes("possible_safety_concern")
-              ? "**Safety concerns require professional assessment**"
-              : null,
-            gottmanFlags.stonewalling ? "Withdrawal may be a response to feeling overwhelmed" : null,
-          ].filter(Boolean).length > 0
-            ? [
-                emotionalSafetyScore < 50 ? "Low emotional safety may reflect past experiences affecting trust" : null,
-                gottmanFlags.harsh_startup ? "Communication patterns may reflect learned behaviors" : null,
-                conflictPattern === "pursue_withdraw"
-                  ? "Pursue-withdraw cycle often rooted in early attachment experiences"
-                  : null,
-                riskFlags.includes("possible_safety_concern")
-                  ? "**Safety concerns require professional assessment**"
-                  : null,
-                gottmanFlags.stonewalling ? "Withdrawal may be a response to feeling overwhelmed" : null,
-              ].filter(Boolean)
-            : ["Communication patterns influenced by past experiences", "Relationship dynamics shaped by history"],
-        copingMechanisms: `${gottmanFlags.stonewalling ? "Withdrawal serves as protection from overwhelm" : ""} ${conflictPattern === "pursue_withdraw" ? "Both pursuit and withdrawal are attempts to feel safe" : ""} ${gottmanFlags.defensiveness ? "Defensiveness protects against perceived threats" : "Coping strategies appear relatively flexible"}`,
-        safetyAndTrust: `${riskFlags.includes("possible_safety_concern") ? "**Safety is the primary concern**. Professional assessment required" : emotionalSafetyScore > 70 ? "Safety foundation supports trust and vulnerability" : emotionalSafetyScore > 50 ? "Moderate safety allows for some vulnerability" : "Safety must be established before trust can develop"}`,
+        individualTherapyConsiderations:
+          gottmanFlags.defensiveness ||
+          gottmanFlags.stonewalling ||
+          subjectAAccountability.blamesOther > 1 ||
+          subjectBAccountability.blamesOther > 1 ||
+          contemptMarkers.contemptScore > 3
+            ? "Individual therapy could be strongly recommended to address personal patterns before couples work"
+            : "Individual therapy optional for personal growth",
+        couplesTherapyReadiness:
+          emotionalSafetyScore > 60 && contemptMarkers.contemptScore < 3
+            ? "Ready for couples therapy to enhance strengths"
+            : contemptMarkers.contemptScore > 5
+              ? "May not be ready for couples therapy until contempt is addressed individually"
+              : "Could benefit from individual work before or alongside couples therapy",
+        externalResourcesNeeded: [
+          "Relationship education books (Gottman's 'Seven Principles', Sue Johnson's 'Hold Me Tight')",
+          "Communication skills workshops",
+          contemptMarkers.contemptScore > 0 ? "Gottman's 'What Makes Love Last?' (contempt antidotes)" : "",
+          hasMinimalData ? "More conversation data for deeper analysis" : "Ongoing relationship assessment",
+        ].filter(Boolean),
       },
     },
-    optionalAppendix: `This analysis uses evidence-based frameworks including the Gottman Method, attachment theory, and relational psychology. ${riskFlags.includes("possible_safety_concern") ? "**SAFETY CONCERNS IDENTIFIED**: This analysis is not a substitute for professional safety assessment. If you are experiencing abuse, contact National Domestic Violence Hotline: 1-800-799-7233 (24/7 confidential support)." : "**Important:** This analysis is for informational purposes only and is not a substitute for professional therapy or counseling. Consider consulting with a licensed therapist for personalized guidance."}`,
 
-    attributionMetadata: {
-      subjectAMessageCount: subjectAMessages,
-      subjectBMessageCount: subjectBMessages,
-      attributionConfidence, // Dynamic confidence
-    },
+    outlook:
+      overallHealthScore >= 7 && contemptMarkers.contemptScore === 0
+        ? `This relationship demonstrates strong fundamentals with healthy communication patterns and emotional connection. Continue building on these strengths through consistent practice of appreciation, active listening, and repair. The foundation appears solid for long-term growth and deepening intimacy.`
+        : overallHealthScore >= 5 && contemptMarkers.contemptScore < 3
+          ? `This relationship shows promise with room for growth in communication and emotional attunement. Focus on developing repair skills, balancing participation${emotionalLabor.laborImbalance !== "balanced" ? " and emotional labor" : ""}, and building emotional safety. ${contemptMarkers.contemptScore > 0 ? "Address contempt patterns immediately." : ""} With conscious effort and possibly professional support, the relationship could strengthen significantly.`
+          : contemptMarkers.contemptScore > 5
+            ? `This relationship may be in crisis due to high levels of contempt—one of the most toxic and destructive conflict patterns. Immediate professional intervention could be essential. Individual therapy might be recommended before couples work to address the contempt patterns. Without significant change, the relationship may be at high risk of failure.`
+            : `This relationship faces challenges that may require focused attention and professional support. Key areas needing work include ${repairEffortScore < 60 ? "repair skills" : "communication balance"}, ${emotionalSafetyScore < 60 ? "emotional safety" : "conflict patterns"}, ${gottmanFlags.criticism || gottmanFlags.contempt ? "respectful communication" : "engagement levels"}${emotionalLabor.laborImbalance === "significant" ? ", and emotional labor balance" : ""}. Individual and couples therapy could be strongly recommended.`,
 
-    subjectALabel,
-    subjectBLabel,
-    messageCount: totalMessages,
-    extractionConfidence, // Dynamic confidence
-    processingTimeMs: Date.now() - analysisStartTime, // Actual processing time
-  }
+    optionalAppendix: hasMinimalData
+      ? "Note: This analysis is based on limited conversation data. For more comprehensive insights, please upload additional screenshots with more messages. The patterns identified are preliminary and should be considered alongside your personal knowledge of the relationship dynamics."
+      : "",
 
-  console.log("[v0] Validating chart data...")
-  const validation = validateChartData(analysisData)
-
-  if (!validation.isValid) {
-    console.error("[v0] Chart validation errors:", validation.errors)
-    validation.errors.forEach((error) => console.error(`  - ${error}`))
-  }
-
-  if (validation.warnings.length > 0) {
-    console.warn("[v0] Chart validation warnings:", validation.warnings)
-    validation.warnings.forEach((warning) => console.warn(`  - ${warning}`))
-  }
-
-  console.log(
-    `[v0] Chart validation: ${validation.isValid ? "PASSED" : "FAILED"} (consistency: ${(validation.metadata.dataConsistency * 100).toFixed(0)}%)`,
-  )
-
-  const crossValidation = crossValidateAnalysisData(analysisData)
-  if (!crossValidation.consistent) {
-    console.warn("[v0] Cross-validation issues:", crossValidation.issues)
-    crossValidation.issues.forEach((issue) => console.warn(`  - ${issue}`))
-  }
-
-  return {
-    ...analysisData,
-    validationMetadata: {
-      chartDataValid: validation.isValid,
-      chartDataConsistency: validation.metadata.dataConsistency,
-      crossValidationPassed: crossValidation.consistent,
-      validationErrors: validation.errors,
-      validationWarnings: validation.warnings,
-      crossValidationIssues: crossValidation.issues,
-    },
+    keyTakeaways: [
+      `Overall relationship health: ${overallHealthScore}/10 - ${overallHealthScore >= 8 ? "Strong" : overallHealthScore >= 6 ? "Solid" : overallHealthScore >= 4 ? "Struggling" : "Crisis"}`,
+      `Communication balance: ${Math.abs(subjectAMessages - subjectBMessages) < 2 ? "Balanced" : `Imbalanced (${subjectALabel}: ${subjectAMessages}, ${subjectBLabel}: ${subjectBMessages})`}`,
+      `Emotional safety: ${emotionalSafetyScore}/100 - ${emotionalSafetyScore > 70 ? "Strong" : emotionalSafetyScore > 50 ? "Moderate" : "Low"}`,
+      `Repair capacity: ${repairEffortScore}/100 - ${repairDynamics.repairEffectiveness} effectiveness`,
+      gottmanFlags.criticism || gottmanFlags.contempt || gottmanFlags.defensiveness || gottmanFlags.stonewalling
+        ? `Gottman concerns: ${[
+            gottmanFlags.criticism && "Criticism (expressing complaints as character flaws or blame)",
+            gottmanFlags.contempt &&
+              `Contempt (${[contemptMarkers.sarcasmDetected && "sarcasm", contemptMarkers.mockeryDetected && "mockery", contemptMarkers.nameCallingDetected && "name-calling", contemptMarkers.eyeRollLanguage && "eye-roll language"].filter(Boolean).join(", ")})`,
+            gottmanFlags.defensiveness && "Defensiveness (protecting self rather than hearing partner)",
+            gottmanFlags.stonewalling && "Stonewalling (withdrawing to avoid overwhelm)",
+          ]
+            .filter(Boolean)
+            .join("; ")}`
+        : "No major Gottman concerns",
+      profanityAnalysis.profanityCount > 0 || profanityAnalysis.intensityLevel !== "low"
+        ? `Emotional intensity: ${profanityAnalysis.intensityLevel} (${profanityAnalysis.profanityCount} profanity instances)`
+        : "",
+      emotionalLabor.laborImbalance !== "balanced"
+        ? `Emotional labor: ${emotionalLabor.laborImbalance} imbalance (${emotionalLabor.whoDoesMore} does more)`
+        : "",
+      subjectATiming.anxiousPursuit || subjectBTiming.anxiousPursuit
+        ? `Anxious pursuit detected in ${subjectATiming.anxiousPursuit ? subjectALabel : subjectBLabel}`
+        : "",
+      `Emotional flow: ${emotionalFlow.dominantPhase} phase with ${emotionalFlow.transitionCount} transitions`,
+      `Primary motivations: ${subjectALabel} (${subjectAMotivation.primaryMotive}), ${subjectBLabel} (${subjectBMotivation.primaryMotive})`,
+    ].filter(Boolean),
   }
 }
 
@@ -1506,22 +2407,12 @@ export async function analyzeConversation(formData: FormData) {
     }
 
     const analysisPromise = (async () => {
-      console.log(`[v0] Validating ${files.length} files...`)
-      const extractedTexts = await Promise.all(
-        files.map(async (file, index) => {
-          console.log(`[v0] Processing file ${index + 1}/${files.length}: ${file.name}`)
-          try {
-            const result = await extractTextFromImage(file, index)
-            console.log(`[v0] ✓ File ${index + 1} validated successfully`)
-            return result
-          } catch (error) {
-            console.error(`[v0] ✗ File ${index + 1} failed:`, error)
-            throw error
-          }
-        }),
-      )
+      console.log(`[v0] Starting batch OCR extraction for ${files.length} files...`)
 
-      console.log(`[v0] All files validated successfully`)
+      const { extractedTexts, totalProcessingTime } = await extractTextFromMultipleImages(files)
+
+      console.log(`[v0] Batch extraction completed in ${totalProcessingTime}ms`)
+      console.log(`[v0] Extracted ${extractedTexts.reduce((sum, e) => sum + e.text.length, 0)} total characters`)
 
       // Normalize speaker labels
       const { normalizedText, subjectALabel, subjectBLabel } = normalizeSpeakers(
@@ -1533,11 +2424,19 @@ export async function analyzeConversation(formData: FormData) {
       console.log(`[v0] Normalized conversation text (${normalizedText.length} characters)`)
       console.log(`[v0] Generating evidence-based analysis...`)
 
-      const analysis = createEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, normalizedText)
+      const analysis = generateEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, normalizedText)
 
       console.log(`[v0] ===== Analysis complete successfully =====`)
 
-      return analysis
+      return {
+        ...analysis,
+        subjectALabel,
+        subjectBLabel,
+        analyzedConversationText: normalizedText.substring(0, 500), // First 500 chars for reference
+        messageCount: (normalizedText.match(/\[/g) || []).length,
+        screenshotCount: files.length,
+        extractionConfidence: Math.min(100, Math.round((normalizedText.length / 500) * 100)),
+      }
     })()
 
     return await withTimeout(analysisPromise, 300000, "Complete analysis")

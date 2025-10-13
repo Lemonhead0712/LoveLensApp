@@ -38,8 +38,7 @@ export default function StreamlinedHero() {
             </h1>
 
             <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Upload screenshots of your conversations and receive detailed AI analysis of communication patterns,
-              emotional dynamics, and actionable insights to strengthen your relationship.
+              {"Securely share your chat screenshots and let our AI uncover your communication patterns, emotional dynamics and tailored tips to strengthen your relationship."}
             </p>
           </motion.div>
 

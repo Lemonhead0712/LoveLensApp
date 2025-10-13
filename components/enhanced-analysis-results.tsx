@@ -114,7 +114,7 @@ const ChartInsight = ({
       className={`${bgColor} rounded-lg p-3 sm:p-4 mt-4 border-l-4 ${type === "positive" ? "border-green-500" : type === "caution" ? "border-amber-500" : "border-blue-500"}`}
     >
       <div className="flex items-start gap-2.5">
-        <Info className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColor} flex-shrink-0 mt-0.5`} />
+        <Info className={`w-4 h-4 sm:w-5 sm:h-5 ${iconColor} flex-shrink-0 mt-0.5`} aria-hidden="true" />
         <p className={`text-xs sm:text-sm ${textColor} leading-relaxed`}>{children}</p>
       </div>
     </div>
@@ -124,7 +124,36 @@ const ChartInsight = ({
 export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisResultsProps) {
   const [isExporting, setIsExporting] = useState(false)
   const [exportSuccess, setExportSuccess] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
+
+  const [touchStart, setTouchStart] = useState(0)
+  const [touchEnd, setTouchEnd] = useState(0)
+  const minSwipeDistance = 50
+
+  const tabs = ["overview", "patterns", "charts", "professional", "feedback"]
+
+  const handleTabSwipe = () => {
+    const distance = touchStart - touchEnd
+    const isLeftSwipe = distance > minSwipeDistance
+    const isRightSwipe = distance < -minSwipeDistance
+
+    if (isLeftSwipe || isRightSwipe) {
+      const currentIndex = tabs.indexOf(activeTab)
+      if (isLeftSwipe && currentIndex < tabs.length - 1) {
+        setActiveTab(tabs[currentIndex + 1])
+      } else if (isRightSwipe && currentIndex > 0) {
+        setActiveTab(tabs[currentIndex - 1])
+      }
+    }
+  }
+
+  const handleTabKeyDown = (e: React.KeyboardEvent, tabValue: string) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      setActiveTab(tabValue)
+    }
+  }
 
   // 1. Update the imports at the top to add the subjectALabel and subjectBLabel from results:
   const subjectALabel = results.subjectALabel || "Subject A"
@@ -135,7 +164,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
       <div className="min-h-screen bg-gradient-to-b from-purple-50 to-pink-50 p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
           <Alert className="border-red-200 bg-red-50">
-            <AlertCircle className="h-5 w-5 text-red-600" />
+            <AlertCircle className="h-5 w-5 text-red-600" aria-hidden="true" />
             <AlertDescription className="text-red-800 ml-2">{results.error}</AlertDescription>
           </Alert>
         </div>
@@ -146,12 +175,42 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const handleExport = async () => {
     setIsExporting(true)
     setExportSuccess(false)
+    setExportError(null)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      console.log("[v0] Starting Word document export...")
+
+      const response = await fetch("/api/export-word", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(results),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to generate Word document")
+      }
+
+      // Get the blob from the response
+      const blob = await response.blob()
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `love-lens-analysis-${Date.now()}.doc`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      console.log("[v0] Word document downloaded successfully")
       setExportSuccess(true)
       setTimeout(() => setExportSuccess(false), 5000)
     } catch (error) {
-      console.error("Export error:", error)
+      console.error("[v0] Export error:", error)
+      setExportError("Failed to export document. Please try again.")
+      setTimeout(() => setExportError(null), 5000)
     } finally {
       setIsExporting(false)
     }
@@ -262,17 +321,32 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const validationInsight = getValidationInsight()
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 p-3 sm:p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5 md:space-y-6">
+    // Added safe area padding and improved mobile spacing
+    <div
+      className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 p-4 sm:p-6 md:p-8 pb-safe"
+      onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
+      onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
+      onTouchEnd={handleTabSwipe}
+    >
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-purple-600 focus:text-white focus:rounded-md"
+      >
+        Skip to main content
+      </a>
+
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-5 md:space-y-6" id="main-content">
         {/* Header Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center space-y-3 sm:space-y-4 mb-4 sm:mb-6 md:mb-8"
+          role="banner"
+          aria-label="Analysis results header"
         >
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <Heart className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600 flex-shrink-0" />
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent text-center">
+            <Heart className="w-10 h-10 sm:w-12 sm:h-12 text-purple-600 flex-shrink-0" aria-hidden="true" />
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent text-center leading-tight">
               Your Relationship Analysis
             </h1>
           </div>
@@ -280,7 +354,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           {results.confidenceWarning && (
             <Alert className="border-yellow-200 bg-yellow-50 max-w-3xl mx-auto">
               <div className="flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <AlertDescription className="text-yellow-800 text-xs sm:text-sm text-left">
                   {results.confidenceWarning}
                 </AlertDescription>
@@ -290,7 +364,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
           <Alert className="border-blue-200 bg-blue-50 max-w-3xl mx-auto">
             <div className="flex items-start gap-2">
-              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
               <AlertDescription className="text-blue-800 text-xs sm:text-sm text-left">
                 <strong>Note:</strong> This analysis is for informational purposes only and is not a substitute for
                 professional therapy or counseling. If you're experiencing relationship difficulties, consider
@@ -298,40 +372,40 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               </AlertDescription>
             </div>
           </Alert>
-          {/* </CHANGE> */}
 
           <div className="flex flex-wrap gap-2 sm:gap-3 justify-center items-center">
             <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
-              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" aria-hidden="true" />
               <span className="whitespace-nowrap">{results.messageCount || 0} Messages</span>
             </Badge>
             <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
-              <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+              <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" aria-hidden="true" />
               <span className="whitespace-nowrap">{results.extractionConfidence || 0}% Confidence</span>
             </Badge>
             {results.processingTimeMs && (
               <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
-                <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" aria-hidden="true" />
                 <span className="whitespace-nowrap">{(results.processingTimeMs / 1000).toFixed(1)}s</span>
               </Badge>
             )}
           </div>
 
-          <div className="flex justify-center pt-2">
+          <div className="flex justify-center pt-2 px-4 sm:px-0">
             <Button
               onClick={handleExport}
               disabled={isExporting}
               size="default"
-              className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg"
+              className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 active:from-purple-800 active:to-pink-800 text-white shadow-lg min-h-[48px] sm:min-h-[44px] touch-manipulation focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 text-base"
+              aria-label={isExporting ? "Exporting analysis to Word document" : "Export analysis to Word document"}
             >
               {isExporting ? (
                 <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" aria-hidden="true" />
                   Exporting...
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4 mr-2" />
+                  <Download className="w-4 h-4 mr-2" aria-hidden="true" />
                   Export to Word
                 </>
               )}
@@ -340,30 +414,53 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
           {exportSuccess && (
             <Alert className="border-green-200 bg-green-50 max-w-md mx-auto">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <CheckCircle2 className="h-4 w-4 text-green-600" aria-hidden="true" />
               <AlertDescription className="text-green-800 ml-2 text-sm">
                 Export successful! Check your downloads.
               </AlertDescription>
             </Alert>
           )}
+
+          {exportError && (
+            <Alert className="border-red-200 bg-red-50 max-w-md mx-auto">
+              <AlertCircle className="h-4 w-4 text-red-600" aria-hidden="true" />
+              <AlertDescription className="text-red-800 ml-2 text-sm">{exportError}</AlertDescription>
+            </Alert>
+          )}
         </motion.div>
 
         {/* Relationship Health Score */}
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.1 }}
+          role="region"
+          aria-label="Overall relationship health score"
+        >
           <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
             <CardHeader className="pb-3 sm:pb-4 md:pb-6">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl md:text-2xl">
-                <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" />
+                <Heart className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600 flex-shrink-0" aria-hidden="true" />
                 Overall Relationship Health
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mb-4">
-                <div className="text-5xl sm:text-6xl font-bold text-purple-600">
+                <div
+                  className="text-5xl sm:text-6xl font-bold text-purple-600"
+                  aria-label={`Relationship health score: ${results.overallRelationshipHealth?.score || 7} out of 10`}
+                >
                   {results.overallRelationshipHealth?.score || 7}/10
                 </div>
                 <div className="flex-1 w-full">
-                  <div className="h-3 sm:h-4 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-3 sm:h-4 bg-gray-200 rounded-full overflow-hidden"
+                    role="progressbar"
+                    aria-valuenow={results.overallRelationshipHealth?.score || 7}
+                    aria-valuemin={0}
+                    aria-valuemax={10}
+                    aria-label="Relationship health score progress bar"
+                  >
                     <div
                       className="h-full bg-gradient-to-r from-purple-600 to-pink-600 transition-all duration-1000"
                       style={{ width: `${((results.overallRelationshipHealth?.score || 7) / 10) * 100}%` }}
@@ -390,57 +487,109 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
         )}
 
         {/* Tabbed Content */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          role="region"
+          aria-label="Analysis details organized by category"
+        >
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="relative mb-4 sm:mb-6">
-              <div className="overflow-x-auto pb-2 -mx-3 px-3 sm:mx-0 sm:px-0">
-                <TabsList className="inline-flex sm:grid w-auto sm:w-full min-w-max sm:min-w-0 sm:grid-cols-5 h-auto gap-1.5 sm:gap-2 bg-white/50 p-1.5 rounded-lg">
+              <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
+                <TabsList
+                  className="inline-flex sm:grid w-auto sm:w-full min-w-max sm:min-w-0 sm:grid-cols-5 h-auto gap-2 bg-white/50 p-2 rounded-lg"
+                  role="tablist"
+                  aria-label="Analysis categories"
+                >
                   <TabsTrigger
                     value="overview"
-                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 rounded-md transition-all whitespace-nowrap"
+                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                    role="tab"
+                    aria-selected={activeTab === "overview"}
+                    aria-controls="overview-panel"
+                    id="overview-tab"
+                    onKeyDown={(e) => handleTabKeyDown(e, "overview")}
                   >
-                    <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+                    <MessageCircle
+                      className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0"
+                      aria-hidden="true"
+                    />
                     Overview
                   </TabsTrigger>
                   <TabsTrigger
                     value="patterns"
-                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 rounded-md transition-all whitespace-nowrap"
+                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                    role="tab"
+                    aria-selected={activeTab === "patterns"}
+                    aria-controls="patterns-panel"
+                    id="patterns-tab"
+                    onKeyDown={(e) => handleTabKeyDown(e, "patterns")}
                   >
-                    <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+                    <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" aria-hidden="true" />
                     Patterns
                   </TabsTrigger>
                   <TabsTrigger
                     value="charts"
-                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 rounded-md transition-all whitespace-nowrap"
+                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                    role="tab"
+                    aria-selected={activeTab === "charts"}
+                    aria-controls="charts-panel"
+                    id="charts-tab"
+                    onKeyDown={(e) => handleTabKeyDown(e, "charts")}
                   >
-                    <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+                    <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" aria-hidden="true" />
                     Charts
                   </TabsTrigger>
                   <TabsTrigger
                     value="professional"
-                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 rounded-md transition-all whitespace-nowrap"
+                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                    role="tab"
+                    aria-selected={activeTab === "professional"}
+                    aria-controls="professional-panel"
+                    id="professional-tab"
+                    onKeyDown={(e) => handleTabKeyDown(e, "professional")}
                   >
-                    <Stethoscope className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+                    <Stethoscope
+                      className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0"
+                      aria-hidden="true"
+                    />
                     Professional
                   </TabsTrigger>
                   <TabsTrigger
                     value="feedback"
-                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm py-2 sm:py-2.5 px-3 sm:px-4 rounded-md transition-all whitespace-nowrap"
+                    className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                    role="tab"
+                    aria-selected={activeTab === "feedback"}
+                    aria-controls="feedback-panel"
+                    id="feedback-tab"
+                    onKeyDown={(e) => handleTabKeyDown(e, "feedback")}
                   >
-                    <ThumbsUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+                    <ThumbsUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" aria-hidden="true" />
                     Feedback
                   </TabsTrigger>
                 </TabsList>
               </div>
+              <p
+                className="text-xs text-center mt-3 sm:hidden bg-purple-50 py-2 px-3 rounded-md text-purple-700 font-medium"
+                aria-live="polite"
+              >
+                👆 Swipe left or right to navigate tabs
+              </p>
             </div>
 
-            {/* Overview Tab Content */}
-            <TabsContent value="overview" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
+            <TabsContent
+              value="overview"
+              className="space-y-4 sm:space-y-5 md:space-y-6 mt-0"
+              role="tabpanel"
+              id="overview-panel"
+              aria-labelledby="overview-tab"
+            >
               {/* Communication Styles */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Communication Styles & Emotional Tone
                   </CardTitle>
                 </CardHeader>
@@ -504,7 +653,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <Brain className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <Brain className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Reflective Frameworks
                   </CardTitle>
                 </CardHeader>
@@ -563,7 +712,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Outlook & Recommendations
                   </CardTitle>
                 </CardHeader>
@@ -579,7 +728,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 <Card>
                   <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                     <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                      <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                      <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                       Additional Observations
                     </CardTitle>
                   </CardHeader>
@@ -596,7 +745,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
                   <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                     <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                      <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                      <Lightbulb className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                       Key Takeaways
                     </CardTitle>
                   </CardHeader>
@@ -604,7 +753,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     <ul className="space-y-2.5 sm:space-y-3">
                       {results.keyTakeaways.map((takeaway: string, index: number) => (
                         <li key={index} className="flex items-start gap-2.5 sm:gap-3">
-                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                          <CheckCircle2
+                            className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 mt-0.5 flex-shrink-0"
+                            aria-hidden="true"
+                          />
                           <span className="text-sm sm:text-base text-gray-700">{takeaway}</span>
                         </li>
                       ))}
@@ -614,12 +766,17 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               )}
             </TabsContent>
 
-            {/* Patterns Tab Content */}
-            <TabsContent value="patterns" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
+            <TabsContent
+              value="patterns"
+              className="space-y-4 sm:space-y-5 md:space-y-6 mt-0"
+              role="tabpanel"
+              id="patterns-panel"
+              aria-labelledby="patterns-tab"
+            >
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Recurring Patterns
                   </CardTitle>
                 </CardHeader>
@@ -634,7 +791,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     results.recurringPatternsIdentified.positivePatterns.length > 0 && (
                       <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
                         <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                          <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                           Positive Patterns
                         </h4>
                         <ul className="space-y-1.5">
@@ -712,7 +869,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     What's Getting in the Way
                   </CardTitle>
                 </CardHeader>
@@ -755,12 +912,17 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               </Card>
             </TabsContent>
 
-            {/* Charts Tab Content */}
-            <TabsContent value="charts" className="space-y-6 sm:space-y-7 md:space-y-8 mt-0">
+            <TabsContent
+              value="charts"
+              className="space-y-6 sm:space-y-7 md:space-y-8 mt-0"
+              role="tabpanel"
+              id="charts-panel"
+              aria-labelledby="charts-tab"
+            >
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Visual Insights
                   </CardTitle>
                   {results.visualInsightsData?.descriptionForChartsIntro && (
@@ -879,13 +1041,18 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               </Card>
             </TabsContent>
 
-            {/* Professional Insights Tab */}
-            <TabsContent value="professional" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
+            <TabsContent
+              value="professional"
+              className="space-y-4 sm:space-y-5 md:space-y-6 mt-0"
+              role="tabpanel"
+              id="professional-panel"
+              aria-labelledby="professional-tab"
+            >
               {/* Attachment Theory */}
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <Users className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Attachment Theory Analysis
                   </CardTitle>
                 </CardHeader>
@@ -977,7 +1144,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <Target className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <Target className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Therapeutic Recommendations
                   </CardTitle>
                 </CardHeader>
@@ -992,7 +1159,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           {results.professionalInsights.therapeuticRecommendations.immediateInterventions.map(
                             (intervention: string, index: number) => (
                               <li key={index} className="flex items-start gap-2">
-                                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                <CheckCircle2
+                                  className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 mt-0.5 flex-shrink-0"
+                                  aria-hidden="true"
+                                />
                                 <span>{intervention}</span>
                               </li>
                             ),
@@ -1008,7 +1178,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           {results.professionalInsights.therapeuticRecommendations.longTermGoals.map(
                             (goal: string, index: number) => (
                               <li key={index} className="flex items-start gap-2">
-                                <Target className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                <Target
+                                  className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 mt-0.5 flex-shrink-0"
+                                  aria-hidden="true"
+                                />
                                 <span>{goal}</span>
                               </li>
                             ),
@@ -1045,7 +1218,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Clinical Exercises & Practices
                   </CardTitle>
                 </CardHeader>
@@ -1125,7 +1298,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Clinical Prognosis
                   </CardTitle>
                 </CardHeader>
@@ -1170,7 +1343,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         <ul className="text-xs sm:text-sm text-red-800 space-y-1.5">
                           {results.professionalInsights.prognosis.riskFactors.map((factor: string, index: number) => (
                             <li key={index} className="flex items-start gap-2">
-                              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                              <AlertCircle
+                                className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 mt-0.5 flex-shrink-0"
+                                aria-hidden="true"
+                              />
                               <span>{factor}</span>
                             </li>
                           ))}
@@ -1185,7 +1361,10 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                           {results.professionalInsights.prognosis.protectiveFactors.map(
                             (factor: string, index: number) => (
                               <li key={index} className="flex items-start gap-2">
-                                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                <CheckCircle2
+                                  className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 mt-0.5 flex-shrink-0"
+                                  aria-hidden="true"
+                                />
                                 <span>{factor}</span>
                               </li>
                             ),
@@ -1201,7 +1380,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <Stethoscope className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Differential Considerations
                   </CardTitle>
                 </CardHeader>
@@ -1252,7 +1431,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Trauma-Informed Observations
                   </CardTitle>
                 </CardHeader>
@@ -1294,12 +1473,17 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               </Card>
             </TabsContent>
 
-            {/* Feedback Tab Content */}
-            <TabsContent value="feedback" className="space-y-4 sm:space-y-5 md:space-y-6 mt-0">
+            <TabsContent
+              value="feedback"
+              className="space-y-4 sm:space-y-5 md:space-y-6 mt-0"
+              role="tabpanel"
+              id="feedback-panel"
+              aria-labelledby="feedback-tab"
+            >
               <Card>
                 <CardHeader className="pb-3 sm:pb-4 md:pb-6">
                   <CardTitle className="flex items-center gap-2 text-base sm:text-lg md:text-xl">
-                    <ThumbsUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" />
+                    <ThumbsUp className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600 flex-shrink-0" aria-hidden="true" />
                     Constructive Feedback
                   </CardTitle>
                 </CardHeader>
@@ -1312,7 +1496,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.subjectA?.strengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
                           <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Strengths
                           </h4>
                           <ul className="text-xs sm:text-sm text-green-800 space-y-1.5">
@@ -1329,7 +1513,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.subjectA?.gentleGrowthNudges && (
                         <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg">
                           <h4 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <Lightbulb className="w-4 h-4 flex-shrink-0" />
+                            <Lightbulb className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Growth Nudges
                           </h4>
                           <ul className="text-xs sm:text-sm text-yellow-800 space-y-1.5">
@@ -1348,7 +1532,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.subjectA?.connectionBoosters && (
                         <div className="p-3 sm:p-4 bg-purple-50 rounded-lg">
                           <h4 className="font-semibold text-purple-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <Heart className="w-4 h-4 flex-shrink-0" />
+                            <Heart className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Connection Boosters
                           </h4>
                           <ul className="text-xs sm:text-sm text-purple-800 space-y-1.5">
@@ -1374,7 +1558,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.subjectB?.strengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
                           <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Strengths
                           </h4>
                           <ul className="text-xs sm:text-sm text-green-800 space-y-1.5">
@@ -1391,7 +1575,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.subjectB?.gentleGrowthNudges && (
                         <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg">
                           <h4 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <Lightbulb className="w-4 h-4 flex-shrink-0" />
+                            <Lightbulb className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Growth Nudges
                           </h4>
                           <ul className="text-xs sm:text-sm text-yellow-800 space-y-1.5">
@@ -1410,7 +1594,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.subjectB?.connectionBoosters && (
                         <div className="p-3 sm:p-4 bg-purple-50 rounded-lg">
                           <h4 className="font-semibold text-purple-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <Heart className="w-4 h-4 flex-shrink-0" />
+                            <Heart className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Connection Boosters
                           </h4>
                           <ul className="text-xs sm:text-sm text-purple-800 space-y-1.5">
@@ -1435,7 +1619,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.forBoth?.sharedStrengths && (
                         <div className="p-3 sm:p-4 bg-green-50 rounded-lg">
                           <h4 className="font-semibold text-green-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Shared Strengths
                           </h4>
                           <ul className="text-xs sm:text-sm text-green-800 space-y-1.5">
@@ -1454,7 +1638,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.forBoth?.sharedGrowthNudges && (
                         <div className="p-3 sm:p-4 bg-yellow-50 rounded-lg">
                           <h4 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <Lightbulb className="w-4 h-4 flex-shrink-0" />
+                            <Lightbulb className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Shared Growth Nudges
                           </h4>
                           <ul className="text-xs sm:text-sm text-yellow-800 space-y-1.5">
@@ -1473,7 +1657,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                       {results.constructiveFeedback?.forBoth?.sharedConnectionBoosters && (
                         <div className="p-3 sm:p-4 bg-purple-50 rounded-lg">
                           <h4 className="font-semibold text-purple-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
-                            <Heart className="w-4 h-4 flex-shrink-0" />
+                            <Heart className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
                             Shared Connection Boosters
                           </h4>
                           <ul className="text-xs sm:text-sm text-purple-800 space-y-1.5">

@@ -75,7 +75,9 @@
 }
 
 @theme inline {
-  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+  /* Added font variables for Geist fonts */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -120,6 +122,15 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Minimum 16px font size on mobile to prevent iOS zoom */
+    font-size: 16px;
+  }
+
+  /* Ensure inputs don't trigger zoom on iOS */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 }
 
@@ -129,23 +140,24 @@
   }
 }
 
-/* Custom scrollbar */
+/* Removed custom purple/pink gradient scrollbar styles */
+/* Added simple, theme-aware scrollbar styles */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #a855f7, #ec4899);
+  background: hsl(var(--muted-foreground) / 0.3);
   border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #9333ea, #db2777);
+  background: hsl(var(--muted-foreground) / 0.5);
 }
 
 /* Smooth scrolling */
@@ -214,5 +226,97 @@ html {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Mobile touch optimizations */
+/* Hide scrollbar for horizontal tab scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Smooth momentum scrolling for iOS */
+.momentum-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Active state feedback for touch */
+.touch-active:active {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+/* Prevent double-tap zoom on buttons */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Minimum touch target size for mobile */
+@media (max-width: 640px) {
+  button,
+  a,
+  [role="button"],
+  [role="tab"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Larger tap targets for small interactive elements */
+  .touch-target {
+    padding: 12px;
+  }
+
+  /* Prevent text from being too small on mobile */
+  p,
+  li,
+  span {
+    font-size: max(14px, 1em);
+  }
+
+  /* Ensure headings are readable on mobile */
+  h1 {
+    font-size: clamp(1.75rem, 5vw, 3rem);
+  }
+
+  h2 {
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+  }
+
+  h3 {
+    font-size: clamp(1.25rem, 3vw, 2rem);
+  }
+
+  h4 {
+    font-size: clamp(1.125rem, 2.5vw, 1.5rem);
+  }
+}
+
+/* Added safe area insets for notched devices */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* Improved focus visibility on mobile */
+@media (max-width: 640px) {
+  *:focus-visible {
+    outline: 3px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }

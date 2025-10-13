@@ -58,6 +58,7 @@ const features = [
 
 export default function StreamlinedFeatures() {
   const [currentIndex, setCurrentIndex] = useState(0)
+  const minSwipeDistance = 50
 
   const nextCard = () => {
     setCurrentIndex((prev) => (prev + 1) % features.length)
@@ -79,10 +80,10 @@ export default function StreamlinedFeatures() {
   }
 
   const handleTouchEnd = () => {
-    if (touchStart - touchEnd > 75) {
+    if (touchStart - touchEnd > minSwipeDistance) {
       nextCard()
     }
-    if (touchStart - touchEnd < -75) {
+    if (touchStart - touchEnd < -minSwipeDistance) {
       prevCard()
     }
   }
@@ -165,7 +166,7 @@ export default function StreamlinedFeatures() {
             variant="ghost"
             size="icon"
             onClick={prevCard}
-            className="absolute left-0 sm:left-2 md:left-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-10 h-10 sm:w-12 sm:h-12"
+            className="absolute left-0 sm:left-2 md:left-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white active:bg-gray-100 shadow-lg rounded-full w-11 h-11 sm:w-12 sm:h-12 touch-manipulation"
             aria-label="Previous card"
           >
             <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -174,7 +175,7 @@ export default function StreamlinedFeatures() {
             variant="ghost"
             size="icon"
             onClick={nextCard}
-            className="absolute right-0 sm:right-2 md:right-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-10 h-10 sm:w-12 sm:h-12"
+            className="absolute right-0 sm:right-2 md:right-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white active:bg-gray-100 shadow-lg rounded-full w-11 h-11 sm:w-12 sm:h-12 touch-manipulation"
             aria-label="Next card"
           >
             <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -186,8 +187,10 @@ export default function StreamlinedFeatures() {
             <button
               key={index}
               onClick={() => setCurrentIndex(index)}
-              className={`h-2 sm:h-2.5 rounded-full transition-all duration-300 touch-manipulation ${
-                index === currentIndex ? "w-6 sm:w-8 bg-purple-600" : "w-2 sm:w-2.5 bg-gray-300 hover:bg-gray-400"
+              className={`h-3 sm:h-3 rounded-full transition-all duration-300 touch-manipulation ${
+                index === currentIndex
+                  ? "w-8 sm:w-10 bg-purple-600"
+                  : "w-3 sm:w-3 bg-gray-300 hover:bg-gray-400 active:bg-gray-500"
               }`}
               aria-label={`Go to card ${index + 1}`}
             />
