@@ -18,16 +18,14 @@ import { enhanceImages } from "@/lib/image-processing"
 
 const SAMPLE_IMAGES = ["/sample-conversation-1.jpg", "/sample-conversation-2.jpg", "/sample-conversation-3.jpg"]
 
-interface StoredFile {
-  name: string
-  type: string
-  size: number
-  base64: string
+interface FileWithPreview {
+  file: File
+  preview: string
   timestamp: number
 }
 
 export default function EnhancedCompactUpload() {
-  const [files, setFiles] = useState<StoredFile[]>([])
+  const [files, setFiles] = useState<FileWithPreview[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -42,49 +40,34 @@ export default function EnhancedCompactUpload() {
   const [isProcessingFiles, setIsProcessingFiles] = useState(false)
   const router = useRouter()
 
-  const fileToStoredFile = async (file: File): Promise<StoredFile> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = reader.result as string
-        resolve({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          base64,
-          timestamp: Date.now(),
-        })
-      }
-      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`))
-      reader.readAsDataURL(file)
-    })
+  const createFileWithPreview = (file: File): FileWithPreview => {
+    return {
+      file,
+      preview: URL.createObjectURL(file),
+      timestamp: Date.now(),
+    }
   }
 
-  const storedFileToFile = (storedFile: StoredFile): File => {
-    const base64Data = storedFile.base64.split(",")[1]
-    const byteCharacters = atob(base64Data)
-    const byteNumbers = new Array(byteCharacters.length)
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i)
+  useEffect(() => {
+    return () => {
+      files.forEach((f) => URL.revokeObjectURL(f.preview))
     }
-    const byteArray = new Uint8Array(byteNumbers)
-    const blob = new Blob([byteArray], { type: storedFile.type })
-    return new File([blob], storedFile.name, { type: storedFile.type })
-  }
+  }, [files])
 
   useEffect(() => {
     const checkFilesFreshness = () => {
       const now = Date.now()
-      const staleFiles = files.filter((file) => now - file.timestamp > 60 * 60 * 1000) // 60 minutes
-      if (staleFiles.length > 0 && !isAnalyzing) {
-        console.log("[v0] Detected very old files (60+ minutes), suggesting re-upload")
-        setError(`Some files were uploaded over an hour ago. For best results, please re-upload your screenshots.`)
+      const veryOldFiles = files.filter((f) => now - f.timestamp > 2 * 60 * 60 * 1000) // 2 hours
+      if (veryOldFiles.length > 0 && !isAnalyzing) {
+        console.log("[v0] Detected very old files (2+ hours)")
+        setError(
+          `Some files were uploaded over 2 hours ago. For best results, please refresh the page and re-upload your screenshots.`,
+        )
       }
     }
 
     if (files.length > 0) {
-      const interval = setInterval(checkFilesFreshness, 5 * 60 * 1000) // Check every 5 minutes
-      checkFilesFreshness() // Check immediately on mount
+      const interval = setInterval(checkFilesFreshness, 10 * 60 * 1000) // Check every 10 minutes
       return () => clearInterval(interval)
     }
   }, [files, isAnalyzing])
@@ -104,8 +87,8 @@ export default function EnhancedCompactUpload() {
         sampleFiles.push(file)
       }
 
-      const storedFiles = await Promise.all(sampleFiles.map(fileToStoredFile))
-      setFiles(storedFiles)
+      const filesWithPreviews = sampleFiles.map(createFileWithPreview)
+      setFiles(filesWithPreviews)
       setSubject1Name("Alex")
       setSubject2Name("Jordan")
     } catch (err) {
@@ -142,8 +125,8 @@ export default function EnhancedCompactUpload() {
 
     setIsProcessingFiles(true)
     try {
-      const storedFiles = await Promise.all(droppedFiles.map(fileToStoredFile))
-      setFiles((prev) => [...prev, ...storedFiles].slice(0, 10))
+      const filesWithPreviews = droppedFiles.map(createFileWithPreview)
+      setFiles((prev) => [...prev, ...filesWithPreviews].slice(0, 10))
     } catch (err) {
       console.error("[v0] Error processing dropped files:", err)
       setError("Failed to process some files. Please try again.")
@@ -165,8 +148,8 @@ export default function EnhancedCompactUpload() {
 
     setIsProcessingFiles(true)
     try {
-      const storedFiles = await Promise.all(selectedFiles.map(fileToStoredFile))
-      setFiles((prev) => [...prev, ...storedFiles].slice(0, 10))
+      const filesWithPreviews = selectedFiles.map(createFileWithPreview)
+      setFiles((prev) => [...prev, ...filesWithPreviews].slice(0, 10))
     } catch (err) {
       console.error("[v0] Error processing selected files:", err)
       setError("Failed to process some files. Please try again.")
@@ -176,8 +159,13 @@ export default function EnhancedCompactUpload() {
   }
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index))
-    if (error?.includes("uploaded over an hour ago")) {
+    setFiles((prev) => {
+      const newFiles = prev.filter((_, i) => i !== index)
+      // Cleanup preview URL
+      URL.revokeObjectURL(prev[index].preview)
+      return newFiles
+    })
+    if (error?.includes("uploaded over")) {
       setError(null)
     }
   }
@@ -237,12 +225,9 @@ export default function EnhancedCompactUpload() {
     setError(null)
 
     try {
-      setProgressMessage("Converting files...")
-      console.log("[v0] Converting stored files back to File objects...")
-
-      const fileObjects = files.map(storedFileToFile)
-
-      for (const file of fileObjects) {
+      console.log("[v0] Validating files are readable...")
+      for (const fileWithPreview of files) {
+        const file = fileWithPreview.file
         if (file.size > 10 * 1024 * 1024) {
           setError(
             `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
@@ -250,10 +235,22 @@ export default function EnhancedCompactUpload() {
           setIsAnalyzing(false)
           return
         }
+
+        try {
+          const testSlice = file.slice(0, 100)
+          await testSlice.arrayBuffer()
+        } catch (readError) {
+          console.error(`[v0] File ${file.name} is no longer readable:`, readError)
+          setError(`Unable to read file "${file.name}". Please refresh the page and re-upload your screenshots.`)
+          setIsAnalyzing(false)
+          return
+        }
       }
 
-      console.log("[v0] All files ready for analysis")
+      console.log("[v0] All files validated successfully")
       setProgress(10)
+
+      const fileObjects = files.map((f) => f.file)
 
       let processedFiles = fileObjects
       if (enhancementEnabled) {
@@ -498,9 +495,9 @@ export default function EnhancedCompactUpload() {
                     💡 Drag and drop to reorder screenshots chronologically (earliest to latest)
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {files.map((file, index) => (
+                    {files.map((fileWithPreview, index) => (
                       <motion.div
-                        key={`${file.name}-${index}`}
+                        key={`${fileWithPreview.file.name}-${index}`}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
@@ -515,11 +512,11 @@ export default function EnhancedCompactUpload() {
                           dragOverIndex === index ? "ring-2 ring-purple-500 ring-dashed" : ""
                         }`}
                         role="listitem"
-                        aria-label={`Screenshot ${index + 1} of ${files.length}: ${file.name}`}
+                        aria-label={`Screenshot ${index + 1} of ${files.length}: ${fileWithPreview.file.name}`}
                       >
                         <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden border-2 border-gray-200">
                           <img
-                            src={file.base64 || "/placeholder.svg"}
+                            src={fileWithPreview.preview || "/placeholder.svg"}
                             alt={`Screenshot ${index + 1}`}
                             className="w-full h-full object-cover"
                           />
@@ -531,12 +528,12 @@ export default function EnhancedCompactUpload() {
                           onClick={() => removeFile(index)}
                           onKeyDown={(e) => handleRemoveKeyDown(e, index)}
                           className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-red-500 min-w-[32px] min-h-[32px] touch-manipulation shadow-lg"
-                          aria-label={`Remove ${file.name}`}
+                          aria-label={`Remove ${fileWithPreview.file.name}`}
                           type="button"
                         >
                           <X className="w-4 h-4" aria-hidden="true" />
                         </button>
-                        <p className="text-xs text-gray-600 mt-1 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-600 mt-1 truncate">{fileWithPreview.file.name}</p>
                       </motion.div>
                     ))}
                   </div>
