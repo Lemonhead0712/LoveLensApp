@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Heart, TrendingUp, Sparkles, ChevronLeft, ChevronRight, BarChart3, ShieldCheck, FileDown } from "lucide-react"
@@ -89,7 +88,7 @@ export default function StreamlinedFeatures() {
   }
 
   return (
-    <section className="py-8 sm:py-12 md:py-16 bg-gradient-to-b from-purple-50/30 to-white">
+    <section className="py-8 sm:py-12 md:py-16 bg-gradient-to-b from-purple-50/30 to-white overflow-x-hidden">
       <div className="container mx-auto px-4 max-w-6xl">
         <div className="text-center mb-6 sm:mb-8">
           <motion.h2
@@ -111,86 +110,138 @@ export default function StreamlinedFeatures() {
           </motion.p>
         </div>
 
-        <div
-          className="relative h-[380px] sm:h-[320px] md:h-[280px] flex items-center justify-center"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          <div className="relative w-full max-w-md mx-auto perspective-1000">
-            <AnimatePresence mode="wait">
-              {features.map((feature, index) => {
-                const offset = (index - currentIndex + features.length) % features.length
-                const isActive = offset === 0
-                const isPrev = offset === features.length - 1
-                const isNext = offset === 1
-
-                return (
-                  <motion.div
-                    key={index}
-                    initial={false}
-                    animate={{
-                      x: isActive ? 0 : isPrev ? -80 : isNext ? 80 : 0,
-                      y: isActive ? 0 : 20,
-                      scale: isActive ? 1 : 0.85,
-                      opacity: isActive ? 1 : isPrev || isNext ? 0.4 : 0,
-                      rotateY: isActive ? 0 : isPrev ? 15 : isNext ? -15 : 0,
-                      zIndex: isActive ? 10 : isPrev || isNext ? 5 : 0,
-                    }}
-                    transition={{
-                      duration: 0.4,
-                      ease: [0.32, 0.72, 0, 1],
-                    }}
-                    className="absolute inset-0 flex items-center justify-center px-2"
-                    style={{
-                      transformStyle: "preserve-3d",
-                      pointerEvents: isActive ? "auto" : "none",
-                    }}
-                  >
-                    <Card className="w-full max-w-sm bg-white p-6 sm:p-8 shadow-xl border-gray-100 rounded-2xl">
-                      <div className="flex flex-col items-center text-center">
-                        <div className={`mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-br ${feature.color} rounded-2xl`}>
-                          <feature.icon className={`h-8 w-8 sm:h-10 sm:w-10 ${feature.iconColor}`} />
+        <div className="relative w-full max-w-md mx-auto px-4">
+          {/* Mobile: Simple card display with navigation */}
+          <div className="md:hidden">
+            <div
+              className="relative min-h-[320px] flex items-center justify-center"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentIndex}
+                  initial={{ opacity: 0, x: 50 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -50 }}
+                  transition={{ duration: 0.3 }}
+                  className="w-full"
+                >
+                  {(() => {
+                    const IconComponent = features[currentIndex].icon
+                    return (
+                      <Card className="w-full bg-white p-6 shadow-xl border-gray-100 rounded-2xl">
+                        <div className="flex flex-col items-center text-center">
+                          <div className={`mb-4 p-3 bg-gradient-to-br ${features[currentIndex].color} rounded-2xl`}>
+                            <IconComponent className={`h-8 w-8 ${features[currentIndex].iconColor}`} />
+                          </div>
+                          <h3 className="text-lg font-bold text-gray-900 mb-2">{features[currentIndex].title}</h3>
+                          <p className="text-sm text-gray-600 leading-relaxed">{features[currentIndex].description}</p>
                         </div>
-                        <h3 className="text-lg sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-3">{feature.title}</h3>
-                        <p className="text-sm sm:text-base text-gray-600 leading-relaxed">{feature.description}</p>
-                      </div>
-                    </Card>
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
+                      </Card>
+                    )
+                  })()}
+                </motion.div>
+              </AnimatePresence>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={prevCard}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-10 h-10"
+                aria-label="Previous card"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={nextCard}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-10 h-10"
+                aria-label="Next card"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={prevCard}
-            className="absolute left-0 sm:left-2 md:left-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white active:bg-gray-100 shadow-lg rounded-full w-11 h-11 sm:w-12 sm:h-12 touch-manipulation"
-            aria-label="Previous card"
-          >
-            <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={nextCard}
-            className="absolute right-0 sm:right-2 md:right-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white active:bg-gray-100 shadow-lg rounded-full w-11 h-11 sm:w-12 sm:h-12 touch-manipulation"
-            aria-label="Next card"
-          >
-            <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />
-          </Button>
+          {/* Desktop: 3D carousel effect */}
+          <div className="hidden md:block">
+            <div className="relative h-[280px] flex items-center justify-center perspective-1000">
+              <AnimatePresence mode="wait">
+                {features.map((feature, index) => {
+                  const offset = (index - currentIndex + features.length) % features.length
+                  const isActive = offset === 0
+                  const isPrev = offset === features.length - 1
+                  const isNext = offset === 1
+                  const IconComponent = feature.icon
+
+                  return (
+                    <motion.div
+                      key={index}
+                      initial={false}
+                      animate={{
+                        x: isActive ? 0 : isPrev ? -80 : isNext ? 80 : 0,
+                        y: isActive ? 0 : 20,
+                        scale: isActive ? 1 : 0.85,
+                        opacity: isActive ? 1 : isPrev || isNext ? 0.4 : 0,
+                        rotateY: isActive ? 0 : isPrev ? 15 : isNext ? -15 : 0,
+                        zIndex: isActive ? 10 : isPrev || isNext ? 5 : 0,
+                      }}
+                      transition={{
+                        duration: 0.4,
+                        ease: [0.32, 0.72, 0, 1],
+                      }}
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{
+                        transformStyle: "preserve-3d",
+                        pointerEvents: isActive ? "auto" : "none",
+                      }}
+                    >
+                      <Card className="w-full max-w-sm bg-white p-8 shadow-xl border-gray-100 rounded-2xl">
+                        <div className="flex flex-col items-center text-center">
+                          <div className={`mb-6 p-4 bg-gradient-to-br ${feature.color} rounded-2xl`}>
+                            <IconComponent className={`h-10 w-10 ${feature.iconColor}`} />
+                          </div>
+                          <h3 className="text-2xl font-bold text-gray-900 mb-3">{feature.title}</h3>
+                          <p className="text-base text-gray-600 leading-relaxed">{feature.description}</p>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  )
+                })}
+              </AnimatePresence>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={prevCard}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-12 h-12"
+                aria-label="Previous card"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={nextCard}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-12 h-12"
+                aria-label="Next card"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </Button>
+            </div>
+          </div>
         </div>
 
-        <div className="flex justify-center gap-2 sm:gap-2.5 mt-4 sm:mt-6">
+        <div className="flex justify-center gap-2 mt-6">
           {features.map((_, index) => (
             <button
               key={index}
               onClick={() => setCurrentIndex(index)}
-              className={`h-3 sm:h-3 rounded-full transition-all duration-300 touch-manipulation ${
-                index === currentIndex
-                  ? "w-8 sm:w-10 bg-purple-600"
-                  : "w-3 sm:w-3 bg-gray-300 hover:bg-gray-400 active:bg-gray-500"
+              className={`h-2.5 rounded-full transition-all duration-300 touch-manipulation ${
+                index === currentIndex ? "w-8 bg-purple-600" : "w-2.5 bg-gray-300 hover:bg-gray-400"
               }`}
               aria-label={`Go to card ${index + 1}`}
             />

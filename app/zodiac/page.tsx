@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Heart,
@@ -40,6 +40,21 @@ export default function ZodiacCompatibilityPage() {
   const [error, setError] = useState<string | null>(null)
   const [yourGender, setYourGender] = useState("")
   const [partnerGender, setPartnerGender] = useState("")
+  const [activeTab, setActiveTab] = useState("personality")
+  const tabsListRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (tabsListRef.current && activeTab) {
+      const activeButton = tabsListRef.current.querySelector(`[data-state="active"]`)
+      if (activeButton) {
+        activeButton.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "center",
+        })
+      }
+    }
+  }, [activeTab])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -316,34 +331,64 @@ export default function ZodiacCompatibilityPage() {
 
                 <Card className="border-2 border-purple-200 bg-white shadow-xl overflow-x-hidden">
                   <CardContent className="pt-6">
-                    <Tabs defaultValue="personality" className="w-full">
-                      <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide">
-                        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-2 min-w-max lg:min-w-0">
-                          <TabsTrigger value="personality" className="text-xs sm:text-sm whitespace-nowrap">
-                            <Brain className="w-4 h-4 mr-1 flex-shrink-0" />
-                            Personality
-                          </TabsTrigger>
-                          <TabsTrigger value="intimacy" className="text-xs sm:text-sm whitespace-nowrap">
-                            <Flame className="w-4 h-4 mr-1 flex-shrink-0" />
-                            Intimacy
-                          </TabsTrigger>
-                          <TabsTrigger value="passions" className="text-xs sm:text-sm whitespace-nowrap">
-                            <Zap className="w-4 h-4 mr-1 flex-shrink-0" />
-                            Passions
-                          </TabsTrigger>
-                          <TabsTrigger value="ambitions" className="text-xs sm:text-sm whitespace-nowrap">
-                            <Target className="w-4 h-4 mr-1 flex-shrink-0" />
-                            Ambitions
-                          </TabsTrigger>
-                          <TabsTrigger value="dynamics" className="text-xs sm:text-sm whitespace-nowrap">
-                            <Users className="w-4 h-4 mr-1 flex-shrink-0" />
-                            Dynamics
-                          </TabsTrigger>
-                          <TabsTrigger value="advice" className="text-xs sm:text-sm whitespace-nowrap">
-                            <Lightbulb className="w-4 h-4 mr-1 flex-shrink-0" />
-                            Advice
-                          </TabsTrigger>
-                        </TabsList>
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                      <div className="relative">
+                        {/* Left fade indicator */}
+                        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none md:hidden" />
+
+                        {/* Right fade indicator */}
+                        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none md:hidden" />
+
+                        <div className="overflow-x-auto scrollbar-hide -mx-4 px-4" ref={tabsListRef}>
+                          <TabsList className="inline-flex w-auto min-w-full lg:grid lg:grid-cols-6 gap-2 bg-muted p-1 rounded-lg">
+                            <TabsTrigger
+                              value="personality"
+                              className="text-xs sm:text-sm whitespace-nowrap px-3 sm:px-4 py-2 min-h-[48px] touch-manipulation"
+                            >
+                              <Brain className="w-4 h-4 mr-1 flex-shrink-0" />
+                              Personality
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="intimacy"
+                              className="text-xs sm:text-sm whitespace-nowrap px-3 sm:px-4 py-2 min-h-[48px] touch-manipulation"
+                            >
+                              <Flame className="w-4 h-4 mr-1 flex-shrink-0" />
+                              Intimacy
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="passions"
+                              className="text-xs sm:text-sm whitespace-nowrap px-3 sm:px-4 py-2 min-h-[48px] touch-manipulation"
+                            >
+                              <Zap className="w-4 h-4 mr-1 flex-shrink-0" />
+                              Passions
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="ambitions"
+                              className="text-xs sm:text-sm whitespace-nowrap px-3 sm:px-4 py-2 min-h-[48px] touch-manipulation"
+                            >
+                              <Target className="w-4 h-4 mr-1 flex-shrink-0" />
+                              Ambitions
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="dynamics"
+                              className="text-xs sm:text-sm whitespace-nowrap px-3 sm:px-4 py-2 min-h-[48px] touch-manipulation"
+                            >
+                              <Users className="w-4 h-4 mr-1 flex-shrink-0" />
+                              Dynamics
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="advice"
+                              className="text-xs sm:text-sm whitespace-nowrap px-3 sm:px-4 py-2 min-h-[48px] touch-manipulation"
+                            >
+                              <Lightbulb className="w-4 h-4 mr-1 flex-shrink-0" />
+                              Advice
+                            </TabsTrigger>
+                          </TabsList>
+                        </div>
+
+                        <p className="text-xs text-center text-gray-500 mt-2 md:hidden">
+                          Swipe or slide to see all tabs
+                        </p>
                       </div>
 
                       {/* Personality Tab */}

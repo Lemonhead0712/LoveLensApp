@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import type React from "react"
 
 import { motion } from "framer-motion"
@@ -126,12 +126,33 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const [exportSuccess, setExportSuccess] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
+  const tabsListRef = useRef<HTMLDivElement>(null)
+  const activeTabRef = useRef<HTMLButtonElement>(null)
 
   const [touchStart, setTouchStart] = useState(0)
   const [touchEnd, setTouchEnd] = useState(0)
   const minSwipeDistance = 50
 
   const tabs = ["overview", "patterns", "charts", "professional", "feedback"]
+
+  useEffect(() => {
+    if (activeTabRef.current && tabsListRef.current) {
+      const tabElement = activeTabRef.current
+      const containerElement = tabsListRef.current
+
+      // Calculate the position to scroll to center the active tab
+      const tabLeft = tabElement.offsetLeft
+      const tabWidth = tabElement.offsetWidth
+      const containerWidth = containerElement.offsetWidth
+      const scrollLeft = tabLeft - containerWidth / 2 + tabWidth / 2
+
+      // Smooth scroll to the active tab
+      containerElement.scrollTo({
+        left: scrollLeft,
+        behavior: "smooth",
+      })
+    }
+  }, [activeTab])
 
   const handleTabSwipe = () => {
     const distance = touchStart - touchEnd
@@ -496,13 +517,30 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
         >
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="relative mb-4 sm:mb-6">
-              <div className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
+              {/* Left fade indicator */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-purple-50 to-transparent z-10 pointer-events-none sm:hidden"
+                aria-hidden="true"
+              />
+
+              {/* Right fade indicator */}
+              <div
+                className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-purple-50 to-transparent z-10 pointer-events-none sm:hidden"
+                aria-hidden="true"
+              />
+
+              <div
+                ref={tabsListRef}
+                className="overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide scroll-smooth"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
                 <TabsList
                   className="inline-flex sm:grid w-auto sm:w-full min-w-max sm:min-w-0 sm:grid-cols-5 h-auto gap-2 bg-white/50 p-2 rounded-lg"
                   role="tablist"
                   aria-label="Analysis categories"
                 >
                   <TabsTrigger
+                    ref={activeTab === "overview" ? activeTabRef : null}
                     value="overview"
                     className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                     role="tab"
@@ -518,6 +556,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     Overview
                   </TabsTrigger>
                   <TabsTrigger
+                    ref={activeTab === "patterns" ? activeTabRef : null}
                     value="patterns"
                     className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                     role="tab"
@@ -530,6 +569,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     Patterns
                   </TabsTrigger>
                   <TabsTrigger
+                    ref={activeTab === "charts" ? activeTabRef : null}
                     value="charts"
                     className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                     role="tab"
@@ -542,6 +582,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     Charts
                   </TabsTrigger>
                   <TabsTrigger
+                    ref={activeTab === "professional" ? activeTabRef : null}
                     value="professional"
                     className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                     role="tab"
@@ -557,6 +598,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     Professional
                   </TabsTrigger>
                   <TabsTrigger
+                    ref={activeTab === "feedback" ? activeTabRef : null}
                     value="feedback"
                     className="data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm py-3 px-5 rounded-md transition-all whitespace-nowrap touch-manipulation min-h-[48px] min-w-[100px] active:scale-95 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                     role="tab"
@@ -574,7 +616,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 className="text-xs text-center mt-3 sm:hidden bg-purple-50 py-2 px-3 rounded-md text-purple-700 font-medium"
                 aria-live="polite"
               >
-                👆 Swipe left or right to navigate tabs
+                👆 Swipe or slide to navigate tabs
               </p>
             </div>
 
