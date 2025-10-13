@@ -3070,26 +3070,48 @@ export async function analyzeConversation(formData: FormData) {
     // Collect files from FormData
     const files: File[] = []
     let fileIndex = 0
+
+    console.log("[v0] Starting file collection from FormData...")
+
     while (true) {
       const file = formData.get(`file-${fileIndex}`) as File | null
+
+      console.log(
+        `[v0] Checking file-${fileIndex}:`,
+        file ? `Found (${file.name}, ${file.size} bytes, ${file.type})` : "Not found",
+      )
+
       if (!file) break
 
       // Validate file
       if (!file.size) {
+        console.error(`[v0] File ${fileIndex + 1} has no size`)
         return {
           error: `File ${fileIndex + 1} is empty or invalid. Please remove it and try again.`,
         }
       }
 
       if (file.size > 10 * 1024 * 1024) {
+        console.error(`[v0] File ${file.name} is too large: ${file.size} bytes`)
         return {
           error: `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
         }
       }
 
       if (!file.type.startsWith("image/")) {
+        console.error(`[v0] File ${file.name} is not an image: ${file.type}`)
         return {
           error: `File "${file.name}" is not an image. Please upload only image files.`,
+        }
+      }
+
+      try {
+        const testBuffer = await file.arrayBuffer()
+        console.log(`[v0] File ${file.name} is readable (${testBuffer.byteLength} bytes)`)
+      } catch (readError) {
+        console.error(`[v0] File ${file.name} cannot be read:`, readError)
+        return {
+          error: `Unable to read file "${file.name}". The file may be corrupted. Please try uploading it again.`,
         }
       }
 
@@ -3100,6 +3122,7 @@ export async function analyzeConversation(formData: FormData) {
     console.log(`[v0] Found ${files.length} valid files to process`)
 
     if (files.length === 0) {
+      console.error("[v0] No files provided in FormData")
       return { error: "No files provided. Please upload at least one screenshot." }
     }
 
@@ -3129,7 +3152,7 @@ export async function analyzeConversation(formData: FormData) {
         ...analysis,
         subjectALabel,
         subjectBLabel,
-        analyzedConversationText: normalizedText.substring(0, 500), // First 500 chars for reference
+        analyzedConversationText: normalizedText.substring(0, 500),
         messageCount: (normalizedText.match(/\[/g) || []).length,
         screenshotCount: files.length,
         extractionConfidence: Math.min(100, Math.round((normalizedText.length / 500) * 100)),
@@ -3140,6 +3163,7 @@ export async function analyzeConversation(formData: FormData) {
   } catch (error) {
     console.error("[v0] ===== Analysis error =====")
     console.error("[v0] Error details:", error)
+    console.error("[v0] Error stack:", error instanceof Error ? error.stack : "No stack trace")
 
     let errorMessage = "An unexpected error occurred during analysis."
 
@@ -3147,7 +3171,7 @@ export async function analyzeConversation(formData: FormData) {
       if (error.message.includes("timed out")) {
         errorMessage =
           "The analysis is taking longer than expected. This may be due to high server load or large images. Please try again with fewer or smaller images."
-      } else if (error.message.includes("file could not be read")) {
+      } else if (error.message.includes("file could not be read") || error.message.includes("corrupted")) {
         errorMessage =
           "Unable to read one or more uploaded files. Please refresh the page and try uploading your images again."
       } else if (error.message.includes("too large")) {

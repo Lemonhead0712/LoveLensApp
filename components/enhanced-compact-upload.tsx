@@ -366,21 +366,21 @@ export default function EnhancedCompactUpload() {
         {isAnalyzing && <ModernAnalysisLoading progress={progress} message={progressMessage} />}
       </AnimatePresence>
 
-      <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8" id="upload-section">
+      <div className="w-full max-w-4xl mx-auto px-5 sm:px-6 lg:px-8 py-6 sm:py-8" id="upload-section">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <div className="text-center mb-6 sm:mb-8">
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3">Upload Your Conversation</h2>
-            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed px-2">
               Upload screenshots of your text conversations. Our AI analyzes communication patterns, emotional tone, and
               relationship dynamics to provide insights. Results are general guidance, not professional therapy.
             </p>
-            <p className="text-sm sm:text-base text-gray-500 mt-2">
+            <p className="text-sm sm:text-base text-gray-500 mt-2 px-2">
               Tip: Upload at least 3-5 screenshots with 10+ messages for more reliable insights.
             </p>
           </div>
 
           <Card className="border-2 border-gray-200 shadow-lg">
-            <CardContent className="p-4 sm:p-6">
+            <CardContent className="p-5 sm:p-6 lg:p-8">
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -615,7 +615,7 @@ export default function EnhancedCompactUpload() {
             </CardContent>
           </Card>
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center px-2">
             <p className="text-xs sm:text-sm text-gray-500 max-w-2xl mx-auto">
               🔒 Your privacy matters: All analysis happens securely. Images are processed temporarily and automatically
               deleted after analysis. We never store your conversations or personal data.
