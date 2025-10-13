@@ -75,17 +75,16 @@ export default function EnhancedCompactUpload() {
   useEffect(() => {
     const checkFilesFreshness = () => {
       const now = Date.now()
-      const staleFiles = files.filter((file) => now - file.timestamp > 30 * 60 * 1000) // 30 minutes
+      const staleFiles = files.filter((file) => now - file.timestamp > 60 * 60 * 1000) // 60 minutes
       if (staleFiles.length > 0 && !isAnalyzing) {
-        console.log("[v0] Detected stale files, prompting re-upload")
-        setError(
-          `Some files have been uploaded for a while and may need to be refreshed. Please re-upload your screenshots if you encounter any issues.`,
-        )
+        console.log("[v0] Detected very old files (60+ minutes), suggesting re-upload")
+        setError(`Some files were uploaded over an hour ago. For best results, please re-upload your screenshots.`)
       }
     }
 
     if (files.length > 0) {
-      const interval = setInterval(checkFilesFreshness, 60000) // Check every minute
+      const interval = setInterval(checkFilesFreshness, 5 * 60 * 1000) // Check every 5 minutes
+      checkFilesFreshness() // Check immediately on mount
       return () => clearInterval(interval)
     }
   }, [files, isAnalyzing])
@@ -178,7 +177,9 @@ export default function EnhancedCompactUpload() {
 
   const removeFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index))
-    setError(null)
+    if (error?.includes("uploaded over an hour ago")) {
+      setError(null)
+    }
   }
 
   const handleFileDragStart = (e: React.DragEvent, index: number) => {
@@ -529,7 +530,7 @@ export default function EnhancedCompactUpload() {
                         <button
                           onClick={() => removeFile(index)}
                           onKeyDown={(e) => handleRemoveKeyDown(e, index)}
-                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-red-500 min-w-[32px] min-h-[32px] touch-manipulation"
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-red-500 min-w-[32px] min-h-[32px] touch-manipulation shadow-lg"
                           aria-label={`Remove ${file.name}`}
                           type="button"
                         >
