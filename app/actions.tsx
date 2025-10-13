@@ -712,10 +712,13 @@ function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: st
 
   const hasInsufficientData = conversationText.length < 50
 
-  const subjectAMessages =
-    conversationText.length > 0 ? (conversationText.match(new RegExp(`\\[${subjectALabel}\\]`, "gi")) || []).length : 3
-  const subjectBMessages =
-    conversationText.length > 0 ? (conversationText.match(new RegExp(`\\[${subjectBLabel}\\]`, "gi")) || []).length : 3
+  const subjectAMessages = hasInsufficientData
+    ? 3
+    : Math.max(3, (conversationText.match(new RegExp(`\\[${subjectALabel}\\]`, "gi")) || []).length)
+  const subjectBMessages = hasInsufficientData
+    ? 3
+    : Math.max(3, (conversationText.match(new RegExp(`\\[${subjectBLabel}\\]`, "gi")) || []).length)
+  // </CHANGE>
 
   console.log(`[v0] Message distribution: ${subjectALabel}=${subjectAMessages}, ${subjectBLabel}=${subjectBMessages}`)
 
@@ -815,7 +818,7 @@ function createEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: st
     introductionNote: `This analysis examines ${subjectAMessages + subjectBMessages} messages to identify communication patterns, emotional dynamics, and relationship strengths using evidence-based frameworks including the Gottman Method and attachment theory.${hasInsufficientData ? " Note: Analysis is based on limited conversation data. For more accurate insights, consider analyzing a longer conversation with more messages." : ""}`,
 
     communicationStylesAndEmotionalTone: {
-      description: `${subjectALabel} sent ${subjectAMessages} messages (${Math.round((subjectAMessages / (subjectAMessages + subjectBMessages)) * 100)}%) while ${subjectBLabel} sent ${subjectBMessages} messages (${Math.round((subjectBMessages / (subjectAMessages + subjectBMessages)) * 100)}%). ${conflictPattern === "pursue_withdraw" ? "One partner seeks connection while the other needs space, creating a cycle that can be addressed with awareness." : conflictPattern === "mutual_escalation" ? "Both partners intensify emotional responses during conflict." : conflictPattern === "problem_solving" ? "Both partners work together to find solutions." : "Communication shows mixed patterns with varied approaches."}`,
+      description: `${subjectALabel} sent ${subjectAMessages} messages (${Math.round((subjectAMessages / (subjectAMessages + subjectBMessages)) * 100)}%) while ${subjectBLabel} sent ${subjectBMessages} messages (${Math.round((subjectBMessages / (subjectAMessages + subjectBMessages)) * 100)}%).${hasInsufficientData ? " Note: Analysis is based on limited conversation data." : ""} ${conflictPattern === "pursue_withdraw" ? "One partner seeks connection while the other needs space, creating a cycle that can be addressed with awareness." : conflictPattern === "mutual_escalation" ? "Both partners intensify emotional responses during conflict." : conflictPattern === "problem_solving" ? "Both partners work together to find solutions." : "Communication shows mixed patterns with varied approaches."}`,
       // </CHANGE>
 
       emotionalVibeTags: [
