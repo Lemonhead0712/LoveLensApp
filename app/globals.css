@@ -124,6 +124,10 @@
     @apply bg-background text-foreground;
     /* Minimum 16px font size on mobile to prevent iOS zoom */
     font-size: 16px;
+    /* Prevent horizontal scrolling on mobile */
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
   }
 
   /* Ensure inputs don't trigger zoom on iOS */
@@ -264,8 +268,41 @@ html {
   touch-action: manipulation;
 }
 
-/* Minimum touch target size for mobile */
+/* Added mobile-specific overflow prevention */
 @media (max-width: 640px) {
+  /* Prevent any element from causing horizontal scroll */
+  * {
+    max-width: 100%;
+  }
+
+  /* Allow specific containers to have controlled horizontal scroll */
+  .allow-horizontal-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Ensure all containers respect viewport width */
+  body,
+  #__next,
+  main,
+  section,
+  div {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Allow horizontal scroll only for tab containers */
+  [role="tablist"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  [role="tablist"]::-webkit-scrollbar {
+    display: none;
+  }
+
   button,
   a,
   [role="button"],
@@ -302,6 +339,32 @@ html {
   h4 {
     font-size: clamp(1.125rem, 2.5vw, 1.5rem);
   }
+
+  /* Ensure images and media don't overflow */
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Prevent wide tables from causing horizontal scroll */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  /* Ensure pre and code blocks don't overflow */
+  pre,
+  code {
+    max-width: 100%;
+    overflow-x: auto;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
 }
 
 /* Added safe area insets for notched devices */
@@ -318,5 +381,50 @@ html {
   *:focus-visible {
     outline: 3px solid hsl(var(--ring));
     outline-offset: 2px;
+  }
+}
+
+/* Added pinch-to-zoom support with smooth panning when zoomed */
+@media (max-width: 640px) {
+  /* Enable pinch-to-zoom on the entire page */
+  html {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+
+  /* Allow smooth panning when zoomed in */
+  body {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+
+  /* Prevent zoom on double-tap for interactive elements */
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  [role="button"],
+  [role="tab"] {
+    touch-action: manipulation;
+  }
+
+  /* Allow horizontal scroll for specific scrollable containers */
+  .horizontal-scroll-container {
+    touch-action: pan-x pinch-zoom;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Smooth zoom transitions */
+@media (max-width: 640px) {
+  * {
+    transition: transform 0.2s ease-out;
+  }
+
+  /* Disable transitions during zoom for better performance */
+  html.zooming *,
+  html.zooming *::before,
+  html.zooming *::after {
+    transition: none !important;
   }
 }

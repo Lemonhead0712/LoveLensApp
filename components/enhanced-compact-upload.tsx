@@ -2,10 +2,10 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { Loader2, Upload, X, Sparkles } from "lucide-react"
+import { Loader2, Upload, X, Sparkles, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,8 +18,16 @@ import { enhanceImages } from "@/lib/image-processing"
 
 const SAMPLE_IMAGES = ["/sample-conversation-1.jpg", "/sample-conversation-2.jpg", "/sample-conversation-3.jpg"]
 
+interface StoredFile {
+  name: string
+  type: string
+  size: number
+  base64: string
+  timestamp: number
+}
+
 export default function EnhancedCompactUpload() {
-  const [files, setFiles] = useState<File[]>([])
+  const [files, setFiles] = useState<StoredFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -31,11 +39,61 @@ export default function EnhancedCompactUpload() {
   const [subject2Name, setSubject2Name] = useState("")
   const [isUsingSample, setIsUsingSample] = useState(false)
   const [enhancementEnabled, setEnhancementEnabled] = useState(true)
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false)
   const router = useRouter()
+
+  const fileToStoredFile = async (file: File): Promise<StoredFile> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = reader.result as string
+        resolve({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          base64,
+          timestamp: Date.now(),
+        })
+      }
+      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const storedFileToFile = (storedFile: StoredFile): File => {
+    const base64Data = storedFile.base64.split(",")[1]
+    const byteCharacters = atob(base64Data)
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    const blob = new Blob([byteArray], { type: storedFile.type })
+    return new File([blob], storedFile.name, { type: storedFile.type })
+  }
+
+  useEffect(() => {
+    const checkFilesFreshness = () => {
+      const now = Date.now()
+      const staleFiles = files.filter((file) => now - file.timestamp > 30 * 60 * 1000) // 30 minutes
+      if (staleFiles.length > 0 && !isAnalyzing) {
+        console.log("[v0] Detected stale files, prompting re-upload")
+        setError(
+          `Some files have been uploaded for a while and may need to be refreshed. Please re-upload your screenshots if you encounter any issues.`,
+        )
+      }
+    }
+
+    if (files.length > 0) {
+      const interval = setInterval(checkFilesFreshness, 60000) // Check every minute
+      return () => clearInterval(interval)
+    }
+  }, [files, isAnalyzing])
 
   const loadSampleImages = async () => {
     setError(null)
     setIsUsingSample(true)
+    setIsProcessingFiles(true)
 
     try {
       const sampleFiles: File[] = []
@@ -47,13 +105,16 @@ export default function EnhancedCompactUpload() {
         sampleFiles.push(file)
       }
 
-      setFiles(sampleFiles)
+      const storedFiles = await Promise.all(sampleFiles.map(fileToStoredFile))
+      setFiles(storedFiles)
       setSubject1Name("Alex")
       setSubject2Name("Jordan")
     } catch (err) {
       console.error("[v0] Error loading sample images:", err)
       setError("Unable to load sample images. Please try uploading your own screenshots instead.")
       setIsUsingSample(false)
+    } finally {
+      setIsProcessingFiles(false)
     }
   }
 
@@ -67,7 +128,7 @@ export default function EnhancedCompactUpload() {
     setIsDragging(false)
   }
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     setError(null)
@@ -80,10 +141,19 @@ export default function EnhancedCompactUpload() {
       return
     }
 
-    setFiles((prev) => [...prev, ...droppedFiles].slice(0, 10))
+    setIsProcessingFiles(true)
+    try {
+      const storedFiles = await Promise.all(droppedFiles.map(fileToStoredFile))
+      setFiles((prev) => [...prev, ...storedFiles].slice(0, 10))
+    } catch (err) {
+      console.error("[v0] Error processing dropped files:", err)
+      setError("Failed to process some files. Please try again.")
+    } finally {
+      setIsProcessingFiles(false)
+    }
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null)
     setIsUsingSample(false)
 
@@ -94,7 +164,16 @@ export default function EnhancedCompactUpload() {
       return
     }
 
-    setFiles((prev) => [...prev, ...selectedFiles].slice(0, 10))
+    setIsProcessingFiles(true)
+    try {
+      const storedFiles = await Promise.all(selectedFiles.map(fileToStoredFile))
+      setFiles((prev) => [...prev, ...storedFiles].slice(0, 10))
+    } catch (err) {
+      console.error("[v0] Error processing selected files:", err)
+      setError("Failed to process some files. Please try again.")
+    } finally {
+      setIsProcessingFiles(false)
+    }
   }
 
   const removeFile = (index: number) => {
@@ -157,18 +236,12 @@ export default function EnhancedCompactUpload() {
     setError(null)
 
     try {
-      setProgressMessage("Validating files...")
-      console.log("[v0] Validating files before analysis...")
+      setProgressMessage("Converting files...")
+      console.log("[v0] Converting stored files back to File objects...")
 
-      for (const file of files) {
-        if (!file || !file.size || !file.name) {
-          setError(
-            `One or more files appear to be broken or invalid. This can happen if files were uploaded a while ago. Please refresh the page and re-upload your screenshots.`,
-          )
-          setIsAnalyzing(false)
-          return
-        }
+      const fileObjects = files.map(storedFileToFile)
 
+      for (const file of fileObjects) {
         if (file.size > 10 * 1024 * 1024) {
           setError(
             `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
@@ -176,39 +249,21 @@ export default function EnhancedCompactUpload() {
           setIsAnalyzing(false)
           return
         }
-
-        if (!file.type || !file.type.startsWith("image/")) {
-          setError(`File "${file.name}" is not an image. Please upload only image files (PNG, JPG, JPEG).`)
-          setIsAnalyzing(false)
-          return
-        }
-
-        try {
-          const testBlob = file.slice(0, 1)
-          await testBlob.arrayBuffer()
-        } catch (readError) {
-          console.error("[v0] File read test failed:", readError)
-          setError(
-            `Unable to read file "${file.name}". The file may be corrupted or your browser may have lost access to it. Please refresh the page and re-upload your screenshots.`,
-          )
-          setIsAnalyzing(false)
-          return
-        }
       }
 
-      console.log("[v0] All files validated successfully")
+      console.log("[v0] All files ready for analysis")
       setProgress(10)
 
-      let processedFiles = files
+      let processedFiles = fileObjects
       if (enhancementEnabled) {
         setProgressMessage("Enhancing image quality...")
         setProgress(15)
         try {
-          processedFiles = await enhanceImages(files)
+          processedFiles = await enhanceImages(fileObjects)
           console.log("[v0] Images enhanced successfully")
         } catch (enhError) {
           console.warn("[v0] Image enhancement failed, using original files:", enhError)
-          processedFiles = files
+          processedFiles = fileObjects
         }
         setProgress(20)
       }
@@ -241,7 +296,6 @@ export default function EnhancedCompactUpload() {
       if (subject2Name) formData.append("subjectBName", subject2Name)
 
       console.log("[v0] Starting analysis with", files.length, "files")
-      console.log("[v0] File details:", files.map((f) => `${f.name} (${f.size} bytes, ${f.type})`).join(", "))
 
       const results = await analyzeConversation(formData)
 
@@ -274,19 +328,12 @@ export default function EnhancedCompactUpload() {
       }, 500)
     } catch (err: any) {
       console.error("[v0] Error during analysis:", err)
-      console.error("[v0] Error type:", typeof err)
-      console.error("[v0] Error details:", {
-        message: err?.message,
-        name: err?.name,
-        stack: err?.stack,
-      })
 
       let errorMessage = "An unexpected error occurred. Please try again."
 
       if (err?.message) {
         if (err.message.includes("file could not be read") || err.message.includes("permission")) {
-          errorMessage =
-            "Unable to read one or more files. Please refresh the page and try uploading your images again."
+          errorMessage = "Unable to process files. Please refresh the page and re-upload your screenshots."
         } else if (err.message.includes("too large")) {
           errorMessage = err.message
         } else if (err.message.includes("network") || err.message.includes("fetch")) {
@@ -355,7 +402,7 @@ export default function EnhancedCompactUpload() {
                   accept="image/*"
                   onChange={handleFileSelect}
                   className="sr-only"
-                  disabled={isAnalyzing}
+                  disabled={isAnalyzing || isProcessingFiles}
                   aria-describedby="upload-description"
                 />
                 <label
@@ -369,10 +416,19 @@ export default function EnhancedCompactUpload() {
                     }
                   }}
                 >
-                  <Upload className="w-12 h-12 text-purple-500 mb-4" aria-hidden="true" />
-                  <p className="text-base sm:text-lg font-semibold text-gray-700 mb-2">
-                    Drop your screenshots here or click to browse
-                  </p>
+                  {isProcessingFiles ? (
+                    <>
+                      <Loader2 className="w-12 h-12 text-purple-500 mb-4 animate-spin" aria-hidden="true" />
+                      <p className="text-base sm:text-lg font-semibold text-gray-700 mb-2">Processing files...</p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-12 h-12 text-purple-500 mb-4" aria-hidden="true" />
+                      <p className="text-base sm:text-lg font-semibold text-gray-700 mb-2">
+                        Drop your screenshots here or click to browse
+                      </p>
+                    </>
+                  )}
                   <p id="upload-description" className="text-xs sm:text-sm text-gray-500 text-center">
                     Upload up to 10 images (PNG, JPG, JPEG) • Max 10MB each
                   </p>
@@ -383,7 +439,7 @@ export default function EnhancedCompactUpload() {
                     onClick={loadSampleImages}
                     variant="outline"
                     size="sm"
-                    disabled={isAnalyzing}
+                    disabled={isAnalyzing || isProcessingFiles}
                     className="text-purple-600 border-purple-300 hover:bg-purple-50 focus-visible:ring-2 focus-visible:ring-purple-500 min-h-[44px] touch-manipulation bg-transparent"
                     aria-label="Load example conversation screenshots"
                   >
@@ -416,17 +472,20 @@ export default function EnhancedCompactUpload() {
 
               {error && (
                 <Alert variant="destructive" className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
                   <AlertDescription className="flex items-start justify-between gap-2">
                     <span className="flex-1">{error}</span>
-                    <Button
-                      onClick={handleRetry}
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 min-h-[36px] bg-transparent"
-                      aria-label="Retry analysis"
-                    >
-                      Try Again
-                    </Button>
+                    {error.includes("try again") && (
+                      <Button
+                        onClick={handleRetry}
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 min-h-[36px] bg-transparent"
+                        aria-label="Retry analysis"
+                      >
+                        Try Again
+                      </Button>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
@@ -440,7 +499,7 @@ export default function EnhancedCompactUpload() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                     {files.map((file, index) => (
                       <motion.div
-                        key={index}
+                        key={`${file.name}-${index}`}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
@@ -459,7 +518,7 @@ export default function EnhancedCompactUpload() {
                       >
                         <div className="aspect-square rounded-lg bg-gray-100 overflow-hidden border-2 border-gray-200">
                           <img
-                            src={URL.createObjectURL(file) || "/placeholder.svg"}
+                            src={file.base64 || "/placeholder.svg"}
                             alt={`Screenshot ${index + 1}`}
                             className="w-full h-full object-cover"
                           />
@@ -534,7 +593,7 @@ export default function EnhancedCompactUpload() {
                 <Button
                   id="analyze-button"
                   onClick={handleAnalyze}
-                  disabled={files.length === 0 || isAnalyzing}
+                  disabled={files.length === 0 || isAnalyzing || isProcessingFiles}
                   size="lg"
                   className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 min-h-[56px] touch-manipulation"
                   aria-label={
@@ -560,8 +619,8 @@ export default function EnhancedCompactUpload() {
 
           <div className="mt-6 text-center">
             <p className="text-xs sm:text-sm text-gray-500 max-w-2xl mx-auto">
-              🔒 Your privacy matters: All analysis happens locally in your browser. Images are processed temporarily
-              and automatically deleted after analysis. We never store your conversations or personal data.
+              🔒 Your privacy matters: All analysis happens securely. Images are processed temporarily and automatically
+              deleted after analysis. We never store your conversations or personal data.
             </p>
           </div>
         </motion.div>

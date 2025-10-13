@@ -73,7 +73,7 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
           "Content-Type": "application/json",
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         },
-        body: JSON.JSON.stringify({
+        body: JSON.stringify({
           model: "gpt-4o",
           messages: [
             {
@@ -123,7 +123,7 @@ Extract the complete conversation now:`,
             "Content-Type": "application/json",
             Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           },
-          body: JSON.JSON.stringify({
+          body: JSON.stringify({
             model: "gpt-4o",
             messages: [
               {
@@ -1676,10 +1676,13 @@ function trackPatternEvolution(conversationText: string): {
   }
 }
 
+// FIXED PDR SCORE CALCULATION - now uses individual subject pursuit/withdrawal types
 function calculatePDRScores(
   bidirectionalPDR: ReturnType<typeof analyzeBidirectionalPDR>,
-  pursuitType: { healthyPursuit: number; anxiousProtest: number },
-  withdrawalType: { stonewalling: number; healthySpace: number },
+  subjectA_pursuitType: { healthyPursuit: number; anxiousProtest: number },
+  subjectB_pursuitType: { healthyPursuit: number; anxiousProtest: number },
+  subjectA_withdrawalType: { stonewalling: number; healthySpace: number },
+  subjectB_withdrawalType: { stonewalling: number; healthySpace: number },
   repairQuality: ReturnType<typeof assessRepairQuality>,
   repairTiming: ReturnType<typeof analyzeRepairTiming>,
 ): {
@@ -1691,20 +1694,29 @@ function calculatePDRScores(
   subjectB_repairScore: number
 } {
   // Pursue Score: Higher is more pursuit (0-100)
-  const subjectA_pursueScore = Math.min(100, bidirectionalPDR.subjectA_pursues_B * 10 + pursuitType.healthyPursuit * 5)
-  const subjectB_pursueScore = Math.min(100, bidirectionalPDR.subjectB_pursues_A * 10 + pursuitType.healthyPursuit * 5)
+  // Each subject's score is based on their own pursuit behavior
+  const subjectA_pursueScore = Math.min(
+    100,
+    bidirectionalPDR.subjectA_pursues_B * 10 + subjectA_pursuitType.healthyPursuit * 5,
+  )
+  const subjectB_pursueScore = Math.min(
+    100,
+    bidirectionalPDR.subjectB_pursues_A * 10 + subjectB_pursuitType.healthyPursuit * 5,
+  )
 
   // Distance Score: Higher is more distance (0-100)
+  // Each subject's score is based on their own withdrawal behavior
   const subjectA_distanceScore = Math.min(
     100,
-    bidirectionalPDR.subjectA_distances_from_B * 10 + withdrawalType.stonewalling * 5,
+    bidirectionalPDR.subjectA_distances_from_B * 10 + subjectA_withdrawalType.stonewalling * 5,
   )
   const subjectB_distanceScore = Math.min(
     100,
-    bidirectionalPDR.subjectB_distances_from_A * 10 + withdrawalType.stonewalling * 5,
+    bidirectionalPDR.subjectB_distances_from_A * 10 + subjectB_withdrawalType.stonewalling * 5,
   )
 
   // Repair Score: Higher is better repair (0-100)
+  // Quality and timing multipliers are shared, but each subject's score is based on their own repair attempts
   const qualityMultiplier =
     repairQuality.overallQuality === "high" ? 1.5 : repairQuality.overallQuality === "moderate" ? 1.0 : 0.5
   const timingMultiplier =
@@ -1906,7 +1918,9 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
   const pdrScores = calculatePDRScores(
     bidirectionalPDR,
     subjectA_pursuitType,
+    subjectB_pursuitType,
     subjectA_withdrawalType,
+    subjectB_withdrawalType,
     repairQuality,
     repairTiming,
   )
@@ -2271,7 +2285,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     },
 
     communicationStylesAndEmotionalTone: {
-      description: `${emotionalDynamics.primaryDynamic} ${styleMismatchDescription} ${timingInsights.length > 0 ? timingInsights[0] : ""} ${contemptInsights.length > 0 ? contemptInsights[0] : ""}`,
+      description: `${emotionalDynamics.primaryDynamic} ${styleMismatchDescription} ${timingInsights.length > 0 ? timingInsights[0] : ""}} ${contemptInsights.length > 0 ? contemptInsights[0] : ""}`,
       emotionalVibeTags: [
         emotionalTone.warmth > 5 ? "Warm" : "Building Warmth",
         emotionalTone.tension > 5 || profanityAnalysis.intensityLevel === "high" ? "High Tension" : "Generally Relaxed",

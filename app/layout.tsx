@@ -19,6 +19,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Love Lens - Relationship Insight",
   description: "Analyze relationship conversations for emotional patterns and insights",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 5,
+    userScalable: true,
+    viewportFit: "cover",
+  },
     generator: 'v0.app'
 }
 

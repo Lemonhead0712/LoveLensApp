@@ -8,7 +8,7 @@ import CompactFooter from "@/components/compact-footer"
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-white overflow-x-hidden max-w-full">
       <CompactHeader />
       <StreamlinedHero />
       <StreamlinedFeatures />

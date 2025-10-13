@@ -70,9 +70,9 @@ export default function ZodiacCompatibilityPage() {
   }
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-white overflow-x-hidden max-w-full">
       <CompactHeader />
-      <div className="bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 py-6 sm:py-8 md:py-12 lg:py-16 px-3 sm:px-4">
+      <div className="bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 py-6 sm:py-8 md:py-12 lg:py-16 px-3 sm:px-4 overflow-x-hidden">
         <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 md:space-y-10 lg:space-y-12">
           {/* Header */}
           <motion.div
@@ -314,35 +314,37 @@ export default function ZodiacCompatibilityPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-2 border-purple-200 bg-white shadow-xl">
+                <Card className="border-2 border-purple-200 bg-white shadow-xl overflow-x-hidden">
                   <CardContent className="pt-6">
                     <Tabs defaultValue="personality" className="w-full">
-                      <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-2">
-                        <TabsTrigger value="personality" className="text-xs sm:text-sm">
-                          <Brain className="w-4 h-4 mr-1" />
-                          Personality
-                        </TabsTrigger>
-                        <TabsTrigger value="intimacy" className="text-xs sm:text-sm">
-                          <Flame className="w-4 h-4 mr-1" />
-                          Intimacy
-                        </TabsTrigger>
-                        <TabsTrigger value="passions" className="text-xs sm:text-sm">
-                          <Zap className="w-4 h-4 mr-1" />
-                          Passions
-                        </TabsTrigger>
-                        <TabsTrigger value="ambitions" className="text-xs sm:text-sm">
-                          <Target className="w-4 h-4 mr-1" />
-                          Ambitions
-                        </TabsTrigger>
-                        <TabsTrigger value="dynamics" className="text-xs sm:text-sm">
-                          <Users className="w-4 h-4 mr-1" />
-                          Dynamics
-                        </TabsTrigger>
-                        <TabsTrigger value="advice" className="text-xs sm:text-sm">
-                          <Lightbulb className="w-4 h-4 mr-1" />
-                          Advice
-                        </TabsTrigger>
-                      </TabsList>
+                      <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide">
+                        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 gap-2 min-w-max lg:min-w-0">
+                          <TabsTrigger value="personality" className="text-xs sm:text-sm whitespace-nowrap">
+                            <Brain className="w-4 h-4 mr-1 flex-shrink-0" />
+                            Personality
+                          </TabsTrigger>
+                          <TabsTrigger value="intimacy" className="text-xs sm:text-sm whitespace-nowrap">
+                            <Flame className="w-4 h-4 mr-1 flex-shrink-0" />
+                            Intimacy
+                          </TabsTrigger>
+                          <TabsTrigger value="passions" className="text-xs sm:text-sm whitespace-nowrap">
+                            <Zap className="w-4 h-4 mr-1 flex-shrink-0" />
+                            Passions
+                          </TabsTrigger>
+                          <TabsTrigger value="ambitions" className="text-xs sm:text-sm whitespace-nowrap">
+                            <Target className="w-4 h-4 mr-1 flex-shrink-0" />
+                            Ambitions
+                          </TabsTrigger>
+                          <TabsTrigger value="dynamics" className="text-xs sm:text-sm whitespace-nowrap">
+                            <Users className="w-4 h-4 mr-1 flex-shrink-0" />
+                            Dynamics
+                          </TabsTrigger>
+                          <TabsTrigger value="advice" className="text-xs sm:text-sm whitespace-nowrap">
+                            <Lightbulb className="w-4 h-4 mr-1 flex-shrink-0" />
+                            Advice
+                          </TabsTrigger>
+                        </TabsList>
+                      </div>
 
                       {/* Personality Tab */}
                       <TabsContent value="personality" className="space-y-6 mt-6">
