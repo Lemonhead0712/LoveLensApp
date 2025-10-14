@@ -25,12 +25,90 @@ function logDiagnostic(level: DiagnosticLog["level"], message: string, data?: an
   }
 }
 
+// CHANGE Add environment detection and configuration
+const isProduction = process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
+const MAX_IMAGES_PER_BATCH = isProduction ? 2 : 5 // Smaller batches in production
+const MAX_IMAGE_SIZE = isProduction ? 800 : 1200 // Smaller images in production
+const REQUEST_TIMEOUT = isProduction ? 60000 : 120000 // Shorter timeout in production
+
 // Helper function to add timeout to promises
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
   const timeoutPromise = new Promise<T>((_, reject) => {
     setTimeout(() => reject(new Error(`${operationName} timed out after ${timeoutMs}ms`)), timeoutMs)
   })
   return Promise.race([promise, timeoutPromise])
+}
+
+// CHANGE Add image compression function for production
+async function compressImage(file: File, maxSize: number): Promise<File> {
+  try {
+    logDiagnostic("info", `Compressing image: ${file.name}`, { originalSize: file.size })
+
+    // Create image element
+    const img = new Image()
+    const canvas = document.createElement("canvas")
+    const ctx = canvas.getContext("2d")
+
+    if (!ctx) {
+      throw new Error("Could not get canvas context")
+    }
+
+    // Load image
+    const imageUrl = URL.createObjectURL(file)
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = reject
+      img.src = imageUrl
+    })
+
+    // Calculate new dimensions
+    let width = img.width
+    let height = img.height
+
+    if (width > maxSize || height > maxSize) {
+      if (width > height) {
+        height = (height / width) * maxSize
+        width = maxSize
+      } else {
+        width = (width / height) * maxSize
+        height = maxSize
+      }
+    }
+
+    // Resize image
+    canvas.width = width
+    canvas.height = height
+    ctx.drawImage(img, 0, 0, width, height)
+
+    // Convert to blob
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob)
+          else reject(new Error("Failed to create blob"))
+        },
+        "image/jpeg",
+        0.85,
+      )
+    })
+
+    URL.revokeObjectURL(imageUrl)
+
+    const compressedFile = new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
+      type: "image/jpeg",
+    })
+
+    logDiagnostic("info", `Image compressed`, {
+      originalSize: file.size,
+      compressedSize: compressedFile.size,
+      reduction: `${(((file.size - compressedFile.size) / file.size) * 100).toFixed(1)}%`,
+    })
+
+    return compressedFile
+  } catch (error) {
+    logDiagnostic("warn", `Compression failed, using original`, error)
+    return file
+  }
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -49,40 +127,27 @@ async function fileToBase64(file: File): Promise<string> {
       throw new Error(`File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
     }
 
-    // Use FileReader API for faster conversion
+    // CHANGE Use FileReader for more reliable conversion
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
-
       reader.onload = () => {
-        try {
-          const result = reader.result as string
-          if (!result || !result.includes(",")) {
-            reject(new Error("Invalid FileReader result"))
-            return
-          }
-          const base64 = result.split(",")[1]
-          logDiagnostic("info", `File converted successfully: ${base64.length} characters`)
-          resolve(base64)
-        } catch (error) {
-          logDiagnostic("error", "Error processing FileReader result", error)
-          reject(error)
-        }
+        const base64 = (reader.result as string).split(",")[1]
+        logDiagnostic("info", `Base64 conversion complete: ${base64.length} characters`)
+        resolve(base64)
       }
-
       reader.onerror = () => {
-        const error = new Error(`FileReader error: ${reader.error?.message || "Unknown error"}`)
-        logDiagnostic("error", "FileReader failed", error)
-        reject(error)
+        logDiagnostic("error", `FileReader error for ${file.name}`, reader.error)
+        reject(new Error(`Failed to read file: ${reader.error?.message}`))
       }
-
       reader.readAsDataURL(file)
     })
   } catch (error) {
-    logDiagnostic("error", "Error in fileToBase64", error)
-    throw new Error(`Failed to process image file: ${error instanceof Error ? error.message : "Unknown error"}`)
+    logDiagnostic("error", `Failed to convert ${file.name} to base64`, error)
+    throw error
   }
 }
 
+// CHANGE Add chunked extraction for production
 async function extractTextFromMultipleImages(files: File[]): Promise<{
   extractedTexts: Array<{ text: string; imageIndex: number }>
   totalProcessingTime: number
@@ -90,96 +155,171 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
   const startTime = Date.now()
 
   try {
-    logDiagnostic("info", `Starting OCR extraction for ${files.length} files`)
+    logDiagnostic("info", `Starting OCR extraction for ${files.length} files`, {
+      environment: isProduction ? "production" : "development",
+      batchSize: MAX_IMAGES_PER_BATCH,
+    })
 
-    const base64Results = await Promise.allSettled(
-      files.map(async (file, index) => {
-        try {
-          const base64 = await fileToBase64(file)
-          return {
-            type: "image_url" as const,
-            image_url: {
-              url: `data:${file.type};base64,${base64}`,
-            },
-          }
-        } catch (error) {
-          logDiagnostic("error", `Failed to convert image ${index + 1}`, error)
-          return null
-        }
-      }),
-    )
-
-    const validImages = base64Results
-      .filter((result) => result.status === "fulfilled" && result.value !== null)
-      .map((result) => (result as PromiseFulfilledResult<any>).value)
-
-    logDiagnostic("info", `Converted ${validImages.length}/${files.length} images successfully`)
-
-    if (validImages.length === 0) {
-      logDiagnostic("warn", "No valid images to process")
-      return {
-        extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
-        totalProcessingTime: Date.now() - startTime,
-      }
+    // CHANGE Process images in chunks for production
+    const chunks: File[][] = []
+    for (let i = 0; i < files.length; i += MAX_IMAGES_PER_BATCH) {
+      chunks.push(files.slice(i, i + MAX_IMAGES_PER_BATCH))
     }
 
-    let extractedText = ""
-    try {
-      logDiagnostic("info", `Sending ${validImages.length} images to OpenAI API`)
+    logDiagnostic("info", `Processing ${chunks.length} chunks of images`)
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `Extract ALL conversation text from these screenshots. Format: [Speaker]: "message". Preserve chronological order, timestamps, emojis, and emotional markers. Identify speakers consistently.`,
-                },
-                ...validImages,
-              ],
-            },
-          ],
-          max_tokens: 4000,
-          temperature: 0.1,
-        }),
+    const allExtractedTexts: Array<{ text: string; imageIndex: number }> = []
+
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex]
+      logDiagnostic("info", `Processing chunk ${chunkIndex + 1}/${chunks.length}`, {
+        imagesInChunk: chunk.length,
       })
 
-      logDiagnostic("info", `OpenAI API response status: ${response.status}`)
+      try {
+        // CHANGE Compress images in production
+        const processedFiles = isProduction
+          ? await Promise.all(chunk.map((file) => compressImage(file, MAX_IMAGE_SIZE)))
+          : chunk
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        logDiagnostic("error", `OpenAI API error: ${response.status}`, errorText)
-        throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
-      }
+        const base64Results = await Promise.allSettled(
+          processedFiles.map(async (file, index) => {
+            try {
+              const base64 = await withTimeout(fileToBase64(file), 30000, `File conversion for ${file.name}`)
+              return {
+                type: "image_url" as const,
+                image_url: {
+                  url: `data:${file.type};base64,${base64}`,
+                },
+              }
+            } catch (error) {
+              logDiagnostic("error", `Failed to convert image ${index + 1}`, error)
+              return null
+            }
+          }),
+        )
 
-      const data = await response.json()
-      extractedText = data.choices?.[0]?.message?.content || ""
-      logDiagnostic("info", `Extraction successful: ${extractedText.length} characters`)
-    } catch (error) {
-      logDiagnostic("error", "OCR extraction failed", error)
-      return {
-        extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
-        totalProcessingTime: Date.now() - startTime,
+        const validImages = base64Results
+          .filter((result) => result.status === "fulfilled" && result.value !== null)
+          .map((result) => (result as PromiseFulfilledResult<any>).value)
+
+        logDiagnostic("info", `Converted ${validImages.length}/${chunk.length} images in chunk ${chunkIndex + 1}`)
+
+        if (validImages.length === 0) {
+          logDiagnostic("warn", `No valid images in chunk ${chunkIndex + 1}`)
+          continue
+        }
+
+        // CHANGE Add retry logic with exponential backoff
+        let extractedText = ""
+        let retries = 0
+        const maxRetries = 3
+
+        while (retries < maxRetries) {
+          try {
+            logDiagnostic("info", `Sending chunk ${chunkIndex + 1} to OpenAI API (attempt ${retries + 1})`)
+
+            const response = await withTimeout(
+              fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                },
+                body: JSON.stringify({
+                  model: "gpt-4o",
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        {
+                          type: "text",
+                          text: `Extract ALL conversation text from these screenshots. Format: [Speaker]: "message". Preserve chronological order, timestamps, emojis, and emotional markers. Identify speakers consistently.`,
+                        },
+                        ...validImages,
+                      ],
+                    },
+                  ],
+                  max_tokens: 4000,
+                  temperature: 0.1,
+                }),
+              }),
+              REQUEST_TIMEOUT,
+              "OpenAI API request",
+            )
+
+            logDiagnostic("info", `OpenAI API response status: ${response.status}`)
+
+            if (!response.ok) {
+              const errorText = await response.text()
+              logDiagnostic("error", `OpenAI API error: ${response.status}`, errorText)
+
+              // CHANGE Retry on rate limit or server errors
+              if (response.status === 429 || response.status >= 500) {
+                retries++
+                if (retries < maxRetries) {
+                  const delay = Math.pow(2, retries) * 1000 // Exponential backoff
+                  logDiagnostic("info", `Retrying after ${delay}ms...`)
+                  await new Promise((resolve) => setTimeout(resolve, delay))
+                  continue
+                }
+              }
+
+              throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
+            }
+
+            const data = await response.json()
+            extractedText = data.choices?.[0]?.message?.content || ""
+            logDiagnostic(
+              "info",
+              `Extraction successful for chunk ${chunkIndex + 1}: ${extractedText.length} characters`,
+            )
+            break // Success, exit retry loop
+          } catch (error) {
+            logDiagnostic("error", `OCR extraction failed for chunk ${chunkIndex + 1} (attempt ${retries + 1})`, error)
+            retries++
+            if (retries >= maxRetries) {
+              throw error
+            }
+            const delay = Math.pow(2, retries) * 1000
+            logDiagnostic("info", `Retrying after ${delay}ms...`)
+            await new Promise((resolve) => setTimeout(resolve, delay))
+          }
+        }
+
+        if (extractedText) {
+          allExtractedTexts.push({
+            text: extractedText,
+            imageIndex: chunkIndex * MAX_IMAGES_PER_BATCH,
+          })
+        }
+      } catch (error) {
+        logDiagnostic("error", `Failed to process chunk ${chunkIndex + 1}`, error)
+        // Continue with next chunk instead of failing completely
       }
     }
 
     const totalProcessingTime = Date.now() - startTime
-    logDiagnostic("info", `Total OCR processing time: ${totalProcessingTime}ms`)
+    logDiagnostic("info", `Total OCR processing time: ${totalProcessingTime}ms`, {
+      totalChunks: chunks.length,
+      successfulExtractions: allExtractedTexts.length,
+    })
+
+    // CHANGE Return combined results or empty if all failed
+    if (allExtractedTexts.length === 0) {
+      logDiagnostic("warn", "No text extracted from any images")
+      return {
+        extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
+        totalProcessingTime,
+      }
+    }
 
     return {
-      extractedTexts: [{ text: extractedText, imageIndex: 0 }],
+      extractedTexts: allExtractedTexts,
       totalProcessingTime,
     }
   } catch (error) {
-    logDiagnostic("error", "Batch extraction error", error)
+    logDiagnostic("error", "Fatal error in extractTextFromMultipleImages", error)
     return {
       extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
       totalProcessingTime: Date.now() - startTime,
@@ -2351,8 +2491,8 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
         Math.abs(subjectAMessages - subjectBMessages) < 2
           ? `Both partners contribute fairly equally to the conversation, which might suggest mutual investment in the relationship. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`
           : `${subjectALabel} tends to initiate or sustain conversation more often (${subjectALabel} ${subjectAMessages} vs ${subjectBLabel} ${subjectBMessages} messages). This might reflect different communication styles, energy levels, or comfort with verbal expression—not necessarily different levels of care. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`,
-      subjectAStyle: `${subjectALabel} ${subjectAIsMoreActive ? "actively engages in dialogue" : "contributes steadily"} with ${subjectAStyle.expressiveStyle} messages (average ${Math.round(subjectAStyle.avgLength)} characters). ${subjectATiming.anxiousPursuit ? "Sends rapid-fire messages when anxious or seeking connection." : ""} ${subjectAStyle.oneWordReplies > 1 ? "Brief replies may indicate emotional fatigue or overwhelm rather than disengagement." : ""} ${emotionalPatterns.vulnerabilityBids > 1 ? "Sometimes shares vulnerable feelings" : "Navigating when and how to share feelings"}. ${subjectAAccountability.takesResponsibility > 0 ? "Takes responsibility when appropriate" : subjectAAccountability.blamesOther > 1 ? "Tends to blame rather than own their part" : "Learning accountability"}. ${emotionalPatterns.defensiveResponses > 1 ? "When feeling criticized, there's a tendency to defend or explain, which could be a natural protective response." : "There's an openness to hearing feedback, even when it's difficult."}`,
-      subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages (average ${Math.round(subjectBStyle.avgLength)} characters). ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Owns their part in conflicts" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
+      subjectAStyle: `${subjectALabel} ${subjectAIsMoreActive ? "actively engages in dialogue" : "contributes steadily"} with ${subjectAStyle.expressiveStyle} messages. ${subjectATiming.anxiousPursuit ? "Sends rapid-fire messages when anxious or seeking connection." : ""} ${subjectAStyle.oneWordReplies > 1 ? "Brief replies may indicate emotional fatigue or overwhelm rather than disengagement." : ""} ${emotionalPatterns.vulnerabilityBids > 1 ? "Sometimes shares vulnerable feelings" : "Navigating when and how to share feelings"}. ${subjectAAccountability.takesResponsibility > 0 ? "Takes responsibility when appropriate" : subjectAAccountability.blamesOther > 1 ? "Tends to blame rather than own their part" : "Learning accountability"}. ${emotionalPatterns.defensiveResponses > 1 ? "When feeling criticized, there's a tendency to defend or explain, which could be a natural protective response." : "There's an openness to hearing feedback, even when it's difficult."}`,
+      subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages. ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Owns their part in conflicts" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
       punctuationInsights:
         punctuationInsights.length > 0
           ? punctuationInsights
@@ -3109,6 +3249,7 @@ export async function analyzeConversation(formData: FormData) {
   try {
     logDiagnostic("info", "===== Starting conversation analysis =====", {
       environment: process.env.NEXT_PUBLIC_VERCEL_ENV || "development",
+      isProduction,
       timestamp: new Date().toISOString(),
     })
 
@@ -3190,6 +3331,8 @@ export async function analyzeConversation(formData: FormData) {
       }
     }
 
+    // CHANGE: Combine all extracted texts
+    // CHANGE: Use environment-specific timeout
     const analysisPromise = (async () => {
       logDiagnostic("info", `Starting batch OCR extraction for ${files.length} files`)
 
@@ -3200,9 +3343,12 @@ export async function analyzeConversation(formData: FormData) {
         totalCharacters: extractedTexts.reduce((sum, e) => sum + e.text.length, 0),
       })
 
+      // CHANGE: Combine all extracted texts
+      const combinedText = extractedTexts.map((e) => e.text).join("\n\n")
+
       // Normalize speaker labels
       const { normalizedText, subjectALabel, subjectBLabel } = normalizeSpeakers(
-        extractedTexts,
+        [{ text: combinedText, imageIndex: 0 }], // Pass combined text as a single entry
         subjectAName,
         subjectBName,
       )
@@ -3223,38 +3369,36 @@ export async function analyzeConversation(formData: FormData) {
         ...analysis,
         subjectALabel,
         subjectBLabel,
-        analyzedConversationText: normalizedText.substring(0, 500),
-        messageCount: (normalizedText.match(/\[/g) || []).length,
-        screenshotCount: files.length,
-        extractionConfidence: Math.min(100, Math.round((normalizedText.length / 500) * 100)),
+        diagnostics: diagnosticLogs, // Include logs in the final result
       }
     })()
 
-    return await withTimeout(analysisPromise, 300000, "Complete analysis")
-  } catch (error) {
-    logDiagnostic("error", "===== Analysis error =====", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    const result = await withTimeout(analysisPromise, isProduction ? 180000 : 300000, "Full analysis")
+
+    return result
+  } catch (error: any) {
+    logDiagnostic("error", "===== Analysis failed =====", {
+      error: error.message,
+      stack: error.stack,
     })
 
-    let errorMessage = "An unexpected error occurred during analysis."
+    let errorMessage = "An unexpected error occurred during analysis. Please try again."
 
-    if (error instanceof Error) {
-      if (error.message.includes("timed out")) {
-        errorMessage =
-          "The analysis is taking longer than expected. This may be due to high server load or large images. Please try again with fewer or smaller images."
-      } else if (error.message.includes("file could not be read") || error.message.includes("corrupted")) {
-        errorMessage =
-          "Unable to read one or more uploaded files. Please refresh the page and try uploading your images again."
-      } else if (error.message.includes("too large")) {
-        errorMessage = error.message
-      } else if (error.message.includes("not an image")) {
-        errorMessage = error.message
-      } else if (error.message.includes("OpenAI API")) {
-        errorMessage = `Server error: ${error.message}. Please try again in a few moments.`
-      } else {
-        errorMessage = `Analysis failed: ${error.message}`
-      }
+    if (error.message.includes("timed out")) {
+      errorMessage =
+        "Analysis timed out. This usually happens with many large images. Try uploading fewer screenshots or smaller file sizes."
+    } else if (error.message.includes("too large")) {
+      errorMessage = error.message
+    } else if (error.message.includes("empty or invalid")) {
+      errorMessage = error.message
+    } else if (error.message.includes("not an image")) {
+      errorMessage = error.message
+    } else if (error.message.includes("OpenAI API")) {
+      errorMessage = `Server error: ${error.message}. Please try again in a few moments.`
+    } else if (error.message.includes("Failed to read file")) {
+      errorMessage = `${error.message} Please re-upload your screenshots.`
+    } else {
+      errorMessage = `Analysis failed: ${error.message}`
     }
 
     return {

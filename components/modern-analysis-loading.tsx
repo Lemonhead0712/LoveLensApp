@@ -36,21 +36,6 @@ export default function ModernAnalysisLoading({
                 className="object-contain"
                 priority
               />
-              <motion.div
-                className="absolute inset-0 rounded-full"
-                style={{
-                  border: "4px solid transparent",
-                  borderTopColor: "#9333ea",
-                  borderRightColor: "#ec4899",
-                  willChange: "transform",
-                }}
-                animate={{ rotate: 360 }}
-                transition={{
-                  duration: 2,
-                  repeat: Number.POSITIVE_INFINITY,
-                  ease: "linear",
-                }}
-              />
             </div>
           </motion.div>
 
