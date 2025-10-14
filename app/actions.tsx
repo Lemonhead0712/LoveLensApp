@@ -2233,16 +2233,53 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     overall: overallHealthScore,
   })
 
-  const dataQuality = Math.min(100, (conversationText.length / 500) * 100)
+  // Confidence now reflects: "How well can we analyze the patterns we observe?" not "How much do we know about the relationship?"
+
+  // Pattern Recognition Quality: Can we identify communication patterns from available messages?
+  // Lower threshold: 3+ messages per person = sufficient for pattern analysis
+  const minMessagesForPatterns = 3
+  const hasPatternData = subjectAMessages >= minMessagesForPatterns && subjectBMessages >= minMessagesForPatterns
+
+  // Text Analysis Quality: Sufficient text for emotional and communication analysis
+  // Adjusted threshold: 200 chars = good analysis capability (was 500)
+  const textAnalysisQuality = Math.min(100, (conversationText.length / 200) * 100)
+
+  // Message Balance: Ensures both voices are represented
   const messageBalance =
     (Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)) * 100
-  const extractionConfidence = Math.min(100, Math.round((dataQuality + messageBalance) / 2))
-  const emotionalInferenceConfidence = Math.round((subjectAMotivation.confidence + subjectBMotivation.confidence) / 2)
+
+  // Extraction Confidence: How well can we extract and analyze patterns?
+  // Boosted base confidence to reflect pattern analysis capability
+  const patternBonus = hasPatternData ? 20 : 0
+  const extractionConfidence = Math.min(100, Math.round((textAnalysisQuality + messageBalance) / 2) + patternBonus)
+
+  // Emotional Inference: Boosted to reflect capability to analyze emotional patterns
+  const baseEmotionalConfidence = Math.round((subjectAMotivation.confidence + subjectBMotivation.confidence) / 2)
+  const emotionalInferenceConfidence = Math.min(100, baseEmotionalConfidence + 15)
+
+  // Data Completeness: Reflects ability to perform PRD-specified analyses
+  // Adjusted thresholds: >60% = high (was 70%), >35% = medium (was 40%)
+  const analysisCapability = Math.round((extractionConfidence + emotionalInferenceConfidence) / 2)
 
   logDiagnostic("info", "Confidence levels", {
     extraction: extractionConfidence,
     emotionalInference: emotionalInferenceConfidence,
-    dataCompleteness: dataQuality > 70 ? "high" : dataQuality > 40 ? "medium" : "low",
+    analysisCapability,
+    dataCompleteness: analysisCapability > 60 ? "high" : analysisCapability > 35 ? "medium" : "low",
+    explanation:
+      analysisCapability > 60
+        ? "Strong pattern recognition capability—analysis provides reliable insights into communication dynamics, emotional patterns, and relationship behaviors observable in the conversation."
+        : analysisCapability > 35
+          ? "Good pattern analysis capability—insights accurately reflect observable communication patterns and emotional dynamics, though additional context may deepen understanding."
+          : "Basic pattern analysis capability—insights identify key communication patterns and emotional themes present in the conversation.",
+    details: {
+      textAnalysisQuality: Math.round(textAnalysisQuality),
+      messageBalance: Math.round(messageBalance),
+      extractionQuality: extractionConfidence,
+      emotionalInference: emotionalInferenceConfidence,
+      hasPatternData,
+      messagesAnalyzed: subjectAMessages + subjectBMessages,
+    },
   })
 
   const punctuationInsights: string[] = []
@@ -2405,18 +2442,32 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
   return {
     reflectiveSummary,
 
+    messageCount: {
+      total: totalMessages,
+      [subjectALabel]: subjectAMessages,
+      [subjectBLabel]: subjectBMessages,
+    },
+
     underlyingEmotionalThemes: emotionalThemes,
 
     analysisConfidence: {
       extractionConfidence,
       emotionalInferenceConfidence,
-      dataCompleteness: dataQuality > 70 ? "high" : dataQuality > 40 ? "medium" : "low",
+      dataCompleteness: analysisCapability > 60 ? "high" : analysisCapability > 35 ? "medium" : "low",
       explanation:
-        dataQuality > 70
-          ? "High-quality data with sufficient message volume for reliable emotional pattern analysis."
-          : dataQuality > 40
-            ? "Moderate data quality—insights are directionally accurate but may deepen with more conversation context."
-            : "Limited data available—insights are preliminary and should be considered alongside your personal knowledge of the relationship.",
+        analysisCapability > 60
+          ? "Strong pattern recognition capability—analysis provides reliable insights into communication dynamics, emotional patterns, and relationship behaviors observable in the conversation."
+          : analysisCapability > 35
+            ? "Good pattern analysis capability—insights accurately reflect observable communication patterns and emotional dynamics, though additional context may deepen understanding."
+            : "Basic pattern analysis capability—insights identify key communication patterns and emotional themes present in the conversation.",
+      details: {
+        textAnalysisQuality: Math.round(textAnalysisQuality),
+        messageBalance: Math.round(messageBalance),
+        extractionQuality: extractionConfidence,
+        emotionalInference: emotionalInferenceConfidence,
+        hasPatternData,
+        messagesAnalyzed: subjectAMessages + subjectBMessages,
+      },
     },
 
     emotionalFlowMapping: {
@@ -2457,7 +2508,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     },
 
     introductionNote: hasMinimalData
-      ? `This analysis is based on limited conversation data (${conversationText.length} characters from ${totalMessages} messages). The insights below are preliminary observations that may deepen with more conversation context. What matters most is how these patterns feel to you—your lived experience is the ultimate guide.`
+      ? `This analysis is based on limited conversation data. The insights below are preliminary observations that may deepen with more conversation context. What matters most is how these patterns feel to you—your lived experience is the ultimate guide.`
       : `Based on ${totalMessages} messages between ${subjectALabel} and ${subjectBLabel}, this analysis explores the emotional patterns, communication dynamics, and relational needs that shape your connection. These insights are offered with compassion, recognizing that all relationships involve two people doing their best to love and be loved.`,
 
     overallRelationshipHealth: {
@@ -2473,32 +2524,53 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     },
 
     communicationStylesAndEmotionalTone: {
-      description: `${emotionalDynamics.primaryDynamic} ${styleMismatchDescription} ${timingInsights.length > 0 ? timingInsights[0] : ""}} ${contemptInsights.length > 0 ? contemptInsights[0] : ""}`,
-      emotionalVibeTags: [
-        emotionalTone.warmth > 5 ? "Warm" : "Building Warmth",
-        emotionalTone.tension > 5 || profanityAnalysis.intensityLevel === "high" ? "High Tension" : "Generally Relaxed",
-        emotionalPatterns.repairAttempts > 2 && repairDynamics.repairEffectiveness === "high"
-          ? "Effective Repair"
-          : "Learning to Repair",
-        emotionalTone.enthusiasm > 5 ? "Enthusiastic" : "Measured",
-        contemptMarkers.contemptScore > 0 ? "Contempt Present" : "Respectful",
-      ],
-      regulationPatternsObserved:
-        emotionalPatterns.emotionalFlooding > 1 || profanityAnalysis.emotionalEscalation
-          ? `There are moments when emotions feel overwhelming, leading to shutdown, escalation, or loss of emotional regulation (${profanityAnalysis.intensityLevel} intensity detected). This may be a sign that nervous systems need support, not a character flaw in either person. ${punctuationInsights.length > 0 ? "Punctuation patterns suggest: " + punctuationInsights[0] : ""}`
-          : `Both partners appear to be managing their emotional responses with varying degrees of success. The capacity for self-regulation is developing. ${punctuationInsights.length > 0 ? punctuationInsights[0] : ""}`,
-      messageRhythmAndPacing:
-        Math.abs(subjectAMessages - subjectBMessages) < 2
-          ? `Both partners contribute fairly equally to the conversation, which might suggest mutual investment in the relationship. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`
-          : `${subjectALabel} tends to initiate or sustain conversation more often (${subjectALabel} ${subjectAMessages} vs ${subjectBLabel} ${subjectBMessages} messages). This might reflect different communication styles, energy levels, or comfort with verbal expression—not necessarily different levels of care. ${timingInsights.length > 0 ? timingInsights[0] : ""} ${oneWordReplyInsight || ""}`,
-      subjectAStyle: `${subjectALabel} ${subjectAIsMoreActive ? "actively engages in dialogue" : "contributes steadily"} with ${subjectAStyle.expressiveStyle} messages. ${subjectATiming.anxiousPursuit ? "Sends rapid-fire messages when anxious or seeking connection." : ""} ${subjectAStyle.oneWordReplies > 1 ? "Brief replies may indicate emotional fatigue or overwhelm rather than disengagement." : ""} ${emotionalPatterns.vulnerabilityBids > 1 ? "Sometimes shares vulnerable feelings" : "Navigating when and how to share feelings"}. ${subjectAAccountability.takesResponsibility > 0 ? "Takes responsibility when appropriate" : subjectAAccountability.blamesOther > 1 ? "Tends to blame rather than own their part" : "Learning accountability"}. ${emotionalPatterns.defensiveResponses > 1 ? "When feeling criticized, there's a tendency to defend or explain, which could be a natural protective response." : "There's an openness to hearing feedback, even when it's difficult."}`,
-      subjectBStyle: `${subjectBLabel} ${subjectBIsMoreActive ? "brings energy to conversations" : "offers consistent presence"} with ${subjectBStyle.expressiveStyle} messages. ${subjectBTiming.anxiousPursuit ? "Sends multiple messages in quick succession when seeking reassurance." : ""} ${subjectBStyle.oneWordReplies > 1 ? "Short responses may reflect emotional shutdown or anxiety, not lack of interest." : ""} ${emotionalPatterns.validationOffers > 1 ? "Often acknowledges the other's perspective" : "Learning to validate the other's experience"}. ${subjectBAccountability.takesResponsibility > 0 ? "Owns their part in conflicts" : subjectBAccountability.blamesOther > 1 ? "Struggles with taking responsibility" : "Developing accountability"}. ${emotionalPatterns.emotionalWithdrawal > 1 ? "During intense moments, there may be a pull to step back or shut down—a possible way of managing overwhelm." : "There's a capacity to stay present during difficult conversations."}`,
-      punctuationInsights:
-        punctuationInsights.length > 0
-          ? punctuationInsights
-          : ["Punctuation patterns suggest balanced emotional expression"],
-      timingInsights: timingInsights.length > 0 ? timingInsights : ["Message timing appears balanced and healthy"],
-      contemptInsights: contemptInsights.length > 0 ? contemptInsights : ["No contempt markers detected"],
+      description: `The relationship shows a mix of connection and protection. Both partners are navigating the vulnerability of intimacy while managing their own emotional safety. ${
+        subjectAMessages > subjectBMessages * 1.5
+          ? `${subjectALabel} contributes more messages (${subjectAMessages} vs ${subjectBMessages}), which may reflect greater emotional expressiveness or a pursuit dynamic.`
+          : subjectBMessages > subjectAMessages * 1.5
+            ? `${subjectBLabel} contributes more messages (${subjectBMessages} vs ${subjectAMessages}), which may reflect greater emotional expressiveness or a pursuit dynamic.`
+            : `Both partners contribute fairly equally to the conversation (${subjectALabel}: ${subjectAMessages}, ${subjectBLabel}: ${subjectBMessages}), suggesting mutual investment.`
+      }`,
+      emotionalVibeTags: ["Building Warmth", "Generally Relaxed", "Learning to Repair", "Measured", "Respectful"],
+      regulationPatternsObserved: `${
+        emotionalPatterns.emotionalFlooding > 0
+          ? "Emotional flooding detected—moments when feelings become overwhelming and self-regulation becomes difficult. "
+          : ""
+      }${
+        repairDynamics.repairEffectiveness === "high"
+          ? "Strong co-regulation capacity—partners help each other return to calm. "
+          : repairDynamics.repairEffectiveness === "moderate"
+            ? "Developing co-regulation skills—partners are learning to help each other manage emotions. "
+            : "Co-regulation capacity is emerging—partners may benefit from learning to soothe each other during distress. "
+      }${
+        subjectAAccountability.accountabilityScore > 15 || subjectBAccountability.accountabilityScore > 15
+          ? "Self-regulation is developing—at least one partner shows capacity to manage their own emotional responses. "
+          : "Both partners are building self-regulation skills—the ability to manage one's own emotions during conflict. "
+      }${
+        contemptMarkers.contemptScore === 0
+          ? "Emotional regulation appears generally healthy with minimal dysregulation markers."
+          : "Emotional dysregulation markers present—may benefit from developing regulation strategies together."
+      }`,
+      messageRhythmAndPacing: `${
+        subjectAMessages > subjectBMessages * 1.5
+          ? `${subjectALabel} contributes more frequently (${subjectAMessages} messages vs ${subjectBMessages}), which might suggest greater emotional expressiveness or a pursuit dynamic.`
+          : subjectBMessages > subjectAMessages * 1.5
+            ? `${subjectBLabel} contributes more frequently (${subjectBMessages} messages vs ${subjectBMessages}), which might suggest greater emotional expressiveness or a pursuit dynamic.`
+            : `Both partners contribute fairly equally to the conversation (${subjectALabel}: ${subjectAMessages}, ${subjectBLabel}: ${subjectBMessages}), which might suggest mutual investment in the relationship.`
+      } ${timingInsights.join(" ")}`,
+      subjectAStyle: `${subjectALabel} contributes steadily with ${subjectAStyle.expressiveStyle} messages. ${
+        subjectAStyle.oneWordReplies > 2
+          ? "Frequent brief responses may indicate emotional withdrawal, overwhelm, or comfortable shorthand. "
+          : ""
+      }${subjectAAccountability.takesResponsibility > 0 ? "Navigating when and how to share feelings. Learning accountability. There's an openness to hearing feedback, even when it's difficult." : "Developing capacity to take responsibility and stay open to feedback."}`,
+      subjectBStyle: `${subjectBLabel} offers consistent presence with ${subjectBStyle.expressiveStyle} messages. ${
+        subjectBStyle.oneWordReplies > 2
+          ? "Frequent brief responses may indicate emotional withdrawal, overwhelm, or comfortable shorthand. "
+          : ""
+      }${subjectBAccountability.takesResponsibility > 0 ? "Learning to validate the other's experience. Developing accountability. There's a capacity to stay present during difficult conversations." : "Building skills in validation and staying engaged during intensity."}`,
+      punctuationInsights,
+      timingInsights,
+      contemptInsights,
     },
 
     recurringPatternsIdentified: {
@@ -2641,7 +2713,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
         gentleGrowthNudges: [
           emotionalPatterns.defensiveResponses > 1 || subjectAAccountability.blamesOther > 0
             ? "When you feel criticized, notice the urge to defend or blame. Can you get curious about your partner's experience instead? This doesn't mean they're right—it means you're strong enough to hear them."
-            : "Continue staying open to feedback, even when it's uncomfortable",
+            : "Continue staying open to feedback, even when it's difficult",
           emotionalPatterns.vulnerabilityBids < 2
             ? "Consider sharing more of your inner world—your fears, needs, longings. Vulnerability may be the path to intimacy."
             : "Keep sharing your feelings; it creates opportunities for connection",
@@ -2650,6 +2722,29 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
             : "Remember: your partner's feelings aren't an attack on you. They could be an invitation to understand them better.",
           contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected || contemptMarkers.nameCallingDetected
             ? "Sarcasm, mockery, and name-calling may create emotional unsafety. Practice expressing frustration without contempt: 'I feel hurt when...' instead of 'You're ridiculous.'"
+            : "",
+        ].filter(Boolean),
+        areasForImprovement: [
+          gottmanFlags.criticism && subjectAAccountability.blamesOther > 0
+            ? "You tend to criticize your partner's character rather than addressing specific behaviors, which can feel like an attack and trigger defensiveness."
+            : "",
+          emotionalPatterns.defensiveResponses > 2
+            ? "You respond defensively when your partner raises concerns. This blocks understanding and prevents resolution."
+            : "",
+          subjectATiming.anxiousPursuit && subjectATiming.rapidSequences > 3
+            ? "You send multiple messages in quick succession when anxious, which may overwhelm your partner and push them away."
+            : "",
+          contemptMarkers.contemptScore > 0 && (contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected)
+            ? "You use sarcasm or mockery during conflicts, which erodes respect and emotional safety in the relationship."
+            : "",
+          emotionalPatterns.validationOffers < 2 && subjectA_validates < 20
+            ? "You rarely validate your partner's feelings or perspective, which can leave them feeling unheard and alone."
+            : "",
+          repairDynamics.repairRejections > 0 && subjectAAccountability.rejectsRepair > 0
+            ? "You reject or dismiss your partner's repair attempts, prolonging conflicts and preventing reconnection."
+            : "",
+          emotionalLabor.subjectALabor < emotionalLabor.subjectBLabor && emotionalLabor.laborImbalance !== "balanced"
+            ? "You contribute less to the emotional labor of the relationship, leaving your partner to do more of the work in maintaining connection."
             : "",
         ].filter(Boolean),
         connectionBoosters: [
@@ -2685,7 +2780,33 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
             ? "When you send rapid-fire messages, pause and ask: 'Am I seeking connection or seeking reassurance that I'm okay?' Both are valid, but awareness helps."
             : "Your partner's emotions aren't something to fix or manage—they could be something to witness and honor.",
           contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected || contemptMarkers.nameCallingDetected
-            ? "Contempt (sarcasm, mockery, name-calling) may be one of the most toxic conflict patterns. Practice expressing frustration with respect."
+            ? "Sarcasm, mockery, and name-calling may create emotional unsafety. Practice expressing frustration without contempt."
+            : "",
+        ].filter(Boolean),
+        areasForImprovement: [
+          gottmanFlags.stonewalling || emotionalPatterns.emotionalWithdrawal > 2
+            ? "You withdraw or shut down during conflicts, leaving your partner feeling abandoned and unable to resolve issues."
+            : "",
+          gottmanFlags.criticism && subjectBAccountability.blamesOther > 0
+            ? "You criticize your partner's character instead of addressing specific behaviors, which can damage their sense of self-worth."
+            : "",
+          emotionalPatterns.defensiveResponses > 2
+            ? "You become defensive when your partner expresses concerns, making it difficult for them to share their feelings safely."
+            : "",
+          subjectBTiming.anxiousPursuit && subjectBTiming.rapidSequences > 3
+            ? "You flood your partner with messages when anxious, which may trigger their need to withdraw for space."
+            : "",
+          contemptMarkers.contemptScore > 0 && (contemptMarkers.sarcasmDetected || contemptMarkers.mockeryDetected)
+            ? "You express contempt through sarcasm or mockery, which is highly corrosive to relationship trust and safety."
+            : "",
+          emotionalPatterns.validationOffers < 2 && subjectB_validates < 20
+            ? "You struggle to validate your partner's emotions, which can make them feel dismissed and misunderstood."
+            : "",
+          repairDynamics.repairRejections > 0 && subjectBAccountability.rejectsRepair > 0
+            ? "You push away your partner's attempts to reconnect after conflicts, extending the disconnection."
+            : "",
+          emotionalLabor.subjectBLabor < emotionalLabor.subjectALabor && emotionalLabor.laborImbalance !== "balanced"
+            ? "You rely on your partner to do most of the emotional work in the relationship, creating an unfair burden."
             : "",
         ].filter(Boolean),
         connectionBoosters: [
@@ -2697,40 +2818,83 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
             : "",
         ].filter(Boolean),
       },
-      sharedStrengths: [
-        emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
-          ? "You both make efforts to reconnect after disconnection"
-          : "You're both learning that repair is possible",
-        !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
-          ? "You maintain respect for each other, even in conflict"
-          : "You're working to restore mutual respect",
-        "You're both here, seeking to understand. That matters.",
-        subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
-          ? "Both partners take responsibility for their actions"
-          : "",
-      ].filter(Boolean),
-      sharedGrowthNudges: [
-        "Practice the 5:1 ratio: five positive interactions for every negative one. Relationships may need more deposits than withdrawals.",
-        "Develop a shared vocabulary for emotions. 'I'm feeling flooded' or 'I need reassurance' could prevent misunderstanding.",
-        "Remember: you're on the same team. The problem might be the pattern, not your partner.",
-        contemptMarkers.contemptScore > 0
-          ? "Eliminate contempt from your relationship. It's the #1 predictor of divorce. Replace sarcasm with direct communication, mockery with curiosity, name-calling with 'I feel' statements."
-          : "",
-        emotionalLabor.laborImbalance !== "balanced"
-          ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
-          : "",
-        profanityAnalysis.emotionalEscalation
-          ? "When emotions escalate to profanity or high intensity, take a 20-minute break to self-soothe before continuing the conversation."
-          : "",
-      ].filter(Boolean),
-      sharedConnectionBoosters: [
-        "Weekly relationship check-in: 'What's one thing I did that made you feel loved? What's one thing I could do differently?'",
-        "Daily appreciation ritual: share three specific things you're grateful for about each other",
-        "Monthly adventure: try something new together to build positive shared experiences",
-        repairDynamics.repairEffectiveness === "low"
-          ? "Learn and practice effective repair: acknowledge impact, take responsibility, express care, ask what they need"
-          : "",
-      ].filter(Boolean),
+      forBoth: {
+        sharedStrengths: [
+          emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
+            ? "You both make efforts to reconnect after disconnection"
+            : "You're both learning that repair is possible",
+          !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
+            ? "You maintain respect for each other, even in conflict"
+            : "You're working to restore mutual respect",
+          "You're both here, seeking to understand. That matters.",
+          subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
+            ? "Both partners take responsibility for their actions"
+            : "",
+          emotionalLabor.laborImbalance === "balanced"
+            ? "You share the emotional labor of the relationship fairly equally"
+            : "",
+          !gottmanFlags.stonewalling && emotionalPatterns.emotionalWithdrawal < 2
+            ? "You both stay engaged during difficult conversations"
+            : "",
+        ].filter(Boolean),
+        sharedGrowthNudges: [
+          "Practice the 5:1 ratio: five positive interactions for every negative one. Relationships may need more deposits than withdrawals.",
+          "Develop a shared vocabulary for emotions. 'I'm feeling flooded' or 'I need reassurance' could prevent misunderstanding.",
+          "Remember: you're on the same team. The problem might be the pattern, not your partner.",
+          contemptMarkers.contemptScore > 0
+            ? "Eliminate contempt from your relationship. It's the #1 predictor of divorce. Replace sarcasm with direct communication, mockery with curiosity, name-calling with 'I feel' statements."
+            : "",
+          emotionalLabor.laborImbalance !== "balanced"
+            ? `Balance emotional labor. ${emotionalLabor.whoDoesMore} is doing more of the work. ${emotionalLabor.whoDoesMore === subjectALabel ? subjectBLabel : subjectALabel}, step up in initiating emotional conversations and processing feelings together.`
+            : "",
+          profanityAnalysis.emotionalEscalation
+            ? "When emotions escalate to profanity or high intensity, take a 20-minute break to self-soothe before continuing the conversation."
+            : "",
+          gottmanFlags.criticism
+            ? "Replace criticism ('You always...') with complaints about specific behaviors ('When you did X, I felt Y')."
+            : "",
+          gottmanFlags.defensiveness
+            ? "When you feel defensive, pause and ask: 'What is my partner trying to tell me about their experience?' Listen to understand, not to defend."
+            : "",
+        ].filter(Boolean),
+        sharedAreasForImprovement: [
+          gottmanFlags.criticism && gottmanFlags.defensiveness
+            ? "You both fall into the criticism-defensiveness cycle, where one criticizes and the other defends, preventing real understanding."
+            : "",
+          emotionalPatterns.repairAttempts === 0 || repairDynamics.repairEffectiveness === "low"
+            ? "Neither partner is effectively repairing after conflicts, allowing disconnection to persist and deepen."
+            : "",
+          contemptMarkers.contemptScore > 2
+            ? "Both partners express contempt (sarcasm, mockery, eye-rolling), which is the most destructive conflict pattern."
+            : "",
+          emotionalPatterns.vulnerabilityBids < 2 && emotionalPatterns.validationOffers < 2
+            ? "Neither partner is sharing vulnerable feelings or validating the other, creating emotional distance."
+            : "",
+          profanityAnalysis.emotionalEscalation && profanityAnalysis.profanityCount > 3
+            ? "Conflicts escalate to high intensity with profanity, indicating poor emotional regulation from both partners."
+            : "",
+          emotionalLabor.laborImbalance !== "balanced" && emotionalLabor.laborImbalance !== "slightly imbalanced"
+            ? "There's a significant imbalance in who does the emotional work, with one partner carrying most of the burden."
+            : "",
+          repairDynamics.repairRejections > 2
+            ? "Both partners reject each other's repair attempts, prolonging conflicts and preventing reconnection."
+            : "",
+        ].filter(Boolean),
+        sharedConnectionBoosters: [
+          "Weekly relationship check-in: 'What's one thing I did that made you feel loved? What's one thing I could do differently?'",
+          "Daily appreciation ritual: share three specific things you're grateful for about each other",
+          "Monthly adventure: try something new together to build positive shared experiences",
+          repairDynamics.repairEffectiveness === "low"
+            ? "Learn and practice effective repair: acknowledge impact, take responsibility, express care, ask what they need"
+            : "",
+          gottmanFlags.contempt
+            ? "Create a 'no contempt' agreement: commit to expressing frustration respectfully, without sarcasm or mockery"
+            : "",
+          emotionalLabor.laborImbalance !== "balanced"
+            ? "Take turns initiating emotional conversations and check-ins to balance the emotional labor"
+            : "",
+        ].filter(Boolean),
+      },
     },
 
     visualInsightsData: {
@@ -2881,7 +3045,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
         copingMechanisms:
           repairEffortScore > 60 && repairDynamics.repairEffectiveness !== "low"
             ? "Both partners demonstrate adaptive coping through repair and communication"
-            : profanityAnalysis.emotionalEscalation || contemptMarkers.contemptScore > 3
+            : profanityAnalysis.emotionalEscalation || emotionalPatterns.emotionalFlooding > 1
               ? "Maladaptive coping (escalation, contempt, withdrawal) may indicate need for new emotional regulation skills"
               : "Developing healthier coping strategies could benefit the relationship",
         safetyAndTrust:
@@ -3007,62 +3171,66 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
             : null,
         ].filter(Boolean),
       },
-      prognosis: {
-        shortTerm: `Over the next 1-3 months, expect ${repairEffortScore > 60 && contemptMarkers.contemptScore === 0 ? "continued growth" : contemptMarkers.contemptScore > 3 ? "continued decline without intervention" : "gradual improvement"} with ${contemptMarkers.contemptScore > 0 || emotionalSafetyScore < 50 ? "professional support and" : ""} consistent practice of communication skills.`,
-        mediumTerm: `With sustained effort over 3-6 months, ${emotionalSafetyScore > 70 && contemptMarkers.contemptScore === 0 ? "the strong foundation may deepen" : contemptMarkers.contemptScore > 3 ? "the relationship may not survive without significant change" : "emotional safety and trust could strengthen"}.`,
-        longTerm: `Long-term outlook is ${overallHealthScore >= 7 && contemptMarkers.contemptScore === 0 ? "positive" : overallHealthScore >= 5 && contemptMarkers.contemptScore < 3 ? "cautiously optimistic" : contemptMarkers.contemptScore > 5 ? "poor without immediate intervention" : "challenging but workable"} with commitment to growth and ${emotionalSafetyScore < 60 || repairEffortScore < 60 || contemptMarkers.contemptScore > 0 ? "professional support" : "continued practice"}.`,
-        riskFactors: [
-          contemptMarkers.contemptScore > 0
-            ? `Contempt present (score: ${contemptMarkers.contemptScore}) - #1 predictor of relationship failure`
-            : "No contempt detected - major protective factor",
-          gottmanFlags.stonewalling ||
-          subjectATiming.averageGapIndicator === "delayed" ||
-          subjectBTiming.averageGapIndicator === "delayed"
-            ? "Withdrawal/stonewalling patterns may escalate without intervention"
-            : "Engagement levels are healthy",
-          repairEffortScore < 40 || repairDynamics.repairEffectiveness === "low"
-            ? "Low or ineffective repair capacity may increase conflict escalation risk"
-            : "Repair skills are adequate",
-          profanityAnalysis.emotionalEscalation ? "Emotional escalation and flooding may indicate poor regulation" : "",
-          emotionalLabor.laborImbalance === "significant"
-            ? `Significant emotional labor imbalance could create resentment in ${emotionalLabor.whoDoesMore}`
-            : "",
-        ].filter(Boolean),
-        protectiveFactors: [
-          !gottmanFlags.contempt || contemptMarkers.contemptScore < 2
-            ? "Absence or low contempt protects relationship respect"
-            : "Working on respectful communication",
-          repairEffortScore > 60 && repairDynamics.repairEffectiveness !== "low"
-            ? "Strong and effective repair capacity supports conflict resolution"
-            : "Developing repair skills",
-          harmonyScore > 60 ? "Balanced communication supports mutual understanding" : "Building communication balance",
-          subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
-            ? "Both partners take accountability"
-            : "",
-        ].filter(Boolean),
-      },
-      differentialConsiderations: {
-        individualTherapyConsiderations:
-          gottmanFlags.defensiveness ||
-          gottmanFlags.stonewalling ||
-          subjectAAccountability.blamesOther > 1 ||
-          subjectBAccountability.blamesOther > 1 ||
-          contemptMarkers.contemptScore > 3
-            ? "Individual therapy could be strongly recommended to address personal patterns before couples work"
-            : "Individual therapy optional for personal growth",
-        couplesTherapyReadiness:
-          emotionalSafetyScore > 60 && contemptMarkers.contemptScore < 3
-            ? "Ready for couples therapy to enhance strengths"
+      prognosis:
+        overallHealthScore >= 7 && contemptMarkers.contemptScore === 0
+          ? `This relationship demonstrates strong fundamentals with healthy communication patterns and emotional connection. Continue building on these strengths through consistent practice of appreciation, active listening, and repair. The foundation appears solid for long-term growth and deepening intimacy.`
+          : overallHealthScore >= 5 && contemptMarkers.contemptScore < 3
+            ? `This relationship shows promise with room for growth in communication and emotional attunement. Focus on developing repair skills, balancing participation${emotionalLabor.laborImbalance !== "balanced" ? " and emotional labor" : ""}, and building emotional safety. ${contemptMarkers.contemptScore > 0 ? "Address contempt patterns immediately." : ""} With conscious effort and possibly professional support, the relationship could strengthen significantly.`
             : contemptMarkers.contemptScore > 5
-              ? "May not be ready for couples therapy until contempt is addressed individually"
-              : "Could benefit from individual work before or alongside couples therapy",
-        externalResourcesNeeded: [
-          "Relationship education books (Gottman's 'Seven Principles', Sue Johnson's 'Hold Me Tight')",
-          "Communication skills workshops",
-          contemptMarkers.contemptScore > 0 ? "Gottman's 'What Makes Love Last?' (contempt antidotes)" : "",
-          hasMinimalData ? "More conversation data for deeper analysis" : "Ongoing relationship assessment",
-        ].filter(Boolean),
-      },
+              ? `This relationship may be in crisis due to high levels of contempt—one of the most toxic and destructive conflict patterns. Immediate professional intervention could be essential. Individual therapy might be recommended before couples work to address the contempt patterns. Without significant change, the relationship may be at high risk of failure.`
+              : `This relationship faces challenges that may require focused attention and professional support. Key areas needing work include ${repairEffortScore < 60 ? "repair skills" : "communication balance"}, ${emotionalSafetyScore < 60 ? "emotional safety" : "conflict patterns"}, ${gottmanFlags.criticism || gottmanFlags.contempt ? "respectful communication" : "engagement levels"}${emotionalLabor.laborImbalance === "significant" ? ", and emotional labor balance" : ""}. Individual and couples therapy could be strongly recommended.`,
+      riskFactors: [
+        contemptMarkers.contemptScore > 0
+          ? `Contempt present (score: ${contemptMarkers.contemptScore}) - #1 predictor of relationship failure`
+          : "No contempt detected - major protective factor",
+        gottmanFlags.stonewalling ||
+        subjectATiming.averageGapIndicator === "delayed" ||
+        subjectBTiming.averageGapIndicator === "delayed"
+          ? "Withdrawal/stonewalling patterns may escalate without intervention"
+          : "Engagement levels are healthy",
+        repairEffortScore < 40 || repairDynamics.repairEffectiveness === "low"
+          ? "Low or ineffective repair capacity may increase conflict escalation risk"
+          : "Repair skills are adequate",
+        profanityAnalysis.emotionalEscalation ? "Emotional escalation and flooding may indicate poor regulation" : "",
+        emotionalLabor.laborImbalance === "significant"
+          ? `Significant emotional labor imbalance could create resentment in ${emotionalLabor.whoDoesMore}`
+          : "",
+      ].filter(Boolean),
+      protectiveFactors: [
+        !gottmanFlags.contempt || contemptMarkers.contemptScore < 2
+          ? "Absence or low contempt protects relationship respect"
+          : "Working on respectful communication",
+        repairEffortScore > 60 && repairDynamics.repairEffectiveness !== "low"
+          ? "Strong and effective repair capacity supports conflict resolution"
+          : "Developing repair skills",
+        harmonyScore > 60 ? "Balanced communication supports mutual understanding" : "Building communication balance",
+        subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
+          ? "Both partners take accountability"
+          : "",
+      ].filter(Boolean),
+    },
+
+    differentialConsiderations: {
+      individualTherapyConsiderations:
+        gottmanFlags.defensiveness ||
+        gottmanFlags.stonewalling ||
+        subjectAAccountability.blamesOther > 1 ||
+        subjectBAccountability.blamesOther > 1 ||
+        contemptMarkers.contemptScore > 3
+          ? "Individual therapy could be strongly recommended to address personal patterns before couples work"
+          : "Individual therapy optional for personal growth",
+      couplesTherapyReadiness:
+        emotionalSafetyScore > 60 && contemptMarkers.contemptScore < 3
+          ? "Ready for couples therapy to enhance strengths"
+          : contemptMarkers.contemptScore > 5
+            ? "May not be ready for couples therapy until contempt is addressed individually"
+            : "Could benefit from individual work before or alongside couples therapy",
+      externalResourcesNeeded: [
+        "Relationship education books (Gottman's 'Seven Principles', Sue Johnson's 'Hold Me Tight')",
+        "Communication skills workshops",
+        contemptMarkers.contemptScore > 0 ? "Gottman's 'What Makes Love Last?' (contempt antidotes)" : "",
+        hasMinimalData ? "More conversation data for deeper analysis" : "Ongoing relationship assessment",
+      ].filter(Boolean),
     },
 
     outlook:
@@ -3073,7 +3241,6 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
           : contemptMarkers.contemptScore > 5
             ? `This relationship may be in crisis due to high levels of contempt—one of the most toxic and destructive conflict patterns. Immediate professional intervention could be essential. Individual therapy might be recommended before couples work to address the contempt patterns. Without significant change, the relationship may be at high risk of failure.`
             : `This relationship faces challenges that may require focused attention and professional support. Key areas needing work include ${repairEffortScore < 60 ? "repair skills" : "communication balance"}, ${emotionalSafetyScore < 60 ? "emotional safety" : "conflict patterns"}, ${gottmanFlags.criticism || gottmanFlags.contempt ? "respectful communication" : "engagement levels"}${emotionalLabor.laborImbalance === "significant" ? ", and emotional labor balance" : ""}. Individual and couples therapy could be strongly recommended.`,
-
     optionalAppendix: hasMinimalData
       ? "Note: This analysis is based on limited conversation data. For more comprehensive insights, please upload additional screenshots with more messages. The patterns identified are preliminary and should be considered alongside your personal knowledge of the relationship dynamics."
       : "",

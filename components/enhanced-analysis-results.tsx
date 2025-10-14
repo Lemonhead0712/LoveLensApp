@@ -20,7 +20,6 @@ import {
   BookOpen,
   Target,
   Calendar,
-  Clock,
   RefreshCw,
   Info,
 } from "lucide-react"
@@ -179,6 +178,11 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   // 1. Update the imports at the top to add the subjectALabel and subjectBLabel from results:
   const subjectALabel = results.subjectALabel || "Subject A"
   const subjectBLabel = results.subjectBLabel || "Subject B"
+
+  const messageCountData = results.messageCount || { total: 0, [subjectALabel]: 0, [subjectBLabel]: 0 }
+  const totalMessages = messageCountData.total || 0
+  const subjectAMessages = messageCountData[subjectALabel] || 0
+  const subjectBMessages = messageCountData[subjectBLabel] || 0
 
   if (results.error) {
     return (
@@ -383,6 +387,115 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
             </Alert>
           )}
 
+          <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
+            {/* Confidence Alert */}
+            {results.analysisConfidence && (
+              <Alert
+                className={`border-2 ${
+                  results.analysisConfidence.dataCompleteness === "high"
+                    ? "border-green-200 bg-green-50"
+                    : results.analysisConfidence.dataCompleteness === "medium"
+                      ? "border-blue-200 bg-blue-50"
+                      : "border-yellow-200 bg-yellow-50"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <Info
+                    className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                      results.analysisConfidence.dataCompleteness === "high"
+                        ? "text-green-600"
+                        : results.analysisConfidence.dataCompleteness === "medium"
+                          ? "text-blue-600"
+                          : "text-yellow-600"
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm sm:text-base">Analysis Confidence:</span>
+                      <Badge
+                        className={`${
+                          results.analysisConfidence.dataCompleteness === "high"
+                            ? "bg-green-600"
+                            : results.analysisConfidence.dataCompleteness === "medium"
+                              ? "bg-blue-600"
+                              : "bg-yellow-600"
+                        } text-white text-xs sm:text-sm`}
+                      >
+                        {results.analysisConfidence.dataCompleteness.toUpperCase()}
+                      </Badge>
+                      <span className="text-xs sm:text-sm text-gray-600">
+                        ({results.analysisConfidence.extractionConfidence}% extraction,{" "}
+                        {results.analysisConfidence.emotionalInferenceConfidence}% emotional inference)
+                      </span>
+                    </div>
+                    <AlertDescription
+                      className={`text-xs sm:text-sm ${
+                        results.analysisConfidence.dataCompleteness === "high"
+                          ? "text-green-800"
+                          : results.analysisConfidence.dataCompleteness === "medium"
+                            ? "text-blue-800"
+                            : "text-yellow-800"
+                      }`}
+                    >
+                      {results.analysisConfidence.explanation}
+                    </AlertDescription>
+                  </div>
+                </div>
+              </Alert>
+            )}
+
+            {/* Message Count Breakdown */}
+            <Card className="border-2 border-purple-200 bg-gradient-to-br from-white to-purple-50">
+              <CardContent className="pt-4 sm:pt-5 md:pt-6">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8">
+                  <div className="text-center">
+                    <div className="text-3xl sm:text-4xl font-bold text-purple-600">{totalMessages}</div>
+                    <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Messages</div>
+                  </div>
+                  <div className="hidden sm:block w-px h-12 bg-purple-200" aria-hidden="true" />
+                  <div className="text-center">
+                    <div className="text-2xl sm:text-3xl font-bold text-blue-600">{subjectAMessages}</div>
+                    <div className="text-xs sm:text-sm text-gray-600 mt-1">{subjectALabel}</div>
+                  </div>
+                  <div className="hidden sm:block w-px h-12 bg-purple-200" aria-hidden="true" />
+                  <div className="text-center">
+                    <div className="text-2xl sm:text-3xl font-bold text-pink-600">{subjectBMessages}</div>
+                    <div className="text-xs sm:text-sm text-gray-600 mt-1">{subjectBLabel}</div>
+                  </div>
+                </div>
+                {/* Message balance indicator */}
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs sm:text-sm text-gray-600">Message Balance:</span>
+                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-pink-500"
+                        style={{
+                          width: `${Math.min(100, (Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs sm:text-sm font-medium text-gray-700">
+                      {Math.round(
+                        (Math.min(subjectAMessages, subjectBMessages) / Math.max(subjectAMessages, subjectBMessages)) *
+                          100,
+                      )}
+                      %
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">
+                    {Math.abs(subjectAMessages - subjectBMessages) <= 2
+                      ? "Highly balanced conversation"
+                      : Math.abs(subjectAMessages - subjectBMessages) <= 5
+                        ? "Moderately balanced conversation"
+                        : "Imbalanced conversation - one partner contributes significantly more"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <Alert className="border-blue-200 bg-blue-50 max-w-3xl mx-auto">
             <div className="flex items-start gap-2">
               <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
@@ -393,23 +506,6 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
               </AlertDescription>
             </div>
           </Alert>
-
-          <div className="flex flex-wrap gap-2 sm:gap-3 justify-center items-center">
-            <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
-              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" aria-hidden="true" />
-              <span className="whitespace-nowrap">{results.messageCount || 0} Messages</span>
-            </Badge>
-            <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
-              <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" aria-hidden="true" />
-              <span className="whitespace-nowrap">{results.extractionConfidence || 0}% Confidence</span>
-            </Badge>
-            {results.processingTimeMs && (
-              <Badge variant="outline" className="py-1.5 px-2.5 sm:px-3 text-xs sm:text-sm">
-                <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" aria-hidden="true" />
-                <span className="whitespace-nowrap">{(results.processingTimeMs / 1000).toFixed(1)}s</span>
-              </Badge>
-            )}
-          </div>
 
           <div className="flex justify-center pt-2 px-4 sm:px-0">
             <Button
@@ -640,21 +736,22 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                     {results.communicationStylesAndEmotionalTone?.description}
                   </p>
 
-                  {results.communicationStylesAndEmotionalTone?.emotionalVibeTags && (
-                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      {results.communicationStylesAndEmotionalTone.emotionalVibeTags.map(
-                        (tag: string, index: number) => (
-                          <Badge
-                            key={index}
-                            variant="secondary"
-                            className="bg-purple-100 text-purple-700 text-xs sm:text-sm"
-                          >
-                            {tag}
-                          </Badge>
-                        ),
-                      )}
-                    </div>
-                  )}
+                  {results.communicationStylesAndEmotionalTone?.emotionalVibeTags &&
+                    Array.isArray(results.communicationStylesAndEmotionalTone.emotionalVibeTags) && (
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                        {results.communicationStylesAndEmotionalTone.emotionalVibeTags.map(
+                          (tag: string, index: number) => (
+                            <Badge
+                              key={index}
+                              variant="secondary"
+                              className="bg-purple-100 text-purple-700 text-xs sm:text-sm"
+                            >
+                              {tag}
+                            </Badge>
+                          ),
+                        )}
+                      </div>
+                    )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-4">
                     <div className="p-3 sm:p-4 bg-blue-50 rounded-lg">
@@ -1590,11 +1687,30 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         </div>
                       )}
                     </div>
+
+                    {results.constructiveFeedback?.subjectA?.areasForImprovement &&
+                      results.constructiveFeedback.subjectA.areasForImprovement.length > 0 && (
+                        <div className="p-3 sm:p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                          <h4 className="font-semibold text-red-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                            Areas for Improvement
+                          </h4>
+                          <ul className="text-xs sm:text-sm text-red-800 space-y-1.5">
+                            {results.constructiveFeedback.subjectA.areasForImprovement.map(
+                              (area: string, index: number) => (
+                                <li key={index} className="flex items-start gap-2">
+                                  <span className="text-red-600 mt-0.5 flex-shrink-0">•</span>
+                                  <span>{area}</span>
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        </div>
+                      )}
                   </div>
 
                   {/* Subject B Feedback */}
                   <div className="space-y-3 sm:space-y-4">
-                    {/* 4. Update the feedback section headers to use dynamic labels */}
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900">For {subjectBLabel}</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
                       {results.constructiveFeedback?.subjectB?.strengths && (
@@ -1652,9 +1768,28 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         </div>
                       )}
                     </div>
+
+                    {results.constructiveFeedback?.subjectB?.areasForImprovement &&
+                      results.constructiveFeedback.subjectB.areasForImprovement.length > 0 && (
+                        <div className="p-3 sm:p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                          <h4 className="font-semibold text-red-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                            Areas for Improvement
+                          </h4>
+                          <ul className="text-xs sm:text-sm text-red-800 space-y-1.5">
+                            {results.constructiveFeedback.subjectB.areasForImprovement.map(
+                              (area: string, index: number) => (
+                                <li key={index} className="flex items-start gap-2">
+                                  <span className="text-red-600 mt-0.5 flex-shrink-0">•</span>
+                                  <span>{area}</span>
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        </div>
+                      )}
                   </div>
 
-                  {/* Shared Feedback */}
                   <div className="space-y-3 sm:space-y-4">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900">For Both Partners</h3>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -1715,6 +1850,26 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                         </div>
                       )}
                     </div>
+
+                    {results.constructiveFeedback?.forBoth?.sharedAreasForImprovement &&
+                      results.constructiveFeedback.forBoth.sharedAreasForImprovement.length > 0 && (
+                        <div className="p-3 sm:p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                          <h4 className="font-semibold text-red-900 mb-2 flex items-center gap-2 text-sm sm:text-base">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+                            Shared Areas for Improvement
+                          </h4>
+                          <ul className="text-xs sm:text-sm text-red-800 space-y-1.5">
+                            {results.constructiveFeedback.forBoth.sharedAreasForImprovement.map(
+                              (area: string, index: number) => (
+                                <li key={index} className="flex items-start gap-2">
+                                  <span className="text-red-600 mt-0.5 flex-shrink-0">•</span>
+                                  <span>{area}</span>
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        </div>
+                      )}
                   </div>
                 </CardContent>
               </Card>

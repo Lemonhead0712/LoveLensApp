@@ -223,17 +223,48 @@ Overall Score = (Harmony Score + Emotional Safety Score + Repair Effort Score) /
 \`\`\`
 
 **Components:**
-- **Harmony Score** (0-100): Balance of positive vs. negative interactions
-- **Emotional Safety Score** (0-100): Validation, support, absence of contempt
-- **Repair Effort Score** (0-100): Repair attempts and effectiveness
+- **Harmony Score** (0-100): Balance of positive vs. negative interactions, message balance, emotional tone
+- **Emotional Safety Score** (0-100): Validation, support, absence of contempt, emotional attunement
+- **Repair Effort Score** (0-100): Repair attempts, effectiveness, timing, and acceptance
 
-**Interpretation:**
-- 8-10: Thriving relationship with strong foundation
-- 6-7: Solid relationship with room for growth
-- 4-5: Relationship under stress, needs attention
-- 0-3: Relationship in crisis, professional help recommended
+**Contextual Weighting:**
+The system applies contextual adjustments based on:
+- Emotional flow state (connection, tension, repair, escalation, shutdown, calm)
+- Presence of humor or lightness
+- Silence patterns and timing gaps
+- Accountability demonstrated by either partner
+- Emotional flooding indicators
 
-### 3.2 Communication Metrics (0-100)
+### 3.2 Analysis Confidence Calculation
+
+**New Approach (v2.5):**
+Confidence reflects the system's ability to analyze observable patterns from available data, NOT knowledge of the complete relationship context.
+
+**Pattern Recognition Quality:**
+- Minimum 3 messages per person = sufficient for pattern analysis
+- Text length threshold: 200 characters = good analysis capability (reduced from 500)
+- Pattern bonus: +20 points when sufficient messages exist
+
+**Extraction Confidence:**
+\`\`\`
+textAnalysisQuality = min(100, (conversationText.length / 200) * 100)
+messageBalance = (min(subjectA, subjectB) / max(subjectA, subjectB)) * 100
+patternBonus = hasPatternData ? 20 : 0
+extractionConfidence = min(100, round((textAnalysisQuality + messageBalance) / 2) + patternBonus)
+\`\`\`
+
+**Emotional Inference Confidence:**
+\`\`\`
+baseEmotionalConfidence = (subjectAMotivation.confidence + subjectBMotivation.confidence) / 2
+emotionalInferenceConfidence = min(100, baseEmotionalConfidence + 15)
+\`\`\`
+
+**Data Completeness Thresholds:**
+- **High** (>60%): "Strong pattern recognition capability—analysis provides reliable insights into communication dynamics, emotional patterns, and relationship behaviors observable in the conversation."
+- **Medium** (>35%): "Good pattern analysis capability—insights accurately reflect observable communication patterns and emotional dynamics, though additional context may deepen understanding."
+- **Low** (≤35%): "Basic pattern analysis capability—insights identify key communication patterns and emotional themes present in the conversation."
+
+### 3.3 Communication Metrics (0-100)
 
 **Response Time Balance:**
 \`\`\`
@@ -260,7 +291,7 @@ Resolution = (Repair Attempts - Repair Rejections + Accountability) / 3
 Affection = (Warmth Markers + Positive Emojis + Affectionate Language) / 3
 \`\`\`
 
-### 3.3 Emotional Communication Characteristics (0-10)
+### 3.4 Emotional Communication Characteristics (0-10)
 
 Radar chart dimensions:
 - **Warmth:** Affection, care, positive emotional expression
@@ -269,7 +300,7 @@ Radar chart dimensions:
 - **Assertiveness:** Boundary-setting, expressing needs, standing ground
 - **Empathy:** Understanding, validation, perspective-taking
 
-### 3.4 Conflict Expression Styles (0-10)
+### 3.5 Conflict Expression Styles (0-10)
 
 Radar chart dimensions:
 - **Direct Address:** Openly discussing issues
@@ -278,7 +309,7 @@ Radar chart dimensions:
 - **Escalation:** Increasing intensity, raising stakes
 - **Repair Attempts:** De-escalation, apologies, reconnection
 
-### 3.5 Validation & Reassurance Patterns (0-100%)
+### 3.6 Validation & Reassurance Patterns (0-100%)
 
 Pie chart showing distribution:
 - **Acknowledges Feelings:** Recognizing partner's emotions
@@ -304,6 +335,7 @@ interface AnalysisResults {
   messageCount: { subjectA: number; subjectB: number }
   screenshotCount: number
   extractionConfidence: "high" | "medium" | "low"
+  emotionalInferenceConfidence: number
   
   // Introduction
   introductionNote: string
@@ -711,8 +743,6 @@ function calculateRepairEffortScore(text: string): number {
   return Math.min(100, effectiveRepairs * 20)
 }
 \`\`\`
-
----
 
 **Document Version:** 2.0  
 **Last Updated:** January 2025  
