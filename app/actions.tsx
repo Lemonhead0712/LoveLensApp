@@ -11,20 +11,22 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationN
 // Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
   try {
-    const arrayBuffer = await file.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuffer)
-    let binary = ""
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i])
-    }
-    return btoa(binary)
+    // Use FileReader API for faster conversion
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1]
+        resolve(base64)
+      }
+      reader.onerror = () => reject(new Error("Failed to read file"))
+      reader.readAsDataURL(file)
+    })
   } catch (error) {
     console.error("[v0] Error converting file to base64:", error)
     throw new Error("Failed to process image file")
   }
 }
 
-// Batch OCR extraction function
 async function extractTextFromMultipleImages(files: File[]): Promise<{
   extractedTexts: Array<{ text: string; imageIndex: number }>
   totalProcessingTime: number
@@ -32,10 +34,10 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
   const startTime = Date.now()
 
   try {
-    console.log(`[v0] Converting ${files.length} files to base64...`)
+    console.log(`[v0] Converting ${files.length} files to base64 (optimized)...`)
 
-    // Convert all files to base64
-    const base64Images = await Promise.all(
+    // Convert all files to base64 in parallel with optimized method
+    const base64Results = await Promise.allSettled(
       files.map(async (file, index) => {
         try {
           const base64 = await fileToBase64(file)
@@ -52,7 +54,9 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
       }),
     )
 
-    const validImages = base64Images.filter((img) => img !== null)
+    const validImages = base64Results
+      .filter((result) => result.status === "fulfilled" && result.value !== null)
+      .map((result) => (result as PromiseFulfilledResult<any>).value)
 
     if (validImages.length === 0) {
       console.log("[v0] No valid images to process, returning empty results")
@@ -64,7 +68,7 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
 
     console.log(`[v0] Sending ${validImages.length} images to OpenAI for batch extraction...`)
 
-    // Attempt 1: Try batch extraction
+    // Single optimized API call with better prompt
     let extractedText = ""
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -81,19 +85,7 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
               content: [
                 {
                   type: "text",
-                  text: `You are analyzing conversation screenshots for a relationship analysis tool. Extract ALL text from these images in chronological order.
-
-IMPORTANT INSTRUCTIONS:
-1. Identify the two main speakers and use consistent labels for them throughout (e.g., [Person A], [Person B])
-2. Format each message as: [Speaker Name]: "message text"
-3. Preserve the chronological order of messages across all images
-4. Include timestamps if visible (format: [Speaker Name] (timestamp): "message")
-5. Note the platform if identifiable (iMessage, WhatsApp, etc.)
-6. Preserve emotional markers like emojis, punctuation (!!!, ???, ...)
-7. If you see message reactions or read receipts, note them
-8. If text is unclear, use [unclear] but try your best to extract everything
-
-Extract the complete conversation now:`,
+                  text: `Extract ALL conversation text from these screenshots. Format: [Speaker]: "message". Preserve chronological order, timestamps, emojis, and emotional markers. Identify speakers consistently.`,
                 },
                 ...validImages,
               ],
@@ -105,55 +97,24 @@ Extract the complete conversation now:`,
       })
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+        throw new Error(`OpenAI API error: ${response.status}`)
       }
 
       const data = await response.json()
       extractedText = data.choices?.[0]?.message?.content || ""
-      console.log(`[v0] Batch extraction successful: ${extractedText.length} characters`)
+      console.log(`[v0] Extraction successful: ${extractedText.length} characters`)
     } catch (error) {
-      console.error("[v0] Batch extraction attempt 1 failed:", error)
-
-      // Attempt 2: Retry once
-      try {
-        console.log("[v0] Retrying batch extraction...")
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "Extract all conversation text from these screenshots. Format as [Speaker]: 'message'. Preserve order and emotional markers.",
-                  },
-                  ...validImages,
-                ],
-              },
-            ],
-            max_tokens: 4000,
-            temperature: 0.1,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          extractedText = data.choices?.[0]?.message?.content || ""
-          console.log(`[v0] Retry successful: ${extractedText.length} characters`)
-        }
-      } catch (retryError) {
-        console.error("[v0] Batch extraction attempt 2 failed:", retryError)
+      console.error("[v0] Batch extraction failed:", error)
+      // Return empty result instead of retrying to save time
+      return {
+        extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
+        totalProcessingTime: Date.now() - startTime,
       }
     }
 
-    // Return results
     const totalProcessingTime = Date.now() - startTime
+    console.log(`[v0] Total processing time: ${totalProcessingTime}ms`)
+
     return {
       extractedTexts: [{ text: extractedText, imageIndex: 0 }],
       totalProcessingTime,
@@ -2245,7 +2206,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
               : emotionalFlow.dominantPhase === "escalation"
                 ? "Emotional escalation dominates, indicating that protective responses are overwhelming connection attempts."
                 : emotionalFlow.dominantPhase === "shutdown"
-                  ? "Withdrawal and shutdown patterns suggest emotional overwhelm or a need for self-protection."
+                  ? "Withdrawal and shutdown patterns suggest emotional overwhelm or avoidance."
                   : "The conversation maintains a relatively calm, neutral tone with balanced emotional engagement.",
     },
 

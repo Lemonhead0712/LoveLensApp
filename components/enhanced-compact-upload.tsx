@@ -226,25 +226,26 @@ export default function EnhancedCompactUpload() {
 
     try {
       console.log("[v0] Validating files are readable...")
-      for (const fileWithPreview of files) {
-        const file = fileWithPreview.file
-        if (file.size > 10 * 1024 * 1024) {
-          setError(
-            `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
-          )
-          setIsAnalyzing(false)
-          return
-        }
-
-        try {
+      const validationResults = await Promise.allSettled(
+        files.map(async (fileWithPreview) => {
+          const file = fileWithPreview.file
+          if (file.size > 10 * 1024 * 1024) {
+            throw new Error(
+              `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
+            )
+          }
           const testSlice = file.slice(0, 100)
           await testSlice.arrayBuffer()
-        } catch (readError) {
-          console.error(`[v0] File ${file.name} is no longer readable:`, readError)
-          setError(`Unable to read file "${file.name}". Please refresh the page and re-upload your screenshots.`)
-          setIsAnalyzing(false)
-          return
-        }
+          return file
+        }),
+      )
+
+      // Check for validation errors
+      const failedValidation = validationResults.find((result) => result.status === "rejected")
+      if (failedValidation && failedValidation.status === "rejected") {
+        setError(failedValidation.reason.message)
+        setIsAnalyzing(false)
+        return
       }
 
       console.log("[v0] All files validated successfully")
@@ -263,16 +264,15 @@ export default function EnhancedCompactUpload() {
           console.warn("[v0] Image enhancement failed, using original files:", enhError)
           processedFiles = fileObjects
         }
-        setProgress(20)
+        setProgress(25)
       }
 
       const progressSteps = [
-        { progress: 35, message: `Reading ${files.length} screenshot${files.length > 1 ? "s" : ""}...` },
-        { progress: 50, message: "Extracting conversation text..." },
-        { progress: 65, message: "Detecting communication patterns..." },
-        { progress: 80, message: "Analyzing emotional dynamics..." },
-        { progress: 90, message: "Evaluating relationship health..." },
-        { progress: 95, message: "Generating insights..." },
+        { progress: 40, message: `Processing ${files.length} screenshot${files.length > 1 ? "s" : ""}...` },
+        { progress: 55, message: "Extracting conversation text..." },
+        { progress: 70, message: "Analyzing communication patterns..." },
+        { progress: 85, message: "Generating insights..." },
+        { progress: 95, message: "Finalizing analysis..." },
       ]
 
       let currentStep = 0
@@ -284,7 +284,7 @@ export default function EnhancedCompactUpload() {
         } else {
           clearInterval(progressInterval)
         }
-      }, 1500)
+      }, 1200) // Faster updates
 
       const formData = new FormData()
       processedFiles.forEach((file, index) => {
@@ -323,7 +323,7 @@ export default function EnhancedCompactUpload() {
       setTimeout(() => {
         console.log("[v0] Navigating to results page")
         router.push(`/results?id=${resultId}`)
-      }, 500)
+      }, 300) // Faster navigation
     } catch (err: any) {
       console.error("[v0] Error during analysis:", err)
 
