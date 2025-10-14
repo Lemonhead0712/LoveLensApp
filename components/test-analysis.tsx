@@ -9,6 +9,7 @@ import { fileToCanvas } from "@/lib/image-processing"
 import { analyzeConversation } from "@/app/actions"
 import AnalysisResults from "./analysis-results"
 import LoadingAnalysis from "./loading-analysis"
+import JSZip from "jszip"
 
 export default function TestAnalysis() {
   const [isProcessing, setIsProcessing] = useState(false)
@@ -124,6 +125,39 @@ export default function TestAnalysis() {
     }
   }
 
+  const downloadEnhancedImages = async () => {
+    if (imageData.enhanced.length === 0) return
+
+    try {
+      const zip = new JSZip()
+
+      // Convert each enhanced image URL to blob and add to ZIP
+      for (let i = 0; i < imageData.enhanced.length; i++) {
+        const response = await fetch(imageData.enhanced[i])
+        const blob = await response.blob()
+        zip.file(`enhanced-screenshot-${i + 1}.png`, blob)
+      }
+
+      // Generate ZIP file
+      const zipBlob = await zip.generateAsync({ type: "blob" })
+
+      // Create download link
+      const url = URL.createObjectURL(zipBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `enhanced-screenshots-${new Date().toISOString().split("T")[0]}.zip`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      addLog("Enhanced images downloaded successfully")
+    } catch (error) {
+      console.error("Error downloading images:", error)
+      addLog(`Error downloading images: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   return (
     <div className="space-y-8">
       <Card className="p-6 border-gray-200 shadow-md">
@@ -133,9 +167,20 @@ export default function TestAnalysis() {
           insights.
         </p>
 
-        <Button onClick={runAnalysis} disabled={isProcessing} className="bg-rose-600 hover:bg-rose-700 text-white">
-          {isProcessing ? `Processing: ${processingStep}` : "Run Test Analysis"}
-        </Button>
+        <div className="flex gap-3">
+          <Button onClick={runAnalysis} disabled={isProcessing} className="bg-rose-600 hover:bg-rose-700 text-white">
+            {isProcessing ? `Processing: ${processingStep}` : "Run Test Analysis"}
+          </Button>
+
+          <Button
+            onClick={downloadEnhancedImages}
+            disabled={imageData.enhanced.length === 0}
+            variant="outline"
+            className="border-rose-600 text-rose-600 hover:bg-rose-50 bg-transparent"
+          >
+            Download Enhanced Images
+          </Button>
+        </div>
       </Card>
 
       {isProcessing && <LoadingAnalysis />}

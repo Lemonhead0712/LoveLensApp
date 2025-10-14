@@ -1,5 +1,30 @@
 "use server"
 
+interface DiagnosticLog {
+  timestamp: string
+  level: "info" | "warn" | "error"
+  message: string
+  data?: any
+}
+
+const diagnosticLogs: DiagnosticLog[] = []
+
+function logDiagnostic(level: DiagnosticLog["level"], message: string, data?: any) {
+  const log: DiagnosticLog = {
+    timestamp: new Date().toISOString(),
+    level,
+    message,
+    data,
+  }
+  diagnosticLogs.push(log)
+  console.log(`[v0] [${level.toUpperCase()}] ${message}`, data || "")
+
+  // Keep only last 100 logs to prevent memory issues
+  if (diagnosticLogs.length > 100) {
+    diagnosticLogs.shift()
+  }
+}
+
 // Helper function to add timeout to promises
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
   const timeoutPromise = new Promise<T>((_, reject) => {
@@ -8,22 +33,53 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationN
   return Promise.race([promise, timeoutPromise])
 }
 
-// Helper function to convert File to base64
 async function fileToBase64(file: File): Promise<string> {
   try {
+    logDiagnostic("info", `Converting file to base64: ${file.name}`, {
+      size: file.size,
+      type: file.type,
+    })
+
+    // Validate file before conversion
+    if (!file.size) {
+      throw new Error("File has no size")
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error(`File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
+    }
+
     // Use FileReader API for faster conversion
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
+
       reader.onload = () => {
-        const base64 = (reader.result as string).split(",")[1]
-        resolve(base64)
+        try {
+          const result = reader.result as string
+          if (!result || !result.includes(",")) {
+            reject(new Error("Invalid FileReader result"))
+            return
+          }
+          const base64 = result.split(",")[1]
+          logDiagnostic("info", `File converted successfully: ${base64.length} characters`)
+          resolve(base64)
+        } catch (error) {
+          logDiagnostic("error", "Error processing FileReader result", error)
+          reject(error)
+        }
       }
-      reader.onerror = () => reject(new Error("Failed to read file"))
+
+      reader.onerror = () => {
+        const error = new Error(`FileReader error: ${reader.error?.message || "Unknown error"}`)
+        logDiagnostic("error", "FileReader failed", error)
+        reject(error)
+      }
+
       reader.readAsDataURL(file)
     })
   } catch (error) {
-    console.error("[v0] Error converting file to base64:", error)
-    throw new Error("Failed to process image file")
+    logDiagnostic("error", "Error in fileToBase64", error)
+    throw new Error(`Failed to process image file: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
 }
 
@@ -34,9 +90,8 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
   const startTime = Date.now()
 
   try {
-    console.log(`[v0] Converting ${files.length} files to base64 (optimized)...`)
+    logDiagnostic("info", `Starting OCR extraction for ${files.length} files`)
 
-    // Convert all files to base64 in parallel with optimized method
     const base64Results = await Promise.allSettled(
       files.map(async (file, index) => {
         try {
@@ -48,7 +103,7 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
             },
           }
         } catch (error) {
-          console.error(`[v0] Failed to convert image ${index + 1}:`, error)
+          logDiagnostic("error", `Failed to convert image ${index + 1}`, error)
           return null
         }
       }),
@@ -58,19 +113,20 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
       .filter((result) => result.status === "fulfilled" && result.value !== null)
       .map((result) => (result as PromiseFulfilledResult<any>).value)
 
+    logDiagnostic("info", `Converted ${validImages.length}/${files.length} images successfully`)
+
     if (validImages.length === 0) {
-      console.log("[v0] No valid images to process, returning empty results")
+      logDiagnostic("warn", "No valid images to process")
       return {
         extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
         totalProcessingTime: Date.now() - startTime,
       }
     }
 
-    console.log(`[v0] Sending ${validImages.length} images to OpenAI for batch extraction...`)
-
-    // Single optimized API call with better prompt
     let extractedText = ""
     try {
+      logDiagnostic("info", `Sending ${validImages.length} images to OpenAI API`)
+
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -96,16 +152,19 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
         }),
       })
 
+      logDiagnostic("info", `OpenAI API response status: ${response.status}`)
+
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`)
+        const errorText = await response.text()
+        logDiagnostic("error", `OpenAI API error: ${response.status}`, errorText)
+        throw new Error(`OpenAI API error: ${response.status} - ${errorText}`)
       }
 
       const data = await response.json()
       extractedText = data.choices?.[0]?.message?.content || ""
-      console.log(`[v0] Extraction successful: ${extractedText.length} characters`)
+      logDiagnostic("info", `Extraction successful: ${extractedText.length} characters`)
     } catch (error) {
-      console.error("[v0] Batch extraction failed:", error)
-      // Return empty result instead of retrying to save time
+      logDiagnostic("error", "OCR extraction failed", error)
       return {
         extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
         totalProcessingTime: Date.now() - startTime,
@@ -113,14 +172,14 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
     }
 
     const totalProcessingTime = Date.now() - startTime
-    console.log(`[v0] Total processing time: ${totalProcessingTime}ms`)
+    logDiagnostic("info", `Total OCR processing time: ${totalProcessingTime}ms`)
 
     return {
       extractedTexts: [{ text: extractedText, imageIndex: 0 }],
       totalProcessingTime,
     }
   } catch (error) {
-    console.error("[v0] Batch extraction error:", error)
+    logDiagnostic("error", "Batch extraction error", error)
     return {
       extractedTexts: files.map((_, index) => ({ text: "", imageIndex: index })),
       totalProcessingTime: Date.now() - startTime,
@@ -174,8 +233,10 @@ function normalizeSpeakers(
     normalizedText = normalizedText.replace(new RegExp(`\\[${speakerArray[1]}\\]`, "g"), `[${customNameB}]`)
   }
 
-  console.log(`[v0] Detected speakers: ${speakerArray.join(", ")}`)
-  console.log(`[v0] Final labels: ${subjectALabel}, ${subjectBLabel}`)
+  logDiagnostic(
+    "info",
+    `Detected speakers: ${speakerArray.join(", ")}, Final labels: ${subjectALabel}, ${subjectBLabel}`,
+  )
 
   return {
     normalizedText,
@@ -1117,7 +1178,7 @@ function inferEmotionalMotivation(
     "fear-driven":
       "Messages suggest anxiety about the relationship's stability or fear of abandonment. This often stems from anxious attachment patterns.",
     "control-driven":
-      "Messages attempt to manage or direct the partner's behavior, possibly to reduce anxiety or maintain a sense of safety through predictability.",
+      "Messages attempt to manage or direct the partner's behavior, possibly to maintain a sense of safety through predictability.",
     "avoidance-driven":
       "Messages indicate a desire to escape emotional intensity or conflict, often a protective response to feeling overwhelmed.",
     "repair-driven":
@@ -1705,7 +1766,7 @@ function calculatePDRScores(
 function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: string, conversationText: string): any {
   const analysisStartTime = Date.now()
 
-  console.log("[v0] ===== Love Lens v2.5 Analysis Engine =====")
+  logDiagnostic("info", "===== Love Lens v2.5 Analysis Engine =====")
 
   // Analyze conversation text
   const hasMinimalData = conversationText.length < 50
@@ -1717,7 +1778,12 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     ? 3
     : Math.max(3, (conversationText.match(new RegExp(`\\[${subjectBLabel}\\]`, "gi")) || []).length)
 
-  console.log(`[v0] Message distribution: ${subjectALabel}=${subjectAMessages}, ${subjectBLabel}=${subjectBMessages}`)
+  logDiagnostic("info", "Message distribution", {
+    subjectA: subjectALabel,
+    countA: subjectAMessages,
+    subjectB: subjectBLabel,
+    countB: subjectBMessages,
+  })
 
   const emotionalFlow = hasMinimalData
     ? {
@@ -1728,9 +1794,11 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
       }
     : mapEmotionalFlow(conversationText)
 
-  console.log(
-    `[v0] Emotional flow: ${emotionalFlow.dominantPhase} (${emotionalFlow.transitionCount} transitions), ${emotionalFlow.nervousSystemSummary}`,
-  )
+  logDiagnostic("info", "Emotional flow analysis", {
+    dominantPhase: emotionalFlow.dominantPhase,
+    transitions: emotionalFlow.transitionCount,
+    summary: emotionalFlow.nervousSystemSummary,
+  })
 
   const subjectAMotivation = hasMinimalData
     ? {
@@ -1750,15 +1818,16 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
       }
     : inferEmotionalMotivation(conversationText, subjectBLabel)
 
-  console.log(
-    `[v0] Motivations: ${subjectALabel}=${subjectAMotivation.primaryMotive} (${subjectAMotivation.confidence}% confidence), ${subjectBLabel}=${subjectBMotivation.primaryMotive} (${subjectBMotivation.confidence}% confidence)`,
-  )
+  logDiagnostic("info", "Motivation analysis", {
+    subjectA: `${subjectAMotivation.primaryMotive} (${subjectAMotivation.confidence}% confidence)`,
+    subjectB: `${subjectBMotivation.primaryMotive} (${subjectBMotivation.confidence}% confidence)`,
+  })
 
   const emotionalThemes = hasMinimalData
     ? ["Navigating Intimacy: Both partners are learning to balance closeness with autonomy"]
     : extractEmotionalThemes(conversationText, emotionalFlow, subjectAMotivation, subjectBMotivation)
 
-  console.log(`[v0] Emotional themes: ${emotionalThemes.join("; ")}`)
+  logDiagnostic("info", "Emotional themes identified", { themes: emotionalThemes })
 
   const profanityAnalysis = hasMinimalData
     ? { profanityCount: 0, intensityLevel: "low" as const, emotionalEscalation: false }
@@ -1798,24 +1867,33 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     ? { subjectALabor: 2, subjectBLabor: 2, laborImbalance: "balanced" as const, whoDoesMore: subjectALabel }
     : analyzeEmotionalLabor(conversationText, subjectALabel, subjectBLabel)
 
-  console.log(
-    `[v0] Profanity: ${profanityAnalysis.profanityCount}, Intensity: ${profanityAnalysis.intensityLevel}, Escalation: ${profanityAnalysis.emotionalEscalation}`,
-  )
-  console.log(
-    `[v0] Timing - ${subjectALabel}: ${subjectATiming.averageGapIndicator} (${subjectATiming.rapidFireSequences} rapid sequences), ${subjectBLabel}: ${subjectBTiming.averageGapIndicator} (${subjectBTiming.rapidFireSequences} rapid sequences)`,
-  )
-  console.log(
-    `[v0] Contempt score: ${contemptMarkers.contemptScore}, Sarcasm: ${contemptMarkers.sarcasmDetected}, Name-calling: ${contemptMarkers.nameCallingDetected}`,
-  )
-  console.log(
-    `[v0] Repair: ${repairDynamics.repairEffectiveness} effectiveness, ${repairDynamics.repairRejections} rejections, ${repairDynamics.repairAcceptance} acceptances`,
-  )
-  console.log(
-    `[v0] Accountability - ${subjectALabel}: ${subjectAAccountability.accountabilityScore}, ${subjectBLabel}: ${subjectBAccountability.accountabilityScore}`,
-  )
-  console.log(
-    `[v0] Emotional labor: ${emotionalLabor.laborImbalance} (${emotionalLabor.whoDoesMore} does ${emotionalLabor.laborImbalance === "balanced" ? "equal" : "more"})`,
-  )
+  logDiagnostic("info", "Profanity and intensity analysis", {
+    count: profanityAnalysis.profanityCount,
+    level: profanityAnalysis.intensityLevel,
+    escalation: profanityAnalysis.emotionalEscalation,
+  })
+  logDiagnostic("info", "Message timing analysis", {
+    subjectA: `${subjectATiming.averageGapIndicator} (${subjectATiming.rapidFireSequences} rapid sequences)`,
+    subjectB: `${subjectBTiming.averageGapIndicator} (${subjectBTiming.rapidFireSequences} rapid sequences)`,
+  })
+  logDiagnostic("info", "Contempt markers analysis", {
+    score: contemptMarkers.contemptScore,
+    sarcasm: contemptMarkers.sarcasmDetected,
+    nameCalling: contemptMarkers.nameCallingDetected,
+  })
+  logDiagnostic("info", "Repair dynamics analysis", {
+    effectiveness: repairDynamics.repairEffectiveness,
+    rejections: repairDynamics.repairRejections,
+    acceptances: repairDynamics.repairAcceptance,
+  })
+  logDiagnostic("info", "Accountability analysis", {
+    subjectA: `${subjectALabel}: ${subjectAAccountability.accountabilityScore}`,
+    subjectB: `${subjectBLabel}: ${subjectBAccountability.accountabilityScore}`,
+  })
+  logDiagnostic("info", "Emotional labor analysis", {
+    imbalance: emotionalLabor.laborImbalance,
+    whoDoesMore: emotionalLabor.whoDoesMore,
+  })
 
   const bidirectionalPDR = hasMinimalData
     ? {
@@ -1886,15 +1964,19 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
     repairTiming,
   )
 
-  console.log(
-    `[v0] PDR Scores - ${subjectALabel}: Pursue=${pdrScores.subjectA_pursueScore}, Distance=${pdrScores.subjectA_distanceScore}, Repair=${pdrScores.subjectA_repairScore}`,
-  )
-  console.log(
-    `[v0] PDR Scores - ${subjectBLabel}: Pursue=${pdrScores.subjectB_pursueScore}, Distance=${pdrScores.subjectB_distanceScore}, Repair=${pdrScores.subjectB_repairScore}`,
-  )
-  console.log(`[v0] Pursue-Withdraw Loop: ${pursueWithdrawLoop.description}`)
-  console.log(`[v0] Repair Quality: ${repairQuality.overallQuality}, Timing: ${repairTiming.timingQuality}`)
-  console.log(`[v0] Pattern Evolution: ${patternEvolution.trend} - ${patternEvolution.description}`)
+  logDiagnostic("info", "PDR Scores", {
+    subjectA: `Pursue=${pdrScores.subjectA_pursueScore}, Distance=${pdrScores.subjectA_distanceScore}, Repair=${pdrScores.subjectA_repairScore}`,
+    subjectB: `Pursue=${pdrScores.subjectB_pursueScore}, Distance=${pdrScores.subjectB_distanceScore}, Repair=${pdrScores.subjectB_repairScore}`,
+  })
+  logDiagnostic("info", "Pursue-Withdraw Loop Analysis", { description: pursueWithdrawLoop.description })
+  logDiagnostic("info", "Repair Analysis", {
+    quality: repairQuality.overallQuality,
+    timing: repairTiming.timingQuality,
+  })
+  logDiagnostic("info", "Pattern Evolution", {
+    trend: patternEvolution.trend,
+    description: patternEvolution.description,
+  })
 
   const punctuationPatterns = hasMinimalData
     ? { periods: 2, exclamations: 3, ellipses: 1, multipleQuestions: 0, noPunctuation: 2, emotionalIntensity: 1.5 }
@@ -2004,9 +2086,12 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
   const repairEffortScore = calculateRepairScore()
   const overallHealthScore = Math.round((harmonyScore + emotionalSafetyScore + repairEffortScore) / 30)
 
-  console.log(
-    `[v0] Scores (v2.5 contextually weighted) - Harmony: ${harmonyScore}, Safety: ${emotionalSafetyScore}, Repair: ${repairEffortScore}, Overall: ${overallHealthScore}/10`,
-  )
+  logDiagnostic("info", "Scores calculated", {
+    harmony: harmonyScore,
+    safety: emotionalSafetyScore,
+    repair: repairEffortScore,
+    overall: overallHealthScore,
+  })
 
   const dataQuality = Math.min(100, (conversationText.length / 500) * 100)
   const messageBalance =
@@ -2014,9 +2099,11 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
   const extractionConfidence = Math.min(100, Math.round((dataQuality + messageBalance) / 2))
   const emotionalInferenceConfidence = Math.round((subjectAMotivation.confidence + subjectBMotivation.confidence) / 2)
 
-  console.log(
-    `[v0] Confidence levels - Extraction: ${extractionConfidence}%, Emotional inference: ${emotionalInferenceConfidence}%, Data completeness: ${dataQuality > 70 ? "high" : dataQuality > 40 ? "medium" : "low"}`,
-  )
+  logDiagnostic("info", "Confidence levels", {
+    extraction: extractionConfidence,
+    emotionalInference: emotionalInferenceConfidence,
+    dataCompleteness: dataQuality > 70 ? "high" : dataQuality > 40 ? "medium" : "low",
+  })
 
   const punctuationInsights: string[] = []
   if (profanityAnalysis.profanityCount > 0) {
@@ -2105,8 +2192,6 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
   const subjectB_dismisses = gottmanFlags.stonewalling ? 12 : gottmanFlags.defensiveness ? 8 : 5
   const subjectB_neutral = 100 - (subjectB_acknowledges + subjectB_reassures + subjectB_validates + subjectB_dismisses)
 
-  const processingTime = Date.now() - analysisStartTime
-
   const reflectiveSummary = hasMinimalData
     ? `This analysis is based on limited conversation data. The insights below are preliminary observations that may deepen with more conversation context. What matters most is how these patterns feel to you—your lived experience is the ultimate guide.`
     : `Observing ${totalMessages} messages between ${subjectALabel} and ${subjectBLabel}, a picture emerges: ${emotionalThemes[0]} The conversation moves through phases of ${emotionalFlow.dominantPhase}, with ${emotionalFlow.transitionCount} emotional transitions. ${subjectALabel} appears primarily ${subjectAMotivation.primaryMotive.replace("-driven", "")}, while ${subjectBLabel} seems ${subjectBMotivation.primaryMotive.replace("-driven", "")}. Beneath the surface of words lies a deeper story—both partners navigating the inherent vulnerability of intimacy, each seeking safety in their own way. ${emotionalFlow.nervousSystemSummary}`
@@ -2174,6 +2259,8 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
       nervousSystemState: "🟢 ventral (connection-oriented)",
     },
   ]
+
+  const processingTime = Date.now() - analysisStartTime
 
   return {
     reflectiveSummary,
@@ -2472,7 +2559,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
       },
       sharedStrengths: [
         emotionalPatterns.repairAttempts > 0 && repairDynamics.repairEffectiveness !== "low"
-          ? "You both make efforts to repair after disconnection"
+          ? "You both make efforts to reconnect after disconnection"
           : "You're both learning that repair is possible",
         !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
           ? "You maintain respect for each other, even in conflict"
@@ -3020,59 +3107,72 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
 
 export async function analyzeConversation(formData: FormData) {
   try {
-    console.log("[v0] ===== Starting conversation analysis =====")
-    console.log(`[v0] Environment: ${process.env.NEXT_PUBLIC_VERCEL_ENV || "development"}`)
+    logDiagnostic("info", "===== Starting conversation analysis =====", {
+      environment: process.env.NEXT_PUBLIC_VERCEL_ENV || "development",
+      timestamp: new Date().toISOString(),
+    })
 
     const subjectAName = formData.get("subjectAName") as string | null
     const subjectBName = formData.get("subjectBName") as string | null
 
-    console.log(`[v0] Custom names: ${subjectAName || "none"} and ${subjectBName || "none"}`)
+    logDiagnostic("info", "Custom names provided", {
+      subjectA: subjectAName || "none",
+      subjectB: subjectBName || "none",
+    })
 
-    // Collect files from FormData
     const files: File[] = []
     let fileIndex = 0
 
-    console.log("[v0] Starting file collection from FormData...")
+    logDiagnostic("info", "Starting file collection from FormData")
 
     while (true) {
       const file = formData.get(`file-${fileIndex}`) as File | null
 
-      console.log(
-        `[v0] Checking file-${fileIndex}:`,
-        file ? `Found (${file.name}, ${file.size} bytes, ${file.type})` : "Not found",
-      )
+      if (!file) {
+        logDiagnostic("info", `No more files found at index ${fileIndex}`)
+        break
+      }
 
-      if (!file) break
+      logDiagnostic("info", `Found file-${fileIndex}`, {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      })
 
-      // Validate file
       if (!file.size) {
-        console.error(`[v0] File ${fileIndex + 1} has no size`)
+        logDiagnostic("error", `File ${fileIndex + 1} has no size`)
         return {
-          error: `File ${fileIndex + 1} is empty or invalid. Please remove it and try again.`,
+          error: `File ${fileIndex + 1} (${file.name}) is empty or invalid. Please remove it and try again.`,
+          diagnostics: diagnosticLogs,
         }
       }
 
       if (file.size > 10 * 1024 * 1024) {
-        console.error(`[v0] File ${file.name} is too large: ${file.size} bytes`)
+        logDiagnostic("error", `File ${file.name} is too large`, { size: file.size })
         return {
-          error: `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB.`,
+          error: `File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB per file.`,
+          diagnostics: diagnosticLogs,
         }
       }
 
       if (!file.type.startsWith("image/")) {
-        console.error(`[v0] File ${file.name} is not an image: ${file.type}`)
+        logDiagnostic("error", `File ${file.name} is not an image`, { type: file.type })
         return {
-          error: `File "${file.name}" is not an image. Please upload only image files.`,
+          error: `File "${file.name}" is not an image (type: ${file.type}). Please upload only image files (PNG, JPG, JPEG).`,
+          diagnostics: diagnosticLogs,
         }
       }
 
       try {
         const testBuffer = await file.arrayBuffer()
-        console.log(`[v0] File ${file.name} is readable (${testBuffer.byteLength} bytes)`)
+        logDiagnostic("info", `File ${file.name} is readable`, {
+          bufferSize: testBuffer.byteLength,
+        })
       } catch (readError) {
-        console.error(`[v0] File ${file.name} cannot be read:`, readError)
+        logDiagnostic("error", `File ${file.name} cannot be read`, readError)
         return {
-          error: `Unable to read file "${file.name}". The file may be corrupted. Please try uploading it again.`,
+          error: `Unable to read file "${file.name}". The file may be corrupted or your browser lost access to it. Please try uploading it again.`,
+          diagnostics: diagnosticLogs,
         }
       }
 
@@ -3080,20 +3180,25 @@ export async function analyzeConversation(formData: FormData) {
       fileIndex++
     }
 
-    console.log(`[v0] Found ${files.length} valid files to process`)
+    logDiagnostic("info", `File collection complete: ${files.length} files`)
 
     if (files.length === 0) {
-      console.error("[v0] No files provided in FormData")
-      return { error: "No files provided. Please upload at least one screenshot." }
+      logDiagnostic("error", "No files provided in FormData")
+      return {
+        error: "No files provided. Please upload at least one screenshot of your conversation.",
+        diagnostics: diagnosticLogs,
+      }
     }
 
     const analysisPromise = (async () => {
-      console.log(`[v0] Starting batch OCR extraction for ${files.length} files...`)
+      logDiagnostic("info", `Starting batch OCR extraction for ${files.length} files`)
 
       const { extractedTexts, totalProcessingTime } = await extractTextFromMultipleImages(files)
 
-      console.log(`[v0] Batch extraction completed in ${totalProcessingTime}ms`)
-      console.log(`[v0] Extracted ${extractedTexts.reduce((sum, e) => sum + e.text.length, 0)} total characters`)
+      logDiagnostic("info", "Batch extraction completed", {
+        processingTime: totalProcessingTime,
+        totalCharacters: extractedTexts.reduce((sum, e) => sum + e.text.length, 0),
+      })
 
       // Normalize speaker labels
       const { normalizedText, subjectALabel, subjectBLabel } = normalizeSpeakers(
@@ -3102,12 +3207,17 @@ export async function analyzeConversation(formData: FormData) {
         subjectBName,
       )
 
-      console.log(`[v0] Normalized conversation text (${normalizedText.length} characters)`)
-      console.log(`[v0] Generating evidence-based analysis...`)
+      logDiagnostic("info", "Normalized conversation text", {
+        length: normalizedText.length,
+        subjectA: subjectALabel,
+        subjectB: subjectBLabel,
+      })
+
+      logDiagnostic("info", "Generating evidence-based analysis")
 
       const analysis = generateEnhancedFallbackAnalysis(subjectALabel, subjectBLabel, normalizedText)
 
-      console.log(`[v0] ===== Analysis complete successfully =====`)
+      logDiagnostic("info", "===== Analysis complete successfully =====")
 
       return {
         ...analysis,
@@ -3122,9 +3232,10 @@ export async function analyzeConversation(formData: FormData) {
 
     return await withTimeout(analysisPromise, 300000, "Complete analysis")
   } catch (error) {
-    console.error("[v0] ===== Analysis error =====")
-    console.error("[v0] Error details:", error)
-    console.error("[v0] Error stack:", error instanceof Error ? error.stack : "No stack trace")
+    logDiagnostic("error", "===== Analysis error =====", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
 
     let errorMessage = "An unexpected error occurred during analysis."
 
@@ -3139,6 +3250,8 @@ export async function analyzeConversation(formData: FormData) {
         errorMessage = error.message
       } else if (error.message.includes("not an image")) {
         errorMessage = error.message
+      } else if (error.message.includes("OpenAI API")) {
+        errorMessage = `Server error: ${error.message}. Please try again in a few moments.`
       } else {
         errorMessage = `Analysis failed: ${error.message}`
       }
@@ -3146,6 +3259,7 @@ export async function analyzeConversation(formData: FormData) {
 
     return {
       error: errorMessage,
+      diagnostics: diagnosticLogs,
     }
   }
 }
