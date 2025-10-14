@@ -217,6 +217,72 @@ export default function EnhancedCompactUpload() {
     return new File([blob], storedFile.name, { type: storedFile.type })
   }
 
+  const compressImageOnClient = async (file: File, maxSize = 1200): Promise<File> => {
+    try {
+      console.log("[v0] Compressing image on client:", file.name)
+
+      return new Promise((resolve, reject) => {
+        const img = new Image()
+        const canvas = document.createElement("canvas")
+        const ctx = canvas.getContext("2d")
+
+        if (!ctx) {
+          reject(new Error("Could not get canvas context"))
+          return
+        }
+
+        img.onload = () => {
+          let width = img.width
+          let height = img.height
+
+          // Calculate new dimensions
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = (height / width) * maxSize
+              width = maxSize
+            } else {
+              width = (width / height) * maxSize
+              height = maxSize
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+          ctx.drawImage(img, 0, 0, width, height)
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const compressedFile = new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
+                  type: "image/jpeg",
+                })
+                console.log("[v0] Image compressed:", {
+                  original: file.size,
+                  compressed: compressedFile.size,
+                  reduction: `${(((file.size - compressedFile.size) / file.size) * 100).toFixed(1)}%`,
+                })
+                resolve(compressedFile)
+              } else {
+                reject(new Error("Failed to create blob"))
+              }
+            },
+            "image/jpeg",
+            0.85,
+          )
+        }
+
+        img.onerror = () => {
+          reject(new Error("Failed to load image"))
+        }
+
+        img.src = URL.createObjectURL(file)
+      })
+    } catch (error) {
+      console.warn("[v0] Compression failed, using original:", error)
+      return file
+    }
+  }
+
   const handleAnalyze = async () => {
     if (files.length === 0) {
       setError("Please upload at least one screenshot")
@@ -235,25 +301,37 @@ export default function EnhancedCompactUpload() {
       console.log("[v0] Validating files...")
       setProgress(10)
 
+      setProgressMessage("Optimizing images...")
+      setProgress(15)
+
       let processedFiles = fileObjects
+      try {
+        // Compress all images to reduce upload size and processing time
+        processedFiles = await Promise.all(fileObjects.map((file) => compressImageOnClient(file, 1200)))
+        console.log("[v0] All images compressed successfully")
+      } catch (compressionError) {
+        console.warn("[v0] Some images failed to compress, using originals:", compressionError)
+        processedFiles = fileObjects
+      }
+
+      setProgress(25)
+
       if (enhancementEnabled) {
         setProgressMessage("Enhancing image quality...")
-        setProgress(15)
         try {
-          processedFiles = await enhanceImages(fileObjects)
+          processedFiles = await enhanceImages(processedFiles)
           console.log("[v0] Images enhanced successfully")
         } catch (enhError) {
-          console.warn("[v0] Image enhancement failed, using original files:", enhError)
-          processedFiles = fileObjects
+          console.warn("[v0] Image enhancement failed, using compressed files:", enhError)
         }
-        setProgress(25)
+        setProgress(30)
       }
 
       const progressSteps = [
-        { progress: 40, message: `Processing ${files.length} screenshot${files.length > 1 ? "s" : ""}...` },
-        { progress: 55, message: "Extracting conversation text..." },
-        { progress: 70, message: "Analyzing communication patterns..." },
-        { progress: 85, message: "Generating insights..." },
+        { progress: 45, message: `Processing ${files.length} screenshot${files.length > 1 ? "s" : ""}...` },
+        { progress: 60, message: "Extracting conversation text..." },
+        { progress: 75, message: "Analyzing communication patterns..." },
+        { progress: 90, message: "Generating insights..." },
         { progress: 95, message: "Finalizing analysis..." },
       ]
 
@@ -266,7 +344,7 @@ export default function EnhancedCompactUpload() {
         } else {
           clearInterval(progressInterval)
         }
-      }, 1200)
+      }, 1500)
 
       const formData = new FormData()
       processedFiles.forEach((file, index) => {

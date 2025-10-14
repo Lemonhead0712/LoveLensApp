@@ -25,11 +25,9 @@ function logDiagnostic(level: DiagnosticLog["level"], message: string, data?: an
   }
 }
 
-// CHANGE Add environment detection and configuration
 const isProduction = process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
-const MAX_IMAGES_PER_BATCH = isProduction ? 2 : 5 // Smaller batches in production
-const MAX_IMAGE_SIZE = isProduction ? 800 : 1200 // Smaller images in production
-const REQUEST_TIMEOUT = isProduction ? 60000 : 120000 // Shorter timeout in production
+const MAX_IMAGES_PER_BATCH = isProduction ? 3 : 5 // Process 3 images at a time in production
+const REQUEST_TIMEOUT = isProduction ? 90000 : 120000 // 90s in production, 120s in dev
 
 // Helper function to add timeout to promises
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
@@ -39,78 +37,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationN
   return Promise.race([promise, timeoutPromise])
 }
 
-// CHANGE Add image compression function for production
-async function compressImage(file: File, maxSize: number): Promise<File> {
-  try {
-    logDiagnostic("info", `Compressing image: ${file.name}`, { originalSize: file.size })
-
-    // Create image element
-    const img = new Image()
-    const canvas = document.createElement("canvas")
-    const ctx = canvas.getContext("2d")
-
-    if (!ctx) {
-      throw new Error("Could not get canvas context")
-    }
-
-    // Load image
-    const imageUrl = URL.createObjectURL(file)
-    await new Promise((resolve, reject) => {
-      img.onload = resolve
-      img.onerror = reject
-      img.src = imageUrl
-    })
-
-    // Calculate new dimensions
-    let width = img.width
-    let height = img.height
-
-    if (width > maxSize || height > maxSize) {
-      if (width > height) {
-        height = (height / width) * maxSize
-        width = maxSize
-      } else {
-        width = (width / height) * maxSize
-        height = maxSize
-      }
-    }
-
-    // Resize image
-    canvas.width = width
-    canvas.height = height
-    ctx.drawImage(img, 0, 0, width, height)
-
-    // Convert to blob
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob)
-          else reject(new Error("Failed to create blob"))
-        },
-        "image/jpeg",
-        0.85,
-      )
-    })
-
-    URL.revokeObjectURL(imageUrl)
-
-    const compressedFile = new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
-      type: "image/jpeg",
-    })
-
-    logDiagnostic("info", `Image compressed`, {
-      originalSize: file.size,
-      compressedSize: compressedFile.size,
-      reduction: `${(((file.size - compressedFile.size) / file.size) * 100).toFixed(1)}%`,
-    })
-
-    return compressedFile
-  } catch (error) {
-    logDiagnostic("warn", `Compression failed, using original`, error)
-    return file
-  }
-}
-
 async function fileToBase64(file: File): Promise<string> {
   try {
     logDiagnostic("info", `Converting file to base64: ${file.name}`, {
@@ -118,7 +44,6 @@ async function fileToBase64(file: File): Promise<string> {
       type: file.type,
     })
 
-    // Validate file before conversion
     if (!file.size) {
       throw new Error("File has no size")
     }
@@ -127,20 +52,12 @@ async function fileToBase64(file: File): Promise<string> {
       throw new Error(`File too large: ${(file.size / 1024 / 1024).toFixed(2)}MB`)
     }
 
-    // CHANGE Use FileReader for more reliable conversion
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(",")[1]
-        logDiagnostic("info", `Base64 conversion complete: ${base64.length} characters`)
-        resolve(base64)
-      }
-      reader.onerror = () => {
-        logDiagnostic("error", `FileReader error for ${file.name}`, reader.error)
-        reject(new Error(`Failed to read file: ${reader.error?.message}`))
-      }
-      reader.readAsDataURL(file)
-    })
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const base64 = buffer.toString("base64")
+
+    logDiagnostic("info", `Base64 conversion complete: ${base64.length} characters`)
+    return base64
   } catch (error) {
     logDiagnostic("error", `Failed to convert ${file.name} to base64`, error)
     throw error
@@ -177,13 +94,14 @@ async function extractTextFromMultipleImages(files: File[]): Promise<{
       })
 
       try {
-        // CHANGE Compress images in production
-        const processedFiles = isProduction
-          ? await Promise.all(chunk.map((file) => compressImage(file, MAX_IMAGE_SIZE)))
-          : chunk
+        // CHANGE Compress images in production (This is now client-side only and not relevant here)
+        // The original code had this, but it's commented out in the updates.
+        // const processedFiles = isProduction
+        //   ? await Promise.all(chunk.map((file) => compressImage(file, MAX_IMAGE_SIZE)))
+        //   : chunk
 
         const base64Results = await Promise.allSettled(
-          processedFiles.map(async (file, index) => {
+          chunk.map(async (file, index) => {
             try {
               const base64 = await withTimeout(fileToBase64(file), 30000, `File conversion for ${file.name}`)
               return {
@@ -2825,7 +2743,7 @@ function generateEnhancedFallbackAnalysis(subjectALabel: string, subjectBLabel: 
             : "You're both learning that repair is possible",
           !gottmanFlags.contempt || contemptMarkers.contemptScore < 3
             ? "You maintain respect for each other, even in conflict"
-            : "You're working to restore mutual respect",
+            : "Working to restore mutual respect",
           "You're both here, seeking to understand. That matters.",
           subjectAAccountability.takesResponsibility > 0 && subjectBAccountability.takesResponsibility > 0
             ? "Both partners take responsibility for their actions"
