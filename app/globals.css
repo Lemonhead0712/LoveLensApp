@@ -37,6 +37,8 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --font-inter: "Inter", sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", monospace;
 }
 
 .dark {
@@ -75,9 +77,9 @@
 }
 
 @theme inline {
-  /* Added font variables for Geist fonts */
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Updated font variables to use Inter and JetBrains Mono */
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -386,14 +388,19 @@ html {
 
 /* Added pinch-to-zoom support with smooth panning when zoomed */
 @media (max-width: 640px) {
-  /* Enable pinch-to-zoom on the entire page */
-  html {
-    touch-action: pan-x pan-y pinch-zoom;
+  /* Completely disable horizontal page swiping - only allow vertical scroll */
+  html,
+  body {
+    touch-action: pan-y pinch-zoom !important;
+    overscroll-behavior-x: none !important;
+    overflow-x: hidden !important;
+    position: relative;
   }
 
-  /* Allow smooth panning when zoomed in */
-  body {
-    touch-action: pan-x pan-y pinch-zoom;
+  /* Prevent any child elements from enabling horizontal scroll */
+  html *:not([role="tablist"]),
+  body *:not([role="tablist"]) {
+    touch-action: pan-y pinch-zoom !important;
   }
 
   /* Prevent zoom on double-tap for interactive elements */
@@ -404,14 +411,20 @@ html {
   select,
   [role="button"],
   [role="tab"] {
-    touch-action: manipulation;
+    touch-action: manipulation !important;
   }
 
-  /* Allow horizontal scroll for specific scrollable containers */
-  .horizontal-scroll-container {
-    touch-action: pan-x pinch-zoom;
-    overflow-x: auto;
+  /* Allow horizontal scroll ONLY for tab containers */
+  [role="tablist"] {
+    touch-action: pan-x !important;
+    overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Allow swipe gestures ONLY within the analysis results tabs content */
+  .analysis-tabs-swipeable {
+    touch-action: pan-x pan-y pinch-zoom !important;
   }
 }
 

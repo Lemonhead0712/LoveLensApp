@@ -128,9 +128,9 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
   const tabsListRef = useRef<HTMLDivElement>(null)
   const activeTabRef = useRef<HTMLButtonElement>(null)
 
-  const [touchStart, setTouchStart] = useState(0)
-  const [touchEnd, setTouchEnd] = useState(0)
-  const minSwipeDistance = 50
+  // const [touchStart, setTouchStart] = useState(0)
+  // const [touchEnd, setTouchEnd] = useState(0)
+  // const minSwipeDistance = 50
 
   const tabs = ["overview", "patterns", "charts", "professional", "feedback"]
 
@@ -153,20 +153,20 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
     }
   }, [activeTab])
 
-  const handleTabSwipe = () => {
-    const distance = touchStart - touchEnd
-    const isLeftSwipe = distance > minSwipeDistance
-    const isRightSwipe = distance < -minSwipeDistance
-
-    if (isLeftSwipe || isRightSwipe) {
-      const currentIndex = tabs.indexOf(activeTab)
-      if (isLeftSwipe && currentIndex < tabs.length - 1) {
-        setActiveTab(tabs[currentIndex + 1])
-      } else if (isRightSwipe && currentIndex > 0) {
-        setActiveTab(tabs[currentIndex - 1])
-      }
-    }
-  }
+  // const handleTabSwipe = () => {
+  //   const distance = touchStart - touchEnd
+  //   const isLeftSwipe = distance > minSwipeDistance
+  //   const isRightSwipe = distance < -minSwipeDistance
+  //
+  //   if (isLeftSwipe || isRightSwipe) {
+  //     const currentIndex = tabs.indexOf(activeTab)
+  //     if (isLeftSwipe && currentIndex < tabs.length - 1) {
+  //       setActiveTab(tabs[currentIndex + 1])
+  //     } else if (isRightSwipe && currentIndex > 0) {
+  //       setActiveTab(tabs[currentIndex - 1])
+  //     }
+  //   }
+  // }
 
   const handleTabKeyDown = (e: React.KeyboardEvent, tabValue: string) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -347,12 +347,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
 
   return (
     // Added safe area padding and improved mobile spacing
-    <div
-      className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 p-4 sm:p-6 md:p-8 pb-safe"
-      onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
-      onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
-      onTouchEnd={handleTabSwipe}
-    >
+    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-purple-50 p-4 sm:p-6 md:p-8 pb-safe">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-purple-600 focus:text-white focus:rounded-md"
@@ -610,6 +605,11 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
           transition={{ delay: 0.3 }}
           role="region"
           aria-label="Analysis details organized by category"
+          className="analysis-tabs-swipeable"
+          // Removed touch event handlers - tabs now only respond to clicks/taps
+          // onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
+          // onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
+          // onTouchEnd={handleTabSwipe}
         >
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="relative mb-4 sm:mb-6">
@@ -712,7 +712,7 @@ export default function EnhancedAnalysisResults({ results }: EnhancedAnalysisRes
                 className="text-xs text-center mt-3 sm:hidden bg-purple-50 py-2 px-3 rounded-md text-purple-700 font-medium"
                 aria-live="polite"
               >
-                👆 Swipe or slide to navigate tabs
+                👆 Tap to select tabs
               </p>
             </div>
 

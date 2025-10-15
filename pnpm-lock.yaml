@@ -43,7 +43,7 @@ importers:
         version: 1.1.13-rc.1752165236204(@types/react-dom@19.1.11(@types/react@19.1.17))(@types/react@19.1.17)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       ai:
         specifier: latest
-        version: 5.0.70(zod@4.1.12)
+        version: 5.0.71(zod@4.1.12)
       buffer:
         specifier: 6.0.3
         version: 6.0.3
@@ -57,7 +57,7 @@ importers:
         specifier: latest
         version: 12.23.24(@emotion/is-prop-valid@1.4.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       jszip:
-        specifier: latest
+        specifier: 3.10.1
         version: 3.10.1
       lucide-react:
         specifier: ^0.454.0
@@ -78,7 +78,7 @@ importers:
         specifier: ^19
         version: 19.1.1(react@19.1.1)
       react-dropzone:
-        specifier: latest
+        specifier: ^14.2.3
         version: 14.3.8(react@19.1.1)
       react-feather:
         specifier: 2.0.10
@@ -87,7 +87,7 @@ importers:
         specifier: latest
         version: 3.2.1(@types/react@19.1.17)(react-dom@19.1.1(react@19.1.1))(react-is@19.2.0)(react@19.1.1)(redux@5.0.1)
       sharp:
-        specifier: latest
+        specifier: 0.34.4
         version: 0.34.4
       tailwind-merge:
         specifier: ^2.5.5
@@ -1201,8 +1201,8 @@ packages:
     resolution: {integrity: sha512-XMZjhS8poHpxfPg41rkc6eh3Mr2BZAFM7OzYN4jPZUicpJKv7uQAU2dLEqnyDcDllo04LbZIryb2fXwpr+pqPw==}
     engines: {node: '>=16.0.0'}
 
-  ai@5.0.70:
-    resolution: {integrity: sha512-srJV++Ml1X8I33gTiiJQpq6GUbAv5ivjSzDzzF9SM4d25zq+/m+zTtHBb794tYKTz2PgbJ3oop9+gU50ZdCLbQ==}
+  ai@5.0.71:
+    resolution: {integrity: sha512-2c9/cXpF7O1K9xOgcoPCMC7Jj5GxVsPHTBhKcV6bqCVKm21P8AiN+rz9zIGopNMDhlEbQxqi8qSgrwCfsW+KMw==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -3227,7 +3227,7 @@ snapshots:
       - typescript
     optional: true
 
-  ai@5.0.70(zod@4.1.12):
+  ai@5.0.71(zod@4.1.12):
     dependencies:
       '@ai-sdk/gateway': 1.0.40(zod@4.1.12)
       '@ai-sdk/provider': 2.0.0

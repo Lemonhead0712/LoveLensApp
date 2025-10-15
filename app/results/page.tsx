@@ -6,7 +6,7 @@ import { getResults } from "@/lib/results-storage"
 import CompactHeader from "@/components/compact-header"
 import CompactFooter from "@/components/compact-footer"
 import EnhancedAnalysisResults from "@/components/enhanced-analysis-results"
-import LoadingAnalysis from "@/components/loading-analysis"
+import ModernAnalysisLoading from "@/components/modern-analysis-loading"
 import { AlertCircle } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -41,7 +41,7 @@ function ResultsContent() {
   }, [resultId])
 
   if (loading) {
-    return <LoadingAnalysis />
+    return <ModernAnalysisLoading />
   }
 
   if (error || !results) {
@@ -69,7 +69,7 @@ export default function ResultsPage() {
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 via-white to-pink-50 overflow-x-hidden">
       <CompactHeader />
       <main className="flex-grow w-full overflow-x-hidden">
-        <Suspense fallback={<LoadingAnalysis />}>
+        <Suspense fallback={<ModernAnalysisLoading />}>
           <ResultsContent />
         </Suspense>
       </main>
