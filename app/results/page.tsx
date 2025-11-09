@@ -6,7 +6,7 @@ import { getResults } from "@/lib/results-storage"
 import CompactHeader from "@/components/compact-header"
 import CompactFooter from "@/components/compact-footer"
 import EnhancedAnalysisResults from "@/components/enhanced-analysis-results"
-import ModernAnalysisLoading from "@/components/modern-analysis-loading"
+import LoadingAnalysis from "@/components/loading-analysis"
 import { AlertCircle } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ function ResultsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
+  // Extract the ID once and memoize it to prevent re-renders
   const resultId = useMemo(() => searchParams?.get("id"), [searchParams])
 
   const [results, setResults] = useState<any>(null)
@@ -22,12 +23,14 @@ function ResultsContent() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    // Only run once when component mounts or when resultId changes
     if (!resultId) {
       setError(true)
       setLoading(false)
       return
     }
 
+    // Try to get results from storage
     const storedResults = getResults(resultId)
 
     if (storedResults) {
@@ -38,19 +41,19 @@ function ResultsContent() {
     }
 
     setLoading(false)
-  }, [resultId])
+  }, [resultId]) // Only depend on the memoized resultId
 
   if (loading) {
-    return <ModernAnalysisLoading />
+    return <LoadingAnalysis />
   }
 
   if (error || !results) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-white p-4 overflow-x-hidden">
-        <Card className="max-w-md w-full p-6 md:p-8 text-center">
-          <AlertCircle className="h-12 w-12 md:h-16 md:w-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">No Results Found</h2>
-          <p className="text-sm md:text-base text-gray-600 mb-6">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-purple-50 to-white p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <AlertCircle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Results Found</h2>
+          <p className="text-gray-600 mb-6">
             We couldn't find the analysis results you're looking for. They may have expired or the link may be invalid.
           </p>
           <Button onClick={() => router.push("/")} className="bg-purple-600 hover:bg-purple-700 text-white w-full">
@@ -66,10 +69,10 @@ function ResultsContent() {
 
 export default function ResultsPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 via-white to-pink-50 overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-purple-50 via-white to-pink-50">
       <CompactHeader />
-      <main className="flex-grow w-full overflow-x-hidden">
-        <Suspense fallback={<ModernAnalysisLoading />}>
+      <main className="flex-grow">
+        <Suspense fallback={<LoadingAnalysis />}>
           <ResultsContent />
         </Suspense>
       </main>

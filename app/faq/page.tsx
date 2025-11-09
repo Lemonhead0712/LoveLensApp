@@ -9,7 +9,8 @@ export default function FAQPage() {
     >
       <section className="mb-6">
         <p className="mb-5 text-gray-700">
-          Find answers to the most common questions below. If you don't see your question,{" "}
+          Find answers to the most common questions about Love Lens below. If you don't see your question answered here,
+          please don't hesitate to{" "}
           <a href="/contact" className="text-purple-600 hover:text-purple-700 underline">
             contact us
           </a>
@@ -23,9 +24,9 @@ export default function FAQPage() {
           <AccordionItem value="what-is-love-lens" className="border-purple-100">
             <AccordionTrigger className="text-purple-700 hover:text-purple-800">What is Love Lens?</AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Love Lens is an AI-powered tool that analyzes conversation patterns to provide objective insights into
-              relationship dynamics. It helps couples understand communication styles, identify patterns, and discover
-              growth opportunities.
+              Love Lens is an AI-powered relationship insight tool that analyzes conversation patterns between partners
+              to provide objective insights into relationship dynamics. It helps couples understand their communication
+              styles, identify recurring patterns, and discover opportunities for growth and deeper connection.
             </AccordionContent>
           </AccordionItem>
 
@@ -34,9 +35,10 @@ export default function FAQPage() {
               How does Love Lens work?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Upload screenshots of your conversations, and our AI analyzes communication patterns, emotional tones, and
-              relationship dynamics using frameworks like the Gottman Method and attachment theory. Screenshots are
-              processed locally and deleted after analysis—we never store your conversation content.
+              Love Lens works by analyzing screenshots of conversations between partners. You upload images of your
+              conversations, and our AI analyzes the communication patterns, emotional tones, and relationship dynamics.
+              The system then generates insights based on established relationship frameworks like the Gottman Method
+              and attachment theory. Importantly, we never store the content of your conversations after analysis.
             </AccordionContent>
           </AccordionItem>
 
@@ -45,9 +47,10 @@ export default function FAQPage() {
               Is Love Lens secure and private?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Yes. Love Lens processes screenshots in memory and automatically deletes them after generating your
-              analysis. We never store conversation content. All data transmission is encrypted with industry-standard
-              security measures.
+              Yes, privacy and security are our top priorities. Love Lens does not store the content of your
+              conversations after analysis is complete. The text is temporarily processed in memory and is automatically
+              deleted once your analysis results are generated. All data transmission is encrypted, and we implement
+              industry-standard security measures to protect your information.
             </AccordionContent>
           </AccordionItem>
 
@@ -56,9 +59,10 @@ export default function FAQPage() {
               Can Love Lens replace relationship therapy?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              No. Love Lens is informational and not a substitute for professional counseling or therapy. Use it as one
-              resource among many for relationship growth. For serious relationship issues, we recommend working with a
-              qualified therapist.
+              No, Love Lens is not a substitute for professional relationship counseling or therapy. It's a tool that
+              can provide insights and complement professional help, but it should not replace working with a qualified
+              therapist or counselor for serious relationship issues. We recommend using Love Lens as one resource among
+              many for relationship growth.
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -72,9 +76,10 @@ export default function FAQPage() {
               What kind of screenshots should I upload?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Upload text conversation screenshots from any messaging platform (SMS, WhatsApp, iMessage, etc.). For best
-              results, upload multiple screenshots showing a range of interactions. Ensure text is clearly visible and
-              it's clear who sent each message.
+              You should upload screenshots of text conversations between you and your partner. These can be from any
+              messaging platform (SMS, WhatsApp, iMessage, etc.). For best results, upload multiple screenshots that
+              show a range of interactions, including both everyday conversations and discussions about more significant
+              topics. Make sure the text is clearly visible and that it's clear which messages are from which person.
             </AccordionContent>
           </AccordionItem>
 
@@ -83,9 +88,9 @@ export default function FAQPage() {
               How many screenshots should I upload?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              We recommend 5-10 screenshots representing different conversations over time for the most accurate
-              analysis. Even a single conversation can provide insights, though results may be less reliable with very
-              few messages.
+              For the most accurate analysis, we recommend uploading 5-10 screenshots that represent different types of
+              conversations over time. This provides enough data for our AI to identify patterns. However, even a single
+              meaningful conversation can provide valuable insights.
             </AccordionContent>
           </AccordionItem>
 
@@ -94,9 +99,9 @@ export default function FAQPage() {
               Do I need my partner's consent to use Love Lens?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Yes, we strongly recommend obtaining your partner's consent. Analyzing conversations without consent could
-              violate trust and potentially legal privacy rights. The most benefit comes when both partners engage with
-              the insights together.
+              Yes, we strongly recommend obtaining your partner's consent before uploading conversations to Love Lens.
+              Analyzing conversations without consent could violate trust and potentially legal privacy rights depending
+              on your jurisdiction. The most benefit comes when both partners engage with the insights together.
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -110,8 +115,8 @@ export default function FAQPage() {
               What image formats are supported?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Love Lens supports JPG, PNG, GIF, and WebP formats. Each file should be less than 10MB with clear,
-              readable text.
+              Love Lens supports common image formats including JPG, PNG, GIF, and WebP. Each file should be less than
+              20MB in size. For best results, ensure the text in the screenshots is clear and readable.
             </AccordionContent>
           </AccordionItem>
 
@@ -120,8 +125,9 @@ export default function FAQPage() {
               Can I export my analysis results?
             </AccordionTrigger>
             <AccordionContent className="text-gray-700">
-              Yes, click the "Export to Word" button on the results page to download a comprehensive report with all
-              analysis sections and visual charts.
+              Yes, you can export your analysis results as a Word document by clicking the "Export as Word Doc" button
+              on the analysis results page. This creates a comprehensive report that includes all sections of the
+              analysis and the visual charts.
             </AccordionContent>
           </AccordionItem>
         </Accordion>

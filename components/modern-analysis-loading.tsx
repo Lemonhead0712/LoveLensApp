@@ -18,7 +18,7 @@ export default function ModernAnalysisLoading({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-gradient-to-br from-purple-50/95 via-white/95 to-pink-50/95 backdrop-blur-md z-50 flex flex-col items-center justify-center overflow-hidden"
+        className="fixed inset-0 bg-gradient-to-br from-purple-50/95 via-white/95 to-pink-50/95 backdrop-blur-md z-50 flex flex-col items-center justify-center"
       >
         <div className="max-w-sm w-full mx-auto p-6 text-center">
           <motion.div
@@ -27,7 +27,7 @@ export default function ModernAnalysisLoading({
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="mb-6"
           >
-            <div className="relative w-24 h-24 mx-auto overflow-visible">
+            <div className="relative w-24 h-24 mx-auto">
               <Image
                 src="/images/love-lens-logo.png"
                 alt="Love Lens Logo"
@@ -35,6 +35,20 @@ export default function ModernAnalysisLoading({
                 height={96}
                 className="object-contain"
                 priority
+              />
+              <motion.div
+                className="absolute inset-0 rounded-full"
+                style={{
+                  border: "4px solid transparent",
+                  borderTopColor: "#9333ea",
+                  borderRightColor: "#ec4899",
+                }}
+                animate={{ rotate: 360 }}
+                transition={{
+                  duration: 2,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "linear",
+                }}
               />
             </div>
           </motion.div>
@@ -61,13 +75,12 @@ export default function ModernAnalysisLoading({
                 <span>Processing</span>
                 <span>{Math.round(progress)}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5 shadow-inner relative">
+              <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden shadow-inner">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-purple-600 to-pink-600 rounded-full shadow-lg absolute top-0 left-0"
+                  className="h-full bg-gradient-to-r from-purple-600 to-pink-600 rounded-full shadow-lg"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                  style={{ willChange: "width" }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
                 />
               </div>
             </motion.div>
@@ -93,7 +106,6 @@ export default function ModernAnalysisLoading({
                   delay: i * 0.2,
                   ease: "easeInOut",
                 }}
-                style={{ willChange: "transform, opacity" }}
               />
             ))}
           </motion.div>

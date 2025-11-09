@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Heart } from "lucide-react"
 
 export default function CompactFooter() {
@@ -5,13 +6,46 @@ export default function CompactFooter() {
 
   return (
     <footer className="border-t bg-gray-50">
-      <div className="container mx-auto px-4 py-5">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-3">
+      <div className="container mx-auto px-4 py-6 sm:py-5">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-3">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-sm bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
               Love Lens
             </h3>
             <span className="text-xs text-gray-500">© {currentYear}</span>
+          </div>
+
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-3">
+            <Link
+              href="/about"
+              className="text-xs sm:text-xs text-gray-600 hover:text-purple-600 transition-colors py-2 sm:py-0"
+            >
+              About
+            </Link>
+            <Link
+              href="/faq"
+              className="text-xs sm:text-xs text-gray-600 hover:text-purple-600 transition-colors py-2 sm:py-0"
+            >
+              FAQ
+            </Link>
+            <Link
+              href="/contact"
+              className="text-xs sm:text-xs text-gray-600 hover:text-purple-600 transition-colors py-2 sm:py-0"
+            >
+              Contact
+            </Link>
+            <Link
+              href="/privacy"
+              className="text-xs sm:text-xs text-gray-600 hover:text-purple-600 transition-colors py-2 sm:py-0"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-xs sm:text-xs text-gray-600 hover:text-purple-600 transition-colors py-2 sm:py-0"
+            >
+              Terms
+            </Link>
           </div>
 
           <div className="flex items-center gap-1 text-xs text-gray-500">

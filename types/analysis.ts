@@ -1,5 +1,8 @@
 export interface AnalysisResults {
+  subjectALabel?: string
+  subjectBLabel?: string
   introductionNote: string
+  overallScore: number
   overallRelationshipHealth: {
     score: number
     description: string
@@ -12,6 +15,33 @@ export interface AnalysisResults {
     subjectAStyle: string
     subjectBStyle: string
   }
+  communicationPatterns: {
+    personA: {
+      style: string
+      strengths: string[]
+      areasForGrowth: string[]
+      notableQuotes: string[]
+      communicationTendencies: string
+    }
+    personB: {
+      style: string
+      strengths: string[]
+      areasForGrowth: string[]
+      notableQuotes: string[]
+      communicationTendencies: string
+    }
+    dynamicBetweenThem: string
+  }
+  emotionalDynamics: {
+    positiveIndicators: string[]
+    concerningPatterns: string[]
+    emotionalBalance: string
+    emotionalHighlights: Array<{
+      moment: string
+      significance: string
+      tone: "positive" | "neutral" | "concerning"
+    }>
+  }
   recurringPatternsIdentified: {
     description: string
     loopingMiscommunicationsExamples: string[]
@@ -19,6 +49,12 @@ export interface AnalysisResults {
     repairAttemptsOrEmotionalAvoidancesExamples: string[]
     positivePatterns: string[]
   }
+  deeperInsights: Array<{
+    title: string
+    observation: string
+    category: "communication" | "emotional" | "behavioral" | "relational"
+    impact: string
+  }>
   reflectiveFrameworks: {
     description: string
     attachmentEnergies: string
@@ -26,6 +62,18 @@ export interface AnalysisResults {
     gottmanConflictMarkers: string
     emotionalIntelligenceIndicators: string
   }
+  strengthsToGelebrate: Array<{
+    strength: string
+    whyItMatters: string
+    examples: string[]
+  }>
+  growthOpportunities: Array<{
+    area: string
+    currentPattern: string
+    whyItMatters: string
+    suggestions: string[]
+    priority: "high" | "medium" | "low"
+  }>
   whatsGettingInTheWay: {
     description: string
     emotionalMismatches: string
@@ -33,6 +81,12 @@ export interface AnalysisResults {
     subtlePowerStrugglesOrMisfires: string
     externalStressors: string
   }
+  recommendations: Array<{
+    title: string
+    description: string
+    priority: "high" | "medium" | "low"
+    expectedOutcome: string
+  }>
   constructiveFeedback: {
     subjectA: {
       strengths: string[]
@@ -49,6 +103,20 @@ export interface AnalysisResults {
       sharedGrowthNudges: string[]
       sharedConnectionBoosters: string[]
     }
+  }
+  conversationMetrics: {
+    totalMessages: number
+    messageBalance: {
+      personA: number
+      personB: number
+    }
+    averageMessageLength: {
+      personA: number
+      personB: number
+    }
+    emotionalTone: string
+    conversationFlow: string
+    engagementLevel: string
   }
   visualInsightsData: {
     descriptionForChartsIntro: string
@@ -130,7 +198,10 @@ export interface AnalysisResults {
       externalResourcesNeeded: string[]
     }
   }
+  summary: string
+  openingThoughts: string
   outlook: string
+  closingThoughts: string
   optionalAppendix: string
   keyTakeaways: string[]
   analyzedConversationText?: string
@@ -138,5 +209,6 @@ export interface AnalysisResults {
   screenshotCount?: number
   extractionConfidence?: number
   confidenceWarning?: string
+  processingTimeMs?: number
   error?: string
 }
